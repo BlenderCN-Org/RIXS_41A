@@ -6,12 +6,16 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QF
                              QScrollBar,QSplitter,QTableWidgetItem,QTableWidget,QComboBox,QVBoxLayout,QGridLayout,
                              QPushButton, QMainWindow,QMessageBox,QLabel,QTextEdit,QProgressBar)
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QSize, Qt
+from PyQt5.QtCore import QSize, Qt, QDate, QTime, QDateTime, QObject, QEvent, pyqtSignal, pyqtSlot
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 import matplotlib.pyplot as plt
 import numpy as np
+from pyepics_device import Devices as ped
+from pyepics_tmp_device import TmpDevices as petd
+import epics as e
+
 
 
 class RIXS(QMainWindow):
@@ -43,14 +47,14 @@ class RIXS(QMainWindow):
         ###Help_button
         helpMenu = menubar.addMenu('Help')
 
-        self.table_widget = MyTableWidget(self)
-        self.setCentralWidget(self.table_widget)
+        self.panel_widget = Panel(self)
+        self.setCentralWidget(self.panel_widget)
 
         self.show()
 
 
 ###GUI_design
-class MyTableWidget(QWidget):
+class Panel(QWidget):
 
     def __init__(self, parent):
         super(QWidget, self).__init__(parent)
@@ -58,7 +62,7 @@ class MyTableWidget(QWidget):
         Import designed UI
         """
         self.initUI()
-
+    #layout
     def initUI(self):
         self.setFixedSize(1300, 750)
         self.setWindowTitle('TPS blue magpie')
@@ -67,8 +71,8 @@ class MyTableWidget(QWidget):
         hbox = QHBoxLayout(self)
         groupBox1 = QGroupBox()
         vbox = QVBoxLayout(groupBox1)
-        spectrum_widget = ImagingWidget(self)
-        vbox.addWidget(spectrum_widget, 1)
+        image_widget = ImagingWidget(self)
+        vbox.addWidget(image_widget, 1)
         command_widget=Command(self)
         vbox.addWidget(command_widget)
 
@@ -100,6 +104,9 @@ class MyTableWidget(QWidget):
         m2 = SpectrumWidget(self)
         vbox2.addWidget(m2)
         hbox.addLayout(vbox2, 1)
+
+    ###Device_Object?
+    ###Data_list?
 
         self.show()
 
@@ -134,6 +141,7 @@ class SpectrumCanvas(FigureCanvas):
         FigureCanvas.updateGeometry(self)
         self.plot()
 
+
     # random spectrum display
     def plot(self):
         data = [random.random() for i in range(250)]
@@ -153,6 +161,7 @@ class ImagingCanvas(FigureCanvas):
 
         FigureCanvas.setSizePolicy(self, QSizePolicy.Expanding, QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
+        ###Command.plot_image.connect(Command.plot)
         self.plot()
 
     # random image display
@@ -166,7 +175,6 @@ class ImagingCanvas(FigureCanvas):
         ax.contourf(X, Y, Z)
         ax.set_title('RIXS image')
         self.draw()
-
 
 class Command(QWidget):
     def __init__(self, parent=None):
@@ -185,25 +193,72 @@ class Command(QWidget):
         self.command_input= QLineEdit(self)
         self.command_input.returnPressed.connect(self.send)
 
+        # call history text
+    #    history_text =
+    #    self.command_input.upPressed.connct(self.history)
+
         # widget design
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.command_message)
         self.layoutVertical.addWidget(self.command_input)
 
+
+        # PyEPICS devices
+        self.hexapod_x = ped("hx", "41a:hexapod:x")
+
+        self.tsa = petd("tmp1", "41a:sample:tmp1")
+        self.tsb = petd("tmp2", "41a:sample:tmp2")
+
+        self.currentPV0 = "41a:sample:i0"
+        self.currentPV1 = "41a:sample:phdi"
+
+        self.AGM = e.Motor("41a:AGM:Energy")
+        self.AGS = e.Motor("41a:AGS:Energy")
+
     def send(self):
-            text = self.command_input.text()
-            if text == "help":
-                self.command_message.append('>' + text)
-                return_text = ("help: List all commands.\n"
-                               "history: Recall previously typed messages.\n"
-                               "mv: Set a parameter to its absolute value.\n")
+        text = self.command_input.text()
+        if text == "help":
+            time = QTime.currentTime()
+            self.command_message.append('<font color=blue>' + time.toString() + ' >> ' + text + '</font>')
+            return_text = ("help: List all commands.\n"
+                          "history: Recall previously typed messages.\n"
+                          "mv: Set a parameter to its absolute value.\n")
 
-            else:
-                return_text = ("Type 'help' to list commands")
+        # Call Parameters
+        elif text == "x":
+            timestamp = QTime.currentTime()
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            return_text = (str(self.hexapod_x.getValue()))
+        elif text == "Tsa":
+            timestamp = QTime.currentTime()
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            return_text = (str(self.tsa.getValue()))
+        elif text == "Tsb":
+            timestamp = QTime.currentTime()
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            return_text = (str(self.tsb.getValue()))
+        elif text == "I01":
+            timestamp = QTime.currentTime()
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            return_text = (str(e.caget(self.currentPV0)))
+        elif text == "I02":
+            timestamp = QTime.currentTime()
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            return_text = (str(e.caget(self.currentPV1)))
+        elif text == "AGM":
+            timestamp = QTime.currentTime()
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            return_text = (str(self.AGM.get_position()))
 
-            self.command_message.append(return_text)
-            self.command_input.setText("")
+        # Call Commands
 
+        else:
+           return_text = ("Type 'help' to list commands")
+
+
+        #self.history_text = text
+        self.command_message.append(return_text)
+        self.command_input.setText("")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
