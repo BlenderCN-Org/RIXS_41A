@@ -11,63 +11,71 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 import matplotlib.pyplot as plt
+import pyqtgraph as pg
 import numpy as np
+
+# import written .py
 from pyepics_device import Devices as ped
 from pyepics_tmp_device import TmpDevices as petd
+from plotting import plot_function as qtplt
 import epics as e
-
 
 
 class RIXS(QMainWindow):
 
     def __init__(self):
         QMainWindow.__init__(self)
-        ###Window_size
+
+        # Window attributes
+
         self.setFixedSize(1300, 750)
-        ###Window_Title
         self.setWindowTitle('TPS blue magpie')
+
+
+        # Buttons
+
         exitAct = QAction(QIcon('exit.png'), ' &Quit', self)
-        ###Quit_button
         exitAct.setShortcut('Ctrl+Q')
         exitAct.setStatusTip('Exit application')
         exitAct.triggered.connect(qApp.quit)
-        ###Menu_Bar
+
         menubar = self.menuBar()
         menubar.setNativeMenuBar(False)
+
         fileMenu = menubar.addMenu('&File')
         fileMenu.addAction(exitAct)
-        ###EMCCD_button
+
         emccdMenu = menubar.addMenu("EMCCD")
         emccdMenu.addAction("cooling on")
         emccdMenu.addAction("cooling off")
-        ###SDD_button
-        sddMenu = menubar.addMenu('SDD')
-        ###Slit_button
-        slitMenu = menubar.addMenu('Slits')
-        ###Help_button
-        helpMenu = menubar.addMenu('Help')
 
+        '''To be continued'''
+        #sddMenu = menubar.addMenu('SDD')
+        #slitMenu = menubar.addMenu('Slits')
+        #helpMenu = menubar.addMenu('Help')
+
+        # Import panel
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
-
         self.show()
 
 
-###GUI_design
+
 class Panel(QWidget):
 
     def __init__(self, parent):
         super(QWidget, self).__init__(parent)
-        """
-        Import designed UI
-        """
-        self.initUI()
-    #layout
-    def initUI(self):
+
+
+        # Import designed UI
+        self.UI_layout()
+
+    def UI_layout(self):
         self.setFixedSize(1300, 750)
         self.setWindowTitle('TPS blue magpie')
 
-        ###Left_Column
+        # Left_Column
+
         hbox = QHBoxLayout(self)
         groupBox1 = QGroupBox()
         vbox = QVBoxLayout(groupBox1)
@@ -76,37 +84,33 @@ class Panel(QWidget):
         command_widget=Command(self)
         vbox.addWidget(command_widget)
 
-        hbox.addWidget(groupBox1, 1)
 
-        ###Status_area
-        vbox2 = QVBoxLayout()
-        groupBox2 = QGroupBox("Experiment No.  1234;   PI: A. B. C. ", self)
-        vbox3 = QVBoxLayout(groupBox2)
+
+        # Right_Column
+
+        rightcolumn = QVBoxLayout()
+
+        status_box = QGroupBox("Experiment No.  1234;   PI: A. B. C. ", self)
+        status_contents = QVBoxLayout(status_box)
+
         flay = QFormLayout()
 
-        label1 = QLabel("Entarnce slit: 5 um", groupBox2)
-        flay.addRow(label1)
-        label2 = QLabel("AGM: 530 eV", groupBox2)
-        flay.addRow(label2)
-        label3 = QLabel("Exit slit: 50 um", groupBox2)
-        flay.addRow(label3)
-        label4 = QLabel("Sample: x=  , y=  , z=   , u=  , v=  , w=  , Ta=  , Tb=  K", groupBox2)
-        flay.addRow(label4)
-        label5 = QLabel("AGS: 530 eV", groupBox2)
-        flay.addRow(label5)
+        status = QLabel("Entrance slit: 5 um\n"
+                        "AGM: 530 eV\n"
+                        "Exit slit: 50 um\n"
+                        "Sample: x=  , y=  , z=   , u=  , v=  , w=  , Ta=  , Tb=  K\n"
+                        "AGS: 530 eV\n", status_box)
+        flay.addRow(status)
+        status_contents.addLayout(flay, 1)
 
-        vbox3.addLayout(flay, 1)
-        vbox2.addWidget(groupBox2)
 
-        groupBox3 = QGroupBox()
+        spectrum_widget = SpectrumWidget(self)
 
-        vbox4 = QVBoxLayout(groupBox3)
-        m2 = SpectrumWidget(self)
-        vbox2.addWidget(m2)
-        hbox.addLayout(vbox2, 1)
+        rightcolumn.addWidget(status_box)
+        rightcolumn.addWidget(spectrum_widget)
 
-    ###Device_Object?
-    ###Data_list?
+        hbox.addWidget(groupBox1, 1)
+        hbox.addLayout(rightcolumn, 1)
 
         self.show()
 
@@ -185,15 +189,16 @@ class Command(QWidget):
 
         # message
         self.command_message = QTextEdit(self)
-        welcome_message = '''
-        Welcome to TPS_BlueMagpie!
-        Type help to list commands.'''
+        time = QTime.currentTime()
+        welcome_message = ('<font color=blue>' + time.toString() + ' >> Welcome to TPS_BlueMagpie!</font>')
         self.command_message.setText(welcome_message)
         self.command_message.setReadOnly(True)
         #optional: string format:print('Hello, {:s}. You have {:d} messages.'.format('Rex', 999))
 
         # user input
         self.command_input= QLineEdit(self)
+        self.command_input.setFocusPolicy(Qt.StrongFocus)
+        self.command_input.setPlaceholderText("Type help to list commands ...")
         self.command_input.returnPressed.connect(self.send)
 
         # call history text
@@ -229,6 +234,7 @@ class Command(QWidget):
                           "mv: Set a parameter to its absolute value.\n")
         elif text == "draw":
             ImagingWidget.plot(self) # test communication
+            SpectrumCanvas.plot(SpectrumCanvas)
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             return_text = ("Signal emitted.")
             # Call Parameters
@@ -261,7 +267,16 @@ class Command(QWidget):
         self.command_message.append(return_text)
         self.command_input.setText("")
 
-if __name__ == '__main__':
+
+def main():
     app = QApplication(sys.argv)
     ex = RIXS()
+    cmd = Command()
+    imgc = ImagingCanvas()
+
+    cmd.command_input.setFocus()
     sys.exit(app.exec_())
+
+
+if __name__ == '__main__':
+    main()
