@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 
 
-# Global Data
+# Global
+spectrum_widget_global = None
 
 # Test without class
 '''
@@ -71,7 +72,7 @@ class RIXS(QMainWindow):
 
         # Window attributes
 
-        self.setFixedSize(2600, 1500)
+        self.setFixedSize(1300, 750)
         self.setWindowTitle('TPS blue magpie')
 
 
@@ -101,7 +102,6 @@ class RIXS(QMainWindow):
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
         self.show()
-
 
 
 class Panel(QWidget):
@@ -157,6 +157,8 @@ class Panel(QWidget):
         '''
 
         spectrum_widget = SpectrumWidget(self)
+        global spectrum_widget_global
+        spectrum_widget_global = spectrum_widget
 
         rightcolumn.addWidget(status_box)
         rightcolumn.addWidget(spectrum_widget)
@@ -166,73 +168,20 @@ class Panel(QWidget):
 
         self.show()
 
+# random image display
+def plot(self):
+    xlist = np.linspace(-3.0, 3.0, 3)
+    ylist = np.linspace(-3.0, 3.0, 4)
+    X, Y = np.meshgrid(xlist, ylist)
+    Z = np.sqrt(X ** 2 + Y ** 2)
 
-class ImagingWidget(QWidget):
-    def __init__(self, *args, **kwargs):
-        QWidget.__init__(self, *args, **kwargs)
-        self.setLayout(QVBoxLayout())
-        self.canvas = ImagingCanvas(self, width=5, height=4)
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        self.layout().addWidget(self.toolbar)
-        self.layout().addWidget(self.canvas)
-
-
-
-class SpectrumWidget(QWidget):
-    def __init__(self, *args, **kwargs):
-        QWidget.__init__(self, *args, **kwargs)
-        self.setLayout(QVBoxLayout())
-        self.canvas = SpectrumCanvas(self, width=5, height=4)
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        self.layout().addWidget(self.toolbar)
-        self.layout().addWidget(self.canvas)
-
-
-
-class SpectrumCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
-        fig = Figure(figsize=(width, height), dpi=dpi)
-        FigureCanvas.__init__(self, fig)
-        self.setParent(parent)
-        FigureCanvas.setSizePolicy(self, QSizePolicy.Expanding, QSizePolicy.Expanding)
-        FigureCanvas.updateGeometry(self)
-        self.plot()
-
-
-    # random spectrum display
-    def plot(self):
-        data = [random.random() for i in range(250)]
-        ax = self.figure.add_subplot(111)
-        ax.plot(data, 'r-', linewidth=0.5)
-        ax.set_title('RIXS spectrum')
-        ax.set_xlabel('Energy Loss (eV)')
-        ax.set_ylabel('RIXS counts')
-        self.draw()
-
-
-class ImagingCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
-        fig = Figure(figsize=(width, height), dpi=dpi)
-        FigureCanvas.__init__(self, fig)
-        self.setParent(parent)
-
-        FigureCanvas.setSizePolicy(self, QSizePolicy.Expanding, QSizePolicy.Expanding)
-        FigureCanvas.updateGeometry(self)
-        self.plot()
-
-    # random image display
-    def plot(self):
-        xlist = np.linspace(-3.0, 3.0, 3)
-        ylist = np.linspace(-3.0, 3.0, 4)
-        X, Y = np.meshgrid(xlist, ylist)
-        Z = np.sqrt(X ** 2 + Y ** 2)
-
-        ax = self.figure.add_subplot(111)
-        ax.contourf(X, Y, Z)
-        ax.set_title('RIXS image')
-        self.draw()
+    ax = self.figure.add_subplot(111)
+    ax.contourf(X, Y, Z)
+    ax.set_title('RIXS image')
+    self.draw()
 
 class Command(QWidget):
+    history = pd.DataFrame(columns=['time', 'sent_text'])
     valueChanged = pyqtSignal(object)
 
     def __init__(self, parent=None):
@@ -253,10 +202,6 @@ class Command(QWidget):
         self.command_input.setPlaceholderText("Type help to list commands ...")
         self.command_input.returnPressed.connect(self.send)
 
-        # call history text
-    #    history_text =
-    #    self.command_input.upPressed.connct(self.history)
-
         # widget design
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.command_message)
@@ -269,6 +214,7 @@ class Command(QWidget):
     def send(self):
         text = self.command_input.text()
         timestamp = QTime.currentTime()
+        self.history.append(text)
 
         if text == "help":
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
@@ -286,6 +232,15 @@ class Command(QWidget):
 
             # Call Commands
               # no in this branch
+        elif text == "test":
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            spectrum_widget_global.test()
+            return_text = ("test signal emitted.")
+        elif text == "test1":
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            spectrum_widget_global.test1()
+            return_text = ("test1 signal emitted.")
+
 
         else:
            return_text = ("Type 'help' to list commands")
@@ -296,6 +251,13 @@ class Command(QWidget):
         self.command_message.append(return_text)
         self.command_input.setText("")
 
+    def history(self, event):
+        if event.key() == Qt.Key_Up:
+            self.command_input.setText(a)
+
+
+
+# signal/slot
     @property
     def v(self):
         return self._v
@@ -305,7 +267,6 @@ class Command(QWidget):
         self._v = value
         self.valueChanged.emit(value)
         print("new data emitted.")
-        
 
 
 class ImageWidget(QWidget):
@@ -330,6 +291,28 @@ class ImageWidget(QWidget):
         print("new data plot")
 
 
+class SpectrumWidget(QWidget):
+
+    def __init__(self, parent=None):
+        super(SpectrumWidget, self).__init__(parent=parent)
+        self.data = [random.random() for i in range(250)]
+        self.plotWidget = PlotWidget(self)
+        self.imgplot(self.data)
+        self.layoutVertical = QVBoxLayout(self)
+        self.layoutVertical.addWidget(self.plotWidget)
+
+    def imgplot(self, x):
+        #clear previous plot
+        self.plotWidget.plotItem.clear()
+        self.plotWidget.plot(x)
+
+    def test(self):
+        print("test cross class communication")
+
+    def test1(self):
+        self.plotWidget.plotItem.clear()
+        self.data = [random.random() for i in range(250)]
+        self.imgplot(self.data)
 
 def main():
     app = QApplication(sys.argv)
