@@ -17,53 +17,53 @@ import numpy as np
 import pandas as pd
 
 
-# Global
+# Global parameters
+
 spectrum_widget_global = None
 
-# Test without class
-'''
-data = np.linspace(-5.0, 5.0, 10)
-data = pyqtSignal
-data.valueChanged.connect(ImageWidget.imgplot)
-'''
 
+# Import data from epics while program executed
+  
+#row = pd.Series({'x': self.hexapod_x.getValue(), 
+#                 'y': self.hexapod_y.getValue(), 
+#                 'z': self.hexapod_z.getValue(),
+#                 'u': self.hexapod_u.getValue(), 
+#                 'v': self.hexapod_v.getValue(), 
+#                 'w': self.hexapod_w.getValue(),
+#                 'AGM_Energy': self.AGM.get_position(), 
+#                 'I01': e.caget(self.currentPV0)},
+#                 name='test')
+#df_tmp = df_tmp.append(row)
+
+
+    #self.parameter_list = ['t', 'En_slit', 'Ex_slit', 'AGM', 'AGS','x', 'y', 'z', 'u', 'v', 'w', 'Ta', 'Tb']
+    #self.df_tmp = pd.DataFrame(columns=parameter_list)
+
+# Get current value from dataframe
+    #def gcv(self, name):
+    #    self.name = p
+    #    return df_tmp([-1],str(p))
+
+    # Assign dummy values for status
+
+st_row = pd.Series({'t':0,
+                 'En_slit':0,
+                 'Ex_slit':0,
+                 'AGM':0,
+                 'AGS':0,
+                 'x':0,
+                 'y':0,
+                 'z':0,
+                 'u':0,
+                 'v':0,
+                 'w':0,
+                'Ta':0,
+                'Tb':0}, 
+              name='test')
+
+print(st_row)
     
 
-
-class Data(QWidget):
-    data = np.linspace(-5.0, 5.0, 10)
-    valueChanged = pyqtSignal(object)
-
-    def __init__(self, parent=None):
-        super(Data, self).__init__(parent)
-        self._t = self.data
-
-    @property
-    def t(self):
-        return self._t
-
-    @t.setter
-    def t(self, value):
-        self._t = value
-        self.valueChanged.emit(value)
-        print("Data emitted to plot.")
-        
-        #communicate with Command Widget
-        
-    @pyqtSlot(object)
-    def get_new_data(self, value):
-        self.t.setValue(value)
-        print("new data value received")
-
-    def make_cmd_connection(self, cmd_object):
-        cmd_object.valueChanged.connect(self.get_new_data)
-
-# Testing other dataset
-'''
-Y = np.linspace(-5.0, 5.0, 10)
-Z = (X,Y)
-imgdata = pd.DataFrame(X, Y)
-'''
 
 class RIXS(QMainWindow):
 
@@ -71,7 +71,6 @@ class RIXS(QMainWindow):
         QMainWindow.__init__(self)
 
         # Window attributes
-
         self.setFixedSize(1300, 750)
         self.setWindowTitle('TPS blue magpie')
 
@@ -108,8 +107,6 @@ class Panel(QWidget):
 
     def __init__(self, parent):
         super(QWidget, self).__init__(parent)
-
-
         # Import designed UI
         self.UI_layout()
 
@@ -132,41 +129,47 @@ class Panel(QWidget):
         # Right_Column
 
         rightcolumn = QVBoxLayout()
+        
+########DEALING WITH STATUS DISPLAY########
+        self.status_bar = QLabel("Experiment No.  1234;   PI: A. B. C. ", self)
+        self.status_box = QTextEdit(self)
+        global st_row
+        time = QTime.currentTime()
+        # HTML supported
+        status_text = ("<font color=blue><b><u>Parameters</b></u></font><br>"
+                       " Entrance slit: " + str(st_row['En_slit']) + "&micro;m<br>"
+                       " AGM: " + str(0) + " eV<br>"
+                       " Exit slit: " + str(0) + " &micro;m<br>"
+                       " Sample:  x= " + str(0) + " ; y= " + str(0) + "; z= " + str(0) + " <br>"
+                       " _______u= " + str(0) + " ; v= " + str(0) + "; w= " + str(0) + " <br>"
+                       "   Temperature:  T<sub>a</sub>=" + str(0) + "K; T<sub>b</sub>: " + str(0) + " K<br>"
+                       "           AGS: " + str(0) + " eV<br>")
+        self.status_box.setText(status_text)
+        self.status_box.setReadOnly(True)
 
-        status_box = QGroupBox("Experiment No.  1234;   PI: A. B. C. ", self)
-        status_contents = QVBoxLayout(status_box)
-
-        flay = QFormLayout()
-
-        status = QLabel("Entrance slit: 5 um\n"
-                        "AGM: 530 eV\n"
-                        "Exit slit: 50 um\n"
-                        "Sample: x=  , y=  , z=   , u=  , v=  , w=  , Ta=  , Tb=  K\n"
-                        "AGS: 530 eV\n", status_box)
-        flay.addRow(status)
-        status_contents.addLayout(flay, 1)
+        rightcolumn.addWidget(self.status_bar)
+        rightcolumn.addWidget(self.status_box)
+        
         # Real time update solution
-        '''
-        def update_label():
-        current_time = str(datetime.datetime.now().time())
-        ui.label.setText(current_time)
-
-        timer = QtCore.QTimer()
-        timer.timeout.connect(update_label)
-        timer.start(10000)  # every 10,000 milliseconds
-        '''
-
+        #def update_label():
+        #current_time = str(datetime.datetime.now().time())
+        #ui.label.setText(current_time)
+        #timer = QtCore.QTimer()
+        #timer.timeout.connect(update_label)
+        #timer.start(10000)  # every 10,000 milliseconds
+        
         spectrum_widget = SpectrumWidget(self)
         global spectrum_widget_global
         spectrum_widget_global = spectrum_widget
-
-        rightcolumn.addWidget(status_box)
         rightcolumn.addWidget(spectrum_widget)
 
         hbox.addWidget(groupBox1, 1)
         hbox.addLayout(rightcolumn, 1)
 
         self.show()
+
+
+
 
 # random image display
 def plot(self):
@@ -181,12 +184,9 @@ def plot(self):
     self.draw()
 
 class Command(QWidget):
-    history = pd.DataFrame(columns=['time', 'sent_text'])
-    valueChanged = pyqtSignal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._v =  0
 
         # message
         self.command_message = QTextEdit(self)
@@ -212,9 +212,22 @@ class Command(QWidget):
           # written but removed from this branch
 
     def send(self):
+
         text = self.command_input.text()
+
+        # time stamp
         timestamp = QTime.currentTime()
-        self.history.append(text)
+        t= timestamp.toString()
+
+        # history
+        #self.hlog_list = ['Time', 'Text']
+        #self.history_log = pd.DataFrame(columns=self.hlog_list)
+        #self.row = pd.Series({[t, text], columns=self.hlog_list}, ignore_index=True)
+        #self.history_log = self.history_log.append(self.row)
+        #self.history_log = pd.concat([pd.DataFrame([t, text], columns=self.hlog_list)], ignore_index=True)
+        #print(self.history_log)
+
+
 
         if text == "help":
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
@@ -232,6 +245,9 @@ class Command(QWidget):
 
             # Call Commands
               # no in this branch
+            
+            # test plotting commands
+
         elif text == "test":
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             spectrum_widget_global.test()
@@ -241,32 +257,25 @@ class Command(QWidget):
             spectrum_widget_global.test1()
             return_text = ("test1 signal emitted.")
 
-
+            # test mv function
+      #  elif text[0:1] == "mv":
+      #      return_text = ("format correct")
+             
+        
         else:
            return_text = ("Type 'help' to list commands")
        
-        
         
         #self.history_text = text
         self.command_message.append(return_text)
         self.command_input.setText("")
 
-    def history(self, event):
-        if event.key() == Qt.Key_Up:
-            self.command_input.setText(a)
+   #def history(self, event):
+    #    if event.key() == Qt.Key_Up:
+    #        self.command_input.setText(a) 
 
 
 
-# signal/slot
-    @property
-    def v(self):
-        return self._v
-
-    @v.setter
-    def v(self, value):
-        self._v = value
-        self.valueChanged.emit(value)
-        print("new data emitted.")
 
 
 class ImageWidget(QWidget):
@@ -274,7 +283,8 @@ class ImageWidget(QWidget):
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
         self.plotWidget = PlotWidget(self)
-        self.imgplot(self, Data.data)
+        self.data = np.linspace(-5.0, 5.0, 10)
+        self.imgplot(self, self.data)
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.plotWidget)
 
@@ -282,13 +292,6 @@ class ImageWidget(QWidget):
     def imgplot(self, x):
         self.plotWidget.plot(x)
     
-    def make_data_connection(self, data_object):
-        data_object.valueChanged.connect(self.get_data)
-
-    @pyqtSlot(object)
-    def get_data(self, val):
-        self.imgplot(self, val)
-        print("new data plot")
 
 
 class SpectrumWidget(QWidget):
@@ -319,10 +322,6 @@ def main():
     ex = RIXS()
     cmd = Command()
     cmd.command_input.setFocus()
-    img=ImageWidget()
-    dt=Data()
-    img.make_data_connection(dt)
-    dt.make_cmd_connection(cmd)
     sys.exit(app.exec_())
 
 
