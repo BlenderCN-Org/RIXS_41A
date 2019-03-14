@@ -36,7 +36,7 @@ spectrum_widget_global = None
 #df_tmp = df_tmp.append(row)
 
 
-    #self.parameter_list = ['t', 'En_slit', 'Ex_slit', 'AGM', 'AGS','x', 'y', 'z', 'u', 'v', 'w', 'Ta', 'Tb']
+
     #self.df_tmp = pd.DataFrame(columns=parameter_list)
 
 # Get current value from dataframe
@@ -46,21 +46,8 @@ spectrum_widget_global = None
 
     # Assign dummy values for status
 
-st_row = pd.Series({'t':0,
-                 'En_slit':0,
-                 'Ex_slit':0,
-                 'AGM':0,
-                 'AGS':0,
-                 'x':0,
-                 'y':0,
-                 'z':0,
-                 'u':0,
-                 'v':0,
-                 'w':0,
-                'Ta':0,
-                'Tb':0}, 
-              name='test')
-
+parameter_list = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
+st_row = pd.Series([0,0,0,0,0,0,0,0,0,0,0,0,0], index=parameter_list)
 print(st_row)
     
 
@@ -137,7 +124,7 @@ class Panel(QWidget):
         time = QTime.currentTime()
         # HTML supported
         status_text = ("<font color=blue><b><u>Parameters</b></u></font><br>"
-                       " Entrance slit: " + str(st_row['En_slit']) + "&micro;m<br>"
+                       " Entrance slit: " + str(st_row['s1']) + "&micro;m<br>"
                        " AGM: " + str(0) + " eV<br>"
                        " Exit slit: " + str(0) + " &micro;m<br>"
                        " Sample:  x= " + str(0) + " ; y= " + str(0) + "; z= " + str(0) + " <br>"
@@ -211,8 +198,20 @@ class Command(QWidget):
         # PyEPICS devices
           # written but removed from this branch
 
-    def send(self):
+    def checkfloat(self, x):
+        try:
+            float(x)
+            return True
+        except ValueError:
+            return False
 
+    def userinput(self, x):
+        timestamp = QTime.currentTime()
+        t = timestamp.toString()
+        self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + x + '</font>')
+
+    def send(self):
+        global parameter_list, st_row
         text = self.command_input.text()
 
         # time stamp
@@ -256,13 +255,39 @@ class Command(QWidget):
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             spectrum_widget_global.test1()
             return_text = ("test1 signal emitted.")
+        elif text == 'p':
+            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            p = str(parameter_list)
+            return_text = (p)
+        elif text[:3] == 'mv ':
+        # All sequence below should be organized as function(text) which returns return_tex
+            space = text.count(' ')
+            sptext = text.split(' ')
 
-            # test mv function
-      #  elif text[0:1] == "mv":
-      #      return_text = ("format correct")
-             
-        
+            # check format
+            if space == 2:
+                if sptext[1] in parameter_list:
+                    # mv,a,b
+                    a = sptext[1]
+                    p = st_row.get(a)
+                    b = sptext[2]
+                    if self.checkfloat(b) is True:
+                        b = float(b)
+                        p += b
+                        p = str(p)
+                        self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+                        return_text = (a + " has been moved to " + p)
+                    else:
+                        self.command_message.append(timestamp.toString() + ' >> ' + text)
+                        return_text = ("<font color=red>Input error // value must be number or float</font>")
+                else:
+                    self.command_message.append(timestamp.toString() + ' >> ' + text)
+                    return_text = ("<font color=red>Input error // parameter doesn't exist // hint: type p to list parameters</font>")
+            else:
+                self.command_message.append(timestamp.toString() + ' >> ' + text)
+                return_text = ("<font color=red>Input error // correct format: mv parameter value</font>")
         else:
+           self.command_message.append(timestamp.toString() + ' >> ' + text)
            return_text = ("Type 'help' to list commands")
        
         
