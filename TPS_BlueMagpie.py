@@ -19,7 +19,6 @@ import pandas as pd
 # import written .py
 from pyepics_device import Devices as ped
 from pyepics_tmp_device import TmpDevices as petd
-from plotting import plot_function as qtplt
 import epics as e
 
 
@@ -27,6 +26,8 @@ import epics as e
 # Global parameters
 
 spectrum_widget_global = None
+status_widget_global = None
+cmd_global = None
 
 
 # Import data from epics while program executed
@@ -44,18 +45,10 @@ spectrum_widget_global = None
 
 
 
-    #self.df_tmp = pd.DataFrame(columns=parameter_list)
-
-# Get current value from dataframe
-    #def gcv(self, name):
-    #    self.name = p
-    #    return df_tmp([-1],str(p))
-
-    # Assign dummy values for status
 
 parameter_list = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
-st_row = pd.Series([0,0,0,0,0,0,0,0,0,0,0,0,0], index=parameter_list)
-print(st_row)
+param = pd.Series([0,2,50,710,720,11,22,33,0,0,0,10,30], index=parameter_list)
+print(param)
     
 
 class RIXS(QMainWindow):
@@ -96,8 +89,10 @@ class RIXS(QMainWindow):
 
 class Panel(QWidget):
 
+    
     def __init__(self, parent):
         super(QWidget, self).__init__(parent)
+        
 
         # Import designed UI
         self.UI_layout()
@@ -107,59 +102,41 @@ class Panel(QWidget):
         self.setWindowTitle('TPS blue magpie')
 
         # Left_Column
-
+        global cmd_global
         hbox = QHBoxLayout(self)
-        groupBox1 = QGroupBox()
-        vbox = QVBoxLayout(groupBox1)
+        leftcolumn = QVBoxLayout()
         image_widget = ImageWidget(self)
-        vbox.addWidget(image_widget, 1)
+        leftcolumn.addWidget(image_widget, 1)
         command_widget=Command(self)
-        vbox.addWidget(command_widget)
+        cmd_global = command_widget
+        leftcolumn.addWidget(command_widget)
 
 
         # Right_Column
 
         rightcolumn = QVBoxLayout()
-        
-########DEALING WITH STATUS DISPLAY########
-        self.status_bar = QLabel("Experiment No.  1234;   PI: A. B. C. ", self)
-        self.status_box = QTextEdit(self)
-        global st_row
-        time = QTime.currentTime()
-        # HTML supported
-        status_text = ("<font color=blue><b><u>Parameters</b></u></font><br>"
-                       " Entrance slit: " + str(st_row['s1']) + "&micro;m<br>"
-                       " AGM: " + str(0) + " eV<br>"
-                       " Exit slit: " + str(0) + " &micro;m<br>"
-                       " Sample:  x= " + str(0) + " ; y= " + str(0) + "; z= " + str(0) + " <br>"
-                       " _______u= " + str(0) + " ; v= " + str(0) + "; w= " + str(0) + " <br>"
-                       "   Temperature:  T<sub>a</sub>=" + str(0) + "K; T<sub>b</sub>: " + str(0) + " K<br>"
-                       "           AGS: " + str(0) + " eV<br>")
-        self.status_box.setText(status_text)
-        self.status_box.setReadOnly(True)
-
-        rightcolumn.addWidget(self.status_bar)
-        rightcolumn.addWidget(self.status_box)
-        
-        # Real time update solution
-        #def update_label():
-        #current_time = str(datetime.datetime.now().time())
-        #ui.label.setText(current_time)
-        #timer = QtCore.QTimer()
-        #timer.timeout.connect(update_label)
-        #timer.start(10000)  # every 10,000 milliseconds
-        
-        spectrum_widget = SpectrumWidget(self)
-        global spectrum_widget_global
+        global status_widget_global, spectrum_widget_global
+        status_widget=StatusWidget(self)
+        status_widget_global = status_widget
+        rightcolumn.addWidget(status_widget)
+        spectrum_widget = SpectrumWidget(self) 
         spectrum_widget_global = spectrum_widget
         rightcolumn.addWidget(spectrum_widget)
 
-        hbox.addWidget(groupBox1, 1)
+        hbox.addLayout(leftcolumn, 1)
         hbox.addLayout(rightcolumn, 1)
 
         self.show()
 
-
+#lblName = QLabel(cur_time,user_name_wdgt)
+#
+#def update_label(self):
+#    cur_time = datetime.strftime(datetime.now(), "%d.%m %H:%M:%S")
+#    lblName.setText(cur_time)
+#
+#timer = QTimer()
+#timer.timeout.connect(update_label)
+#timer.start(1000)
 
 
 # random image display
@@ -173,6 +150,41 @@ def plot(self):
     ax.contourf(X, Y, Z)
     ax.set_title('RIXS image')
     self.draw()
+
+
+class StatusWidget(QWidget):
+    def __init__(self, parent=None):
+        super(StatusWidget, self).__init__(parent=parent)
+
+        global param, parameter_text
+                
+        self.status_bar = QLabel("Experiment No.  1234;   PI: A. B. C. ", self)
+        self.status_box = QTextEdit(self)
+
+        time = QTime.currentTime()
+        self.show_text()
+        self.status_box.setReadOnly(True)
+
+        # Widget layout
+        self.layoutVertical = QVBoxLayout(self)
+        self.layoutVertical.addWidget(self.status_bar)
+        self.layoutVertical.addWidget(self.status_box)
+
+        # Forced refresh
+
+    def show_text(self):
+        global param
+        # index: parameter_list = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
+        parameter_text = ("<font color=blue><b><u>Parameters</b></u></font><br>"
+                       " Entrance slit: " + str(param['s1']) + " &micro;m<br>"
+                       " AGM: " + str(param['agm']) + " eV<br>"
+                       " Exit slit: " + str(param['s2']) + " &micro;m<br>"
+                       " Sample:  x = " + str(param['x']) + ", y = " + str(param['y']) + ", z   = " + str(param['z']) + ", "
+                       " u = " + str(param['u']) + ", v = " + str(param['v']) + ", w = " + str(param['w']) + " <br>"
+                       "   Temperatures:  T<sub>a</sub> = " + str(param['ta']) + " K, T<sub>b</sub> = " + str(param['tb']) + " K<br>"
+                       "           AGS: " + str(param['ags']) + " eV<br>")
+        self.status_box.setText(parameter_text)
+
 
 class Command(QWidget):
 
@@ -215,7 +227,7 @@ class Command(QWidget):
         self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + x + '</font>')
 
     def send(self):
-        global parameter_list, st_row
+        global parameter_list, param
         text = self.command_input.text()
 
         # time stamp
@@ -238,7 +250,6 @@ class Command(QWidget):
                           "history: Recall previously typed messages.\n"
                           "mv: Set a parameter to its absolute value.\n")
         elif text == "draw":
-
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             return_text = ("Signal emitted.")
 
@@ -254,14 +265,18 @@ class Command(QWidget):
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             spectrum_widget_global.test()
             return_text = ("test signal emitted.")
+
         elif text == "test1":
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             spectrum_widget_global.test1()
             return_text = ("test1 signal emitted.")
+
         elif text == 'p':
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             p = str(parameter_list)
             return_text = (p)
+
+            # Move function
         elif text[:3] == 'mv ':
         # All sequence below should be organized as function(text) which returns return_tex
             space = text.count(' ')
@@ -270,22 +285,17 @@ class Command(QWidget):
             # check format
             if space == 2:
                 if sptext[1] in parameter_list:
-                    # mv,a,b
-                    a = sptext[1]
-                    p = st_row.get(a)
-                    b = sptext[2]
-                    if self.checkfloat(b) is True:
-                        b = float(b)
-                        p += b
-                        p = str(p)
+                    if self.checkfloat(sptext[2]) is True:
                         self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
-                        return_text = (a + " has been moved to " + p)
+                        param[sptext[1]] = float(sptext[2])
+                        return_text = (sptext[1] + " has been moved to " + sptext[2])
+                        status_widget_global.show_text()
                     else:
                         self.command_message.append(timestamp.toString() + ' >> ' + text)
                         return_text = ("<font color=red>Input error // value must be number or float</font>")
                 else:
                     self.command_message.append(timestamp.toString() + ' >> ' + text)
-                    return_text = ("<font color=red>Input error // parameter doesn't exist // hint: type p to list parameters</font>")
+                    return_text = ("<font color=red>Input error: parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters</font>")
             else:
                 self.command_message.append(timestamp.toString() + ' >> ' + text)
                 return_text = ("<font color=red>Input error // correct format: mv parameter value</font>")
@@ -348,8 +358,7 @@ class SpectrumWidget(QWidget):
 def main():
     app = QApplication(sys.argv)
     ex = RIXS()
-    cmd = Command()
-    cmd.command_input.setFocus()
+    cmd_global.command_input.setFocus()
     sys.exit(app.exec_())
 
 
