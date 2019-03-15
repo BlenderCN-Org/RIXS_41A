@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QF
                              QSpacerItem, QSizePolicy, QAction, QPushButton, qApp, QPlainTextEdit, QFormLayout, QAction,
                              QScrollBar,QSplitter,QTableWidgetItem,QTableWidget,QComboBox,QVBoxLayout,QGridLayout,
                              QPushButton, QMainWindow,QMessageBox,QLabel,QTextEdit,QProgressBar)
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QFont
 from PyQt5.QtCore import QSize, Qt, QDate, QTime, QDateTime, QObject, QEvent, pyqtSignal, QTimer, pyqtSlot
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -29,7 +29,6 @@ spectrum_widget_global = None
 status_widget_global = None
 cmd_global = None
 
-
 # Import data from epics while program executed
   
 #row = pd.Series({'x': self.hexapod_x.getValue(), 
@@ -43,12 +42,9 @@ cmd_global = None
 #                 name='test')
 #df_tmp = df_tmp.append(row)
 
-
-
-
-parameter_list = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
-param = pd.Series([0,2,50,710,720,11,22,33,0,0,0,10,30], index=parameter_list)
-print(param)
+param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
+param = pd.Series([0,2,50,710,720,11,22,33,0,0,0,10,30], index=param_index)
+xas_data = None
     
 
 class RIXS(QMainWindow):
@@ -128,11 +124,12 @@ class Panel(QWidget):
 
         self.show()
 
-#lblName = QLabel(cur_time,user_name_wdgt)
+
+# Auto refresh
 #
 #def update_label(self):
 #    cur_time = datetime.strftime(datetime.now(), "%d.%m %H:%M:%S")
-#    lblName.setText(cur_time)
+#    object.setText(cur_time)
 #
 #timer = QTimer()
 #timer.timeout.connect(update_label)
@@ -163,6 +160,8 @@ class StatusWidget(QWidget):
 
         time = QTime.currentTime()
         self.show_text()
+        self.status_box.setStyleSheet("color: green; background-color: black")
+        self.status_box.setFont(QtGui.QFont("Ubuntu Mono",11))
         self.status_box.setReadOnly(True)
 
         # Widget layout
@@ -174,7 +173,7 @@ class StatusWidget(QWidget):
 
     def show_text(self):
         global param
-        # index: parameter_list = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
+        # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
         parameter_text = ("<font color=blue><b><u>Parameters</b></u></font><br>"
                        " Entrance slit: " + str(param['s1']) + " &micro;m<br>"
                        " AGM: " + str(param['agm']) + " eV<br>"
@@ -214,27 +213,16 @@ class Command(QWidget):
         # PyEPICS devices
           # written but removed from this branch
 
-    def checkfloat(self, x):
-        try:
-            float(x)
-            return True
-        except ValueError:
-            return False
-
-    def userinput(self, x):
-        timestamp = QTime.currentTime()
-        t = timestamp.toString()
-        self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + x + '</font>')
-
     def send(self):
-        global parameter_list, param
+        global param_index, param, cmd_global
+
         text = self.command_input.text()
 
         # time stamp
         timestamp = QTime.currentTime()
         t= timestamp.toString()
 
-        # history
+        # TODO: history
         #self.hlog_list = ['Time', 'Text']
         #self.history_log = pd.DataFrame(columns=self.hlog_list)
         #self.row = pd.Series({[t, text], columns=self.hlog_list}, ignore_index=True)
@@ -246,9 +234,10 @@ class Command(QWidget):
 
         if text == "help":
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
-            return_text = ("help: List all commands.\n"
-                          "history: Recall previously typed messages.\n"
-                          "mv: Set a parameter to its absolute value.\n")
+            return_text = ("history: Recall previously typed messages.\n"
+                           "mv: Set a parameter to its absolute value.\n"
+                           "mvr: Change a parameter in terms of a relative value.\n"
+                           "p: List valid parameters.\n")
         elif text == "draw":
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             return_text = ("Signal emitted.")
@@ -273,19 +262,18 @@ class Command(QWidget):
 
         elif text == 'p':
             self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
-            p = str(parameter_list)
+            p = str(param_index)
             return_text = (p)
 
-            # Move function
+        # MV function
         elif text[:3] == 'mv ':
         # All sequence below should be organized as function(text) which returns return_tex
             space = text.count(' ')
             sptext = text.split(' ')
-
             # check format
             if space == 2:
-                if sptext[1] in parameter_list:
-                    if self.checkfloat(sptext[2]) is True:
+                if sptext[1] in param_index:
+                    if self.checkFloat(sptext[2]) is True:
                         self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
                         param[sptext[1]] = float(sptext[2])
                         return_text = (sptext[1] + " has been moved to " + sptext[2])
@@ -299,14 +287,110 @@ class Command(QWidget):
             else:
                 self.command_message.append(timestamp.toString() + ' >> ' + text)
                 return_text = ("<font color=red>Input error // correct format: mv parameter value</font>")
+
+        # MVR function
+        elif text[:4] == 'mvr ':
+        # All sequence below should be organized as function(text) which returns return_tex
+            space = text.count(' ')
+            sptext = text.split(' ')
+            # check format
+            if space == 2:
+                if sptext[1] in param_index:
+                    if self.checkFloat(sptext[2]) is True:
+                        self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+                        param[sptext[1]] = float(param[sptext[1]])+float(sptext[2])
+                        output = str(param[sptext[1]])
+                        return_text = (sptext[1] + " has been moved to " + output)
+                        status_widget_global.show_text()
+                    else:
+                        self.command_message.append(timestamp.toString() + ' >> ' + text)
+                        return_text = ("<font color=red>Input error // value must be number or float</font>")
+                else:
+                    self.command_message.append(timestamp.toString() + ' >> ' + text)
+                    return_text = ("<font color=red>Input error: parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters</font>")
+            else:
+                self.command_message.append(timestamp.toString() + ' >> ' + text)
+                return_text = ("<font color=red>Input error // correct format: mv parameter value</font>")
+
+        # XAS function
+        elif text[:4] == 'xas ':
+            # All sequence below should be organized as function(text) which returns return_text
+            # example:　xas 520 550 0.02 1
+            sptext = text.split(' ')
+            space = text.count(' ')
+            e1 = sptext[1]
+            e2 = sptext[2]
+            estep = sptext[3]
+            tstep = sptext[4]
+            if space == 4:
+                # disgusting ...
+                if  self.checkFloat(e1) is True and \
+                    self.checkFloat(e2) is True and \
+                    self.checkFloat(estep) is True and \
+                    self.checkFloat(tstep) is True:
+                    # format correct, scan loop start.
+                    self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+                    # TODO: need to check input boundaries afterwards ...
+                    self.xasLoop(e1,e2,estep,tstep)
+                    # output as return_text 
+                    # need to be splited line by line or use other method
+                    return_text = ("ok")
+                else:
+                    return_text = ("no")
+            else:
+                self.command_message.append(timestamp.toString() + ' >> ' + text)
+                return_text = ("<font color=red>Input error // correct format: xas, E<sub>start</sub>, E<sub>end</sub>, E<sub>step</sub>, timestep</font>")
+            
+            
+
         else:
            self.command_message.append(timestamp.toString() + ' >> ' + text)
            return_text = ("Type 'help' to list commands")
        
         
-        #self.history_text = text
         self.command_message.append(return_text)
         self.command_input.setText("")
+        cmd_global.command_input.setFocus()
+        
+        #TODO:under construction for simplifying send function
+    def userinput(self, x):
+        timestamp = QTime.currentTime()
+        t = timestamp.toString()
+        self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + x + '</font>')
+    
+    def checkFloat(self, x):
+        try:
+            float(x)
+            return True
+        except ValueError:
+            return False
+    def xasLoop(self, e1, e2, estep, tstep):
+        global param, xas_data, param_index
+        # set float for calculation, get range
+        e1 = float(e1)
+        e2 = float(e2)
+        estep = float(estep)
+        tstep = float(tstep)
+        erange = e2-e1
+        n = int(erange/estep)
+        # set energy, create dataframe, show in status
+        param['ags'] = e1 
+        print('ags energy has been moved to '+ str(e1)+', start xas.')
+        status_widget_global.show_text()
+        xas_data = pd.DataFrame(param, index=param_index)
+        ##### SCAN AGS
+        for i in range(n):
+            cv = float(param['ags'])
+            param['ags'] = cv + estep
+            status_widget_global.show_text()
+            print (param['ags'])
+            #df = param
+            #xas_data.append(param, ignore_index=True)
+            #print(xas_data)
+
+        # temporarily show in std output
+        print(xas_data.iloc[4])
+
 
    #def history(self, event):
     #    if event.key() == Qt.Key_Up:
@@ -322,12 +406,12 @@ class ImageWidget(QWidget):
         super(ImageWidget, self).__init__(parent=parent)
         self.plotWidget = PlotWidget(self)
         self.data = np.linspace(-5.0, 5.0, 10)
-        self.imgplot(self, self.data)
+        self.spectrumplot(self, self.data)
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.plotWidget)
 
     @staticmethod
-    def imgplot(self, x):
+    def spectrumplot(self, x):
         self.plotWidget.plot(x)
     
 
@@ -338,11 +422,11 @@ class SpectrumWidget(QWidget):
         super(SpectrumWidget, self).__init__(parent=parent)
         self.data = [random.random() for i in range(250)]
         self.plotWidget = PlotWidget(self)
-        self.imgplot(self.data)
+        self.spectrumplot(self.data)
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.plotWidget)
 
-    def imgplot(self, x):
+    def spectrumplot(self, x):
         #clear previous plot
         self.plotWidget.plotItem.clear()
         self.plotWidget.plot(x)
@@ -351,9 +435,14 @@ class SpectrumWidget(QWidget):
         print("test cross class communication")
 
     def test1(self):
+        self.plotWidget.plotItem.setTitle(title='RIXS')
+        self.plotWidget.plotItem.setXRange(1, 500, padding=None, update=True)
+        self.plotWidget.plotItem.setLabel('bottom', text='Energy Loss', units='eV')
+        self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units')
+        self.plotWidget.plotItem.setTitle(title='RIXS')
         self.plotWidget.plotItem.clear()
         self.data = [random.random() for i in range(250)]
-        self.imgplot(self.data)
+        self.spectrumplot(self.data)
 
 def main():
     app = QApplication(sys.argv)
