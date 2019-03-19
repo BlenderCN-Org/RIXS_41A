@@ -16,24 +16,25 @@ from pyqtgraph import PlotWidget
 import numpy as np
 import pandas as pd
 import time, datetime, math
-
-# create temp dir for datasaving 
-path=os.getcwd()
-dir_date = datetime.datetime.today().strftime('%Y%m%d')
-dir_name = dir_date+'temp'
-if not os.path.exists(dir_name):
-    os.makedirs(dir_name)
-
-file_path = str(path) +'\\'+ dir_name +'\\'
-
 # import written .py
+
 #from pyepics_device import Devices as ped
 #from pyepics_tmp_device import TmpDevices as petd
 #import epics as e
 
-#pg.setConfigOption('background', 'k')
-#pg.setConfigOption('background',rgb(192,192,192)
-#pg.setConfigOption('foreground', 'w')
+
+# Import data from epics while program executed
+
+#row = pd.Series({'x': self.hexapod_x.getValue(),
+#                 'y': self.hexapod_y.getValue(),
+#                 'z': self.hexapod_z.getValue(),
+#                 'u': self.hexapod_u.getValue(),
+#                 'v': self.hexapod_v.getValue(),
+#                 'w': self.hexapod_w.getValue(),
+#                 'AGM_Energy': self.AGM.get_position(),
+#                 'I01': e.caget(self.currentPV0)},
+#                 name='test')
+#df_tmp = df_tmp.append(row)
 
 # Global parameters
 
@@ -50,18 +51,26 @@ rixs_data = None
 scan_matrix = None
 file_no = 0
 
-# Import data from epics while program executed
 
-#row = pd.Series({'x': self.hexapod_x.getValue(),
-#                 'y': self.hexapod_y.getValue(),
-#                 'z': self.hexapod_z.getValue(),
-#                 'u': self.hexapod_u.getValue(),
-#                 'v': self.hexapod_v.getValue(),
-#                 'w': self.hexapod_w.getValue(),
-#                 'AGM_Energy': self.AGM.get_position(),
-#                 'I01': e.caget(self.currentPV0)},
-#                 name='test')
-#df_tmp = df_tmp.append(row)
+# create temp dir for datasaving 
+path=os.getcwd()
+dir_date = datetime.datetime.today().strftime('%Y%m%d')
+dir_name = dir_date+'temp'
+if not os.path.exists(dir_name):
+    os.makedirs(dir_name)
+        
+if '\\' in path:
+    # dir for windows
+    file_path = str(path) +'\\'+ dir_name +'\\' 
+else:
+    # dir fo linux
+    file_path = str(path) +'/'+ dir_name +'/'
+
+
+#pg.setConfigOption('background', 'k')
+#pg.setConfigOption('background',rgb(192,192,192)
+#pg.setConfigOption('foreground', 'w')
+
 
 
 class RIXS(QMainWindow):
@@ -142,17 +151,6 @@ class Panel(QWidget):
         self.show()
 
 
-# Auto refresh
-#
-#def update_label(self):
-#    cur_time = datetime.strftime(datetime.now(), "%d.%m %H:%M:%S")
-#    object.setText(cur_time)
-#
-#timer = QTimer()
-#timer.timeout.connect(update_label)
-#timer.start(1000)
-
-
 # random image display
 def plot(self):
     xlist = np.linspace(-3.0, 3.0, 3)
@@ -172,10 +170,12 @@ class StatusWidget(QWidget):
 
         global param, parameter_text
 
+        time = QTime.currentTime()
         self.status_bar = QLabel("Experiment No.  1234;   PI: A. B. C. ", self)
         self.status_box = QTextEdit(self)
 
-        time = QTime.currentTime()
+        
+
         self.show_text()
         self.status_box.setStyleSheet("color: blue; background-color: Lemonchiffon")
         self.status_box.setFont(QtGui.QFont("Ubuntu Mono",14))
@@ -200,6 +200,18 @@ class StatusWidget(QWidget):
                        "   Temperatures:  T<sub>a</sub> = " + str(param['ta']) + " K, T<sub>b</sub> = " + str(param['tb']) + " K<br>"
                        "           AGS: " + str(param['ags']) + " eV<br>")
         self.status_box.setText(parameter_text)
+        
+        #TODO : auto update parameter display in status widget
+
+    #    timer = QTimer()
+    #    timer.timeout.connect(self.auto_update)
+    #    timer.start(1000)
+    #def auto_update(self):
+    #    global status_widget_global
+    #    cur_time = datetime.strftime(datetime.now(), "%d.%m %H:%M:%S")
+    #    object.setText(cur_time)
+    #    status_widget_global.show_text()
+        
 
 
 class Command(QWidget):
@@ -209,6 +221,7 @@ class Command(QWidget):
 
         # message
         self.command_message = QTextEdit(self)
+        ###test
         time = QTime.currentTime()
         welcome_message = ('<font color=blue>' + time.toString() + ' >> Welcome to TPS_BlueMagpie!</font>')
         self.command_message.setText(welcome_message)
@@ -230,45 +243,47 @@ class Command(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.command_message)
         self.layoutVertical.addWidget(self.command_input)
-
         
+        # redefine function of QLineEdit(originally support return only) 
+    def keyPressEvent(command_input, event):
+        global cmd_global
+        if event.key() == Qt.Key_Up:
+            Up_text = cmd_global.history_log[cmd_global.history_size]
+            cmd_global.command_input.setText(Up_text)
+        else:
+            super(Command, command_input).keyPressEvent(event)
 
         # PyEPICS devices
           # written but removed from this branch
 
     def send(self):
         global param_index, param, cmd_global
-
         text = self.command_input.text()
 
         # time stamp
         timestamp = QTime.currentTime()
         t= timestamp.toString()
 
-        # append text to history
-        self.history_size += 1
-        self.row = pd.Series([t,text], index = self.history_index, name = self.history_size)
-        self.history_log = self.history_log.append(self.row)
-        print(self.history_log)
-
-
+        # check input_string in command
+        self.record = 0    #assume invalid input
 
         if text == "help":
-            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            self.record = 1
             return_text = ("his: recall previously typed messages.\n"
                            "mv: set a parameter to its absolute value.\n"
                            "mvr: change a parameter in terms of a relative value.\n"
                            "p: list valid parameters.\n"
                            "scan: stepwise scan a parameter and plot selected paramters with some dwell time.\n")
         elif text == "draw":
-            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            self.record = 1
             return_text = ("Signal emitted.")
 
         elif text == "his":
-            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             # TODO: Flexible display?
             his_text = self.history_log.to_string(index_names=False, index=False, header=False, max_rows=10)
             return_text = (his_text)
+            self.record = 1
+
             # Call Parameters
               # written but removed from this branch
 
@@ -278,14 +293,13 @@ class Command(QWidget):
             # test plotting commands
 
         elif text == 'p':
-            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+            self.record = 1
             p = str(param_index)
             return_text = (p)
 
         # MV function
         elif text == 'mv' or text[:3] == 'mv ':
-        # All sequence below should be organized as function(text) which returns return_tex
-            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
+        # All sequence below should be organized as function(text) which returns return_text
             space = text.count(' ')
             sptext = text.split(' ')
             # check format
@@ -296,14 +310,12 @@ class Command(QWidget):
                         print(float(sptext[2]))
                         return_text = (sptext[1] + " has been moved to " + sptext[2])
                         status_widget_global.show_text()
+                        self.record = 1
                     else:
-                        self.command_message.append(timestamp.toString() + ' >> ' + text)
                         return_text = ("<font color=red>Input error // value must be number or float</font>")
                 else:
-                    self.command_message.append(timestamp.toString() + ' >> ' + text)
                     return_text = ("<font color=red>Input error: parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters</font>")
             else:
-                self.command_message.append(timestamp.toString() + ' >> ' + text)
                 return_text = ("<font color=red>Input error // correct format: mv parameter value</font>")
 
         # MVR function
@@ -315,27 +327,23 @@ class Command(QWidget):
             if space == 2:
                 if sptext[1] in param_index:
                     if self.checkFloat(sptext[2]) is True:
-                        self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
                         param[sptext[1]] = float(param[sptext[1]])+float(sptext[2])
                         output = str(param[sptext[1]])
                         return_text = (sptext[1] + " has been moved to " + output)
                         status_widget_global.show_text()
+                        self.record = 1
                     else:
-                        self.command_message.append(timestamp.toString() + ' >> ' + text)
                         return_text = ("<font color=red>Input error // value must be number or float</font>")
                 else:
-                    self.command_message.append(timestamp.toString() + ' >> ' + text)
                     return_text = ("<font color=red>Input error: parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters</font>")
             else:
-                self.command_message.append(timestamp.toString() + ' >> ' + text)
                 return_text = ("<font color=red>Input error // correct format: mv parameter value</font>")
 
-        # scan function
+        # SCAN function
         # command format: scan (det1 det2 ...;) scan_param start end step dwell
 
         elif text == 'scan' or text[:5] == 'scan ':
             # if the input command is only 'scan' but not parameters return_text != 'OK',
-            self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
             return_text = self.check_param_scan(text)   # checking input command and parameters
             if return_text == 'OK':
                 if text.find(':') == -1: #scan x 1 10 1 0.1
@@ -368,27 +376,39 @@ class Command(QWidget):
                 dt = round(time.time()- t1, 3)
                 print('timespan in senconds=', dt)
                 return_text = 'Scanning is completed; timespan  = ' + self.convertSeconds(dt)
+                self.record = 1
 
         else:
-           self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + text + '</font>')
            return_text = ("Type 'help' to list commands")
 
+        # collect user input
+        self.validInput(text,t,self.record)
+        # print system message
         self.command_message.append(return_text)
+        # refresh and scroll down to latest message
         self.command_input.setText("")
+        self.command_message.moveCursor(QtGui.QTextCursor.End)
         cmd_global.command_input.setFocus()
-    #TODO: press up
-    def pressUp(self, e):
-        if e.key() == Qt.Key_Up:
-            Up_text = self.history_log[self.history_size]
-            self.command_input.setText(Up_text)
+
+    # Check and store valid commands
+    def validInput(self, x, t, v):
+        if v == 1:
+            # append text to history
+            self.history_size += 1
+            self.row = pd.Series([t,x], index = self.history_index, name = self.history_size)
+            self.history_log = self.history_log.append(self.row)
+            # append valid command
+            return (self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font>'))
+        else:
+            # invalid command
+            return (self.command_message.append('<font color=gray>' + t + ' >> ' + x + '</font>'))
 
 
-        #TODO:under construction for simplifying send function
-    def userinput(self, x):
-        timestamp = QTime.currentTime()
-        t = timestamp.toString()
-        self.command_message.append('<font color=blue>' + timestamp.toString() + ' >> ' + x + '</font>')
         
+    def pressUp(self, event):
+        self.command_input.keyPressEvent(self, event)
+        
+
 
     def convertSeconds(self,seconds):
         h = int(seconds//(60*60))
@@ -442,16 +462,19 @@ class Command(QWidget):
                             return_text = 'OK'
                         else:
                             return_text = ("<font color=red> Input error; dwell time must be positive.</font>")
+                           
                     else:
                         return_text = ("<font color=red>Input error: parameter \'"+ sptext[0]+ "\' is invalid; type \'p\' to list valid parameters</font>")
+                     
                 else:
                     return_text = ("<font color=red> parameter values are invalid; \'start end step dwell\' shoiuld be numeric.</font>")
-
+                     
             else:
                 return_text = ("<font color=red> Input error; format: scan [det1 det2 .. :] parameter start end step well_time</font>")
+                
         else:
             return_text = ("<font color=red> Input error; format: scan [det1 det2 ... :] parameter start end step well_time</font>")
-
+            
         #checking if dection parameters have been correctly selected
         j=0 #check index
         for i in range(len(det)): # i from 0 to len(det)-1
@@ -468,14 +491,6 @@ class Command(QWidget):
 
     def append_txt(self, text):
         self.command_message.append(text)
-
-
-
-   #def history(self, event):
-    #    if event.key() == Qt.Key_Up:
-    #        self.command_input.setText(a)
-
-
 
 
 
