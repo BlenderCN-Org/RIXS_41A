@@ -4,6 +4,7 @@ Created on 20190225
 @author: liao.zeno
 '''
 
+import time
 import epics as e
 
 class Devices(object):
@@ -18,25 +19,45 @@ class Devices(object):
         '''
         self.name = name
         self.pvroot = pvroot
-
+        
+        #for sim usage
+        self.sim = True
+        self.currentValuse = 0
+        
     def getValue(self):
-        p = e.PV(self.pvroot + "r")
-        v = p.get()
-        return v
+        if self.sim:
+            v = self.currentValuse
+#            print('sim position = ' + str(v))
+        else:
+            p = e.PV(self.pvroot + "r")
+            v = p.get('value', as_string=False)
+        return v        
         
     def setValue(self, value):
-        p = e.PV("w")
-        v = p.put(value)
+        if self.sim:
+            self.currentValuse = value
+            v = self.currentValuse
+            print(self.name + ' move completed.')
+        else:
+            p = e.PV("w")
+            v = p.put(value) 
         return v
     
     def getStatus(self):
-        p = e.PV(self.pvroot + "m")
-        v = p.get()
+        if self.sim:
+            time.sleep(0.01)
+            v = 0.0
+        else:
+            p = e.PV(self.pvroot + "m")
+            v = p.get()
         return v
 
     def stop(self):
-        p = e.PV(self.pvroot + "s")
-        #v = p.put(1)
-        v = p.get()
+        if self.sim:
+            print(self.name + ' stop.')
+        else:
+            p = e.PV(self.pvroot + "s")
+            #v = p.put(1)
+            v = p.get()
         return v
     

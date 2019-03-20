@@ -12,7 +12,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 import matplotlib.pyplot as plt
 import pyqtgraph as pg
-from pyqtgraph import PlotWidget
+from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
 import time, datetime, math
@@ -20,6 +20,7 @@ import time, datetime, math
 
 #from pyepics_device import Devices as ped
 #from pyepics_tmp_device import TmpDevices as petd
+from pyepics_ccd_device import CcdDevices as pecd
 #import epics as e
 
 
@@ -79,7 +80,7 @@ class RIXS(QMainWindow):
         QMainWindow.__init__(self)
 
         # Window attributes
-        self.setFixedSize(1300, 750)
+        self.setFixedSize(1300, 820)
         self.setWindowTitle('TPS blue magpie')
 
 
@@ -153,8 +154,8 @@ class Panel(QWidget):
 
 # random image display
 def plot(self):
-    xlist = np.linspace(-3.0, 3.0, 3)
-    ylist = np.linspace(-3.0, 3.0, 4)
+    xlist = np.linspace(-50.0, 50.0, 1024)
+    ylist = np.linspace(-100.0, 100.0, 2048)
     X, Y = np.meshgrid(xlist, ylist)
     Z = np.sqrt(X ** 2 + Y ** 2)
 
@@ -247,8 +248,10 @@ class Command(QWidget):
         # redefine function of QLineEdit(originally support return only) 
     def keyPressEvent(command_input, event):
         global cmd_global
-        if event.key() == Qt.Key_Up:
-            Up_text = cmd_global.history_log[cmd_global.history_size]
+        if event.key() == Qt.Key_Up and cmd_global.history_size != 0:
+            i = cmd_global.history_size
+            log = cmd_global.history_log
+            Up_text = log.iloc[i, 1]
             cmd_global.command_input.setText(Up_text)
         else:
             super(Command, command_input).keyPressEvent(event)
@@ -394,9 +397,9 @@ class Command(QWidget):
     def validInput(self, x, t, v):
         if v == 1:
             # append text to history
-            self.history_size += 1
             self.row = pd.Series([t,x], index = self.history_index, name = self.history_size)
             self.history_log = self.history_log.append(self.row)
+            self.history_size = (self.history_log.size) / 2
             # append valid command
             return (self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font>'))
         else:
@@ -497,16 +500,39 @@ class Command(QWidget):
 class ImageWidget(QWidget):
 
     def __init__(self, parent=None):
+
+        #ccd related
+        emccd = pecd("emccd", "41a:ccd1")
+#        emccd.getExposureTime()
+        print(emccd.getExposureTime())
+
+#        emccd.getRIXS()
+
         super(ImageWidget, self).__init__(parent=parent)
-        self.plotWidget = PlotWidget(self)
-        self.data = np.linspace(-5.0, 5.0, 10)
-        self.spectrumplot(self, self.data)
+        self.plotWidget = GraphicsLayoutWidget(self)
+        self.vb = self.plotWidget.addViewBox()
+#        np.random.randn(2097152, 1)
+        frame = np.random.normal(size=(1, 10))
+        print(frame)
+        transarray = np.empty((10, 5), float)
+        print(transarray)
+        a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        print(a)
+        npa = np.asarray(a)
+        print(npa)
+        renpa = np.reshape(npa, (2, 5), order='F')
+        print(renpa)
+#        frame = emccd.getImage()
+        img = pg.ImageItem(renpa)
+        self.vb.addItem(img)
+        self.vb.autoRange()
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.plotWidget)
 
-    @staticmethod
-    def spectrumplot(self, x):
-        self.plotWidget.plot(x)
+
+#     def spectrumplot(self, x):
+# #        self.plotWidget.plotItem.clear()
+#         self.plotWidget
 
 
 
