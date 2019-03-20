@@ -7,17 +7,14 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QF
                              QPushButton, QMainWindow,QMessageBox,QLabel,QTextEdit,QProgressBar)
 from PyQt5.QtGui import QIcon, QFont
 from PyQt5.QtCore import QSize, Qt, QDate, QTime, QDateTime, QObject, QEvent, pyqtSignal, QTimer, pyqtSlot
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-import matplotlib.pyplot as plt
 import pyqtgraph as pg
 from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
 import time, datetime, math
-# import written .py
 
+
+# Import written .py
 #from pyepics_device import Devices as ped
 #from pyepics_tmp_device import TmpDevices as petd
 from pyepics_ccd_device import CcdDevices as pecd
@@ -53,7 +50,7 @@ scan_matrix = None
 file_no = 0
 
 
-# create temp dir for datasaving 
+# Create temp dir for datasaving 
 path=os.getcwd()
 dir_date = datetime.datetime.today().strftime('%Y%m%d')
 dir_name = dir_date+'temp'
@@ -66,12 +63,6 @@ if '\\' in path:
 else:
     # dir fo linux
     file_path = str(path) +'/'+ dir_name +'/'
-
-
-#pg.setConfigOption('background', 'k')
-#pg.setConfigOption('background',rgb(192,192,192)
-#pg.setConfigOption('foreground', 'w')
-
 
 
 class RIXS(QMainWindow):
@@ -152,7 +143,7 @@ class Panel(QWidget):
         self.show()
 
 
-# random image display
+# Random image display
 def plot(self):
     xlist = np.linspace(-50.0, 50.0, 1024)
     ylist = np.linspace(-100.0, 100.0, 2048)
@@ -232,7 +223,7 @@ class Command(QWidget):
         # history
         self.history_index = ['Time','Text']
         self.history_log = pd.DataFrame(columns=self.history_index)
-        self.history_size = 0
+        self.history_loc = 0
 
         # user input
         self.command_input= QLineEdit(self)
@@ -246,13 +237,23 @@ class Command(QWidget):
         self.layoutVertical.addWidget(self.command_input)
         
         # redefine function of QLineEdit(originally support return only) 
+
     def keyPressEvent(command_input, event):
         global cmd_global
-        if event.key() == Qt.Key_Up and cmd_global.history_size != 0:
-            i = cmd_global.history_size
-            log = cmd_global.history_log
-            Up_text = log.iloc[i, 1]
+        
+        imax = (cmd_global.history_log.size)/2
+        log = cmd_global.history_log
+        if event.key() == Qt.Key_Up and 1 < cmd_global.history_loc <= imax+1:
+            # locate history log
+            cmd_global.history_loc += -1
+            i = cmd_global.history_loc
+            Up_text = log.loc[i, "Text"]
             cmd_global.command_input.setText(Up_text)
+        elif event.key() == Qt.Key_Down and 0 <= cmd_global.history_loc < imax:
+           cmd_global.history_loc += 1
+           i = cmd_global.history_loc
+           Down_text = log.loc[i, "Text"]
+           cmd_global.command_input.setText(Down_text)
         else:
             super(Command, command_input).keyPressEvent(event)
 
@@ -261,94 +262,84 @@ class Command(QWidget):
 
     def send(self):
         global param_index, param, cmd_global
+        
+        # user input_string
         text = self.command_input.text()
-
         # time stamp
         timestamp = QTime.currentTime()
         t= timestamp.toString()
 
-        # check input_string in command
-        self.record = 0    #assume invalid input
+        # check input_string in command; assume invalid input
+        
+        # whhen True => logged in history & marked blue 
+        self.log = False   
 
         if text == "help":
-            self.record = 1
-            return_text = ("his: recall previously typed messages.\n"
-                           "mv: set a parameter to its absolute value.\n"
-                           "mvr: change a parameter in terms of a relative value.\n"
-                           "p: list valid parameters.\n"
-                           "scan: stepwise scan a parameter and plot selected paramters with some dwell time.\n")
-        elif text == "draw":
-            self.record = 1
-            return_text = ("Signal emitted.")
+            msg = ("his: recall previously typed messages.\n"
+                   "mv: set a parameter to its absolute value.\n"
+                   "mvr: change a parameter in terms of a relative value.\n"
+                   "p: list valid parameters.\n"
+                   "scan: stepwise scan a parameter and plot selected paramters with some dwell time.\n")
 
         elif text == "his":
             # TODO: Flexible display?
             his_text = self.history_log.to_string(index_names=False, index=False, header=False, max_rows=10)
-            return_text = (his_text)
-            self.record = 1
-
-            # Call Parameters
-              # written but removed from this branch
-
-            # Call Commands
-              # no in this branch
-
-            # test plotting commands
+            msg = his_text
 
         elif text == 'p':
-            self.record = 1
             p = str(param_index)
-            return_text = (p)
+            msg = p
 
         # MV function
-        elif text == 'mv' or text[:3] == 'mv ':
-        # All sequence below should be organized as function(text) which returns return_text
+        elif text[:2] == 'mv' or text[:3] == 'mv ':
+        # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
             # check format
             if space == 2:
                 if sptext[1] in param_index:
                     if self.checkFloat(sptext[2]) is True:
+                        self.log = True
                         param[sptext[1]] = float(sptext[2])
-                        print(float(sptext[2]))
-                        return_text = (sptext[1] + " has been moved to " + sptext[2])
+                        msg = (sptext[1] + " has been moved to " + sptext[2])
                         status_widget_global.show_text()
-                        self.record = 1
+                        self.validInput(t, text, True)
                     else:
-                        return_text = ("<font color=red>Input error // value must be number or float</font>")
+                        msg = ("value must be number or float")
                 else:
-                    return_text = ("<font color=red>Input error: parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters</font>")
+                    msg = ("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters")
             else:
-                return_text = ("<font color=red>Input error // correct format: mv parameter value</font>")
+                msg = ("correct format: mv parameter value")
 
         # MVR function
         elif text[:4] == 'mvr ':
-        # All sequence below should be organized as function(text) which returns return_tex
+        # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
             # check format
             if space == 2:
                 if sptext[1] in param_index:
                     if self.checkFloat(sptext[2]) is True:
+                        self.log = True
                         param[sptext[1]] = float(param[sptext[1]])+float(sptext[2])
                         output = str(param[sptext[1]])
-                        return_text = (sptext[1] + " has been moved to " + output)
+                        msg = (sptext[1] + " has been moved to " + output)
                         status_widget_global.show_text()
-                        self.record = 1
                     else:
-                        return_text = ("<font color=red>Input error // value must be number or float</font>")
+                        msg = ("value must be number or float")
                 else:
-                    return_text = ("<font color=red>Input error: parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters</font>")
+                    msg = ("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters")
             else:
-                return_text = ("<font color=red>Input error // correct format: mv parameter value</font>")
+                msg = ("correct format: mv parameter value")
 
         # SCAN function
         # command format: scan (det1 det2 ...;) scan_param start end step dwell
 
         elif text == 'scan' or text[:5] == 'scan ':
-            # if the input command is only 'scan' but not parameters return_text != 'OK',
-            return_text = self.check_param_scan(text)   # checking input command and parameters
-            if return_text == 'OK':
+            # if the input command is only 'scan' but not parameters check != 'OK',
+            check = self.check_param_scan(text)   # checking input command and parameters
+            if check == 'OK':
+                self.log = True
                 if text.find(':') == -1: #scan x 1 10 1 0.1
                     c = 5
                     det=['I0'] #default detection parameter
@@ -371,47 +362,52 @@ class Command(QWidget):
                 time.sleep(0.5)
                 t0=datetime.datetime.now()
                 #self.command_message.append(t0.strftime("%c"))
-                self.command_message.append('Scanning begins at ' + t0.strftime("%c"))
+                self.sysMsg('Scanning begins at ' + t0.strftime("%c"))
                 t1 = time.time()
 
                 #print('scan loop begins')
                 spectrum_widget_global.scan_loop(det, sptext)
                 dt = round(time.time()- t1, 3)
                 print('timespan in senconds=', dt)
-                return_text = 'Scanning is completed; timespan  = ' + self.convertSeconds(dt)
-                self.record = 1
-
+                msg = ('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
+            else:
+                # already return error message
+                msg = check 
         else:
-           return_text = ("Type 'help' to list commands")
+           msg = ("Type 'help' to list commands")
 
-        # collect user input
-        self.validInput(text,t,self.record)
-        # print system message
-        self.command_message.append(return_text)
+        # check user input
+        self.validInput(t, text, self.log)
+        self.sysMsg(msg, self.log) 
+        
         # refresh and scroll down to latest message
         self.command_input.setText("")
         self.command_message.moveCursor(QtGui.QTextCursor.End)
         cmd_global.command_input.setFocus()
 
-    # Check and store valid commands
-    def validInput(self, x, t, v):
-        if v == 1:
+    # log and show
+    def validInput(self, t, x, v):
+        if v == True:
+            # refresh history log size when command is valid
+            # TODO: find efficient way in pandas
+            i = (self.history_log.size)/2
+            self.history_loc = int(i+1)
             # append text to history
-            self.row = pd.Series([t,x], index = self.history_index, name = self.history_size)
+            self.row = pd.Series([t,x], index = self.history_index, name = self.history_loc)
             self.history_log = self.history_log.append(self.row)
-            self.history_size = (self.history_log.size) / 2
+            print(self.history_log)
             # append valid command
-            return (self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font>'))
+            self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font>')
         else:
             # invalid command
-            return (self.command_message.append('<font color=gray>' + t + ' >> ' + x + '</font>'))
-
-
-        
-    def pressUp(self, event):
-        self.command_input.keyPressEvent(self, event)
-        
-
+            self.command_message.append('<font color=gray>' + t + ' >> ' + x + '</font>')
+            
+    def sysMsg(self, m, v=True): 
+        if v==True:
+            self.command_message.append('<font color=black>' + m + '</font>')
+        else:
+            self.command_message.append('<font color=red>Input error; ' + m + '</font>')
+       
 
     def convertSeconds(self,seconds):
         h = int(seconds//(60*60))
@@ -427,7 +423,8 @@ class Command(QWidget):
             return True
         except ValueError:
             return False
-
+        
+        # TODO: TOO MANY RETURN_TEXT
     def check_param_scan(self, text):
         global param, scan_data, param_index
         # input text format: scan scan_param start end step dwell
@@ -462,38 +459,39 @@ class Command(QWidget):
                 if j==4:
                     if sptext[0] in param_index:
                         if float(sptext[4]) > 0:  #float(sptext[4]) assigns dwell time
-                            return_text = 'OK'
+                            check_format = ('OK')
                         else:
-                            return_text = ("<font color=red> Input error; dwell time must be positive.</font>")
+                            check_msg = ("dwell time must be positive.")
                            
                     else:
-                        return_text = ("<font color=red>Input error: parameter \'"+ sptext[0]+ "\' is invalid; type \'p\' to list valid parameters</font>")
+                        check_msg = ("parameter \'"+ sptext[0]+ "\' is invalid; type \'p\' to list valid parameters")
                      
                 else:
-                    return_text = ("<font color=red> parameter values are invalid; \'start end step dwell\' shoiuld be numeric.</font>")
+                    check_msg = ("parameter values are invalid; \'start end step dwell\' shoiuld be numeric.")
                      
             else:
-                return_text = ("<font color=red> Input error; format: scan [det1 det2 .. :] parameter start end step well_time</font>")
+                check_msg = ("format: scan [det1 det2 .. :] parameter start end step well_time")
                 
         else:
-            return_text = ("<font color=red> Input error; format: scan [det1 det2 ... :] parameter start end step well_time</font>")
+            check_msg = ("format: scan [det1 det2 ... :] parameter start end step well_time")
             
-        #checking if dection parameters have been correctly selected
+        # checking if dection parameters have been correctly selected
         j=0 #check index
         for i in range(len(det)): # i from 0 to len(det)-1
             if det[i] in param_index: j +=1.0
+        # 
         if j== len(det):
-            return_text_det='OK'
-        else: return_text_det='not OK'
+            check_det='OK'
+        else: 
+            check_det='not OK'
 
-        if return_text == 'OK' and return_text_det == 'OK': return_text ='OK'
-        if return_text == 'OK' and return_text_det != 'OK': return_text ='<font color=red>Input error: invalid detection parameters</font>'
+        if check_format == 'OK' and check_det == 'OK': 
+            check_msg = ('OK')
+        elif check_format == 'OK' and check_det != 'OK': 
+            check_msg = ('invalid detection parameters')
 
-        return return_text
+        return check_msg
 
-
-    def append_txt(self, text):
-        self.command_message.append(text)
 
 
 
@@ -611,7 +609,7 @@ class SpectrumWidget(QWidget):
             # show in status and command area
             self.curve.setData(scan_x, scan_data1)
             QtGui.QApplication.processEvents()
-            cmd_global.append_txt('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ ',  '+str(scan_data))
+            cmd_global.sysMsg('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ ',  '+str(scan_data))
             
             # collect data
             new_param = pd.Series(param, name=i)
