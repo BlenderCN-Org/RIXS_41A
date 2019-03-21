@@ -18,10 +18,10 @@ import time, datetime, math
 # =============================================================================
 #
 # Import written .py
-from pyepics_device import Devices as ped
-from pyepics_tmp_device import TmpDevices as petd
-from pyepics_ccd_device import CcdDevices as pecd
-import epics as e
+#from pyepics_device import Devices as ped
+#from pyepics_tmp_device import TmpDevices as petd
+#from pyepics_ccd_device import CcdDevices as pecd
+#import epics as e
 #
 
 # Global parameters
@@ -590,7 +590,7 @@ class ImageWidget(QWidget):
     def __init__(self, parent=None):
 
         #ccd related
-        emccd = pecd("emccd", "41a:ccd1")
+#        emccd = pecd("emccd", "41a:ccd1")
 #        emccd.getExposureTime()
 #        print(emccd.getExposureTime())
 
