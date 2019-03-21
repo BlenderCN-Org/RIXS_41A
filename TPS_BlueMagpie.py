@@ -22,22 +22,23 @@ import time, datetime, math
 from pyepics_ccd_device import CcdDevices as pecd
 #import epics as e
 
-
-# Import data from epics while program executed
-
-#row = pd.Series({'x': self.hexapod_x.getValue(),
-#                 'y': self.hexapod_y.getValue(),
-#                 'z': self.hexapod_z.getValue(),
-#                 'u': self.hexapod_u.getValue(),
-#                 'v': self.hexapod_v.getValue(),
-#                 'w': self.hexapod_w.getValue(),
-#                 'AGM_Energy': self.AGM.get_position(),
-#                 'I01': e.caget(self.currentPV0)},
-#                 name='test')
-#df_tmp = df_tmp.append(row)
+# =============================================================================
+# 
+#  Import data from epics while program executed
+# 
+# row = pd.Series({'x': self.hexapod_x.getValue(),
+#                  'y': self.hexapod_y.getValue(),
+#                  'z': self.hexapod_z.getValue(),
+#                  'u': self.hexapod_u.getValue(),
+#                  'v': self.hexapod_v.getValue(),
+#                  'w': self.hexapod_w.getValue(),
+#                  'AGM_Energy': self.AGM.get_position(),
+#                  'I01': e.caget(self.currentPV0)},
+#                  name='test')
+# 
+# =============================================================================
 
 # Global parameters
-
 spectrum_widget_global = None
 status_widget_global = None
 cmd_global = None
@@ -91,12 +92,14 @@ class RIXS(QMainWindow):
         emccdMenu = menubar.addMenu("EMCCD")
         emccdMenu.addAction("cooling on")
         emccdMenu.addAction("cooling off")
-
-        #TODO: To be continued
-        #sddMenu = menubar.addMenu('SDD')
-        #slitMenu = menubar.addMenu('Slits')
-        #helpMenu = menubar.addMenu('Help')
-
+# =============================================================================
+# 
+#         #TODO: To be continued
+#         sddMenu = menubar.addMenu('SDD')
+#         slitMenu = menubar.addMenu('Slits')
+#         helpMenu = menubar.addMenu('Help')
+# 
+# =============================================================================
         # Import panel
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
@@ -144,19 +147,21 @@ class Panel(QWidget):
 
         self.show()
 
-
-# Random image display
-def plot(self):
-    xlist = np.linspace(-50.0, 50.0, 1024)
-    ylist = np.linspace(-100.0, 100.0, 2048)
-    X, Y = np.meshgrid(xlist, ylist)
-    Z = np.sqrt(X ** 2 + Y ** 2)
-
-    ax = self.figure.add_subplot(111)
-    ax.contourf(X, Y, Z)
-    ax.set_title('RIXS image')
-    self.draw()
-
+# =============================================================================
+# 
+#  Random image display
+# def plot(self):
+#     xlist = np.linspace(-50.0, 50.0, 1024)
+#     ylist = np.linspace(-100.0, 100.0, 2048)
+#     X, Y = np.meshgrid(xlist, ylist)
+#     Z = np.sqrt(X ** 2 + Y ** 2)
+# 
+#     ax = self.figure.add_subplot(111)
+#     ax.contourf(X, Y, Z)
+#     ax.set_title('RIXS image')
+#     self.draw()
+# 
+# =============================================================================
 
 class StatusWidget(QWidget):
     def __init__(self, parent=None):
@@ -196,18 +201,20 @@ class StatusWidget(QWidget):
         self.status_box.setText(parameter_text)
         
         #TODO : auto update parameter display in status widget
+# =============================================================================
+# 
+#         timer = QTimer()
+#         timer.timeout.connect(self.auto_update)
+#         timer.start(1000)
+#     def auto_update(self):
+#         global status_widget_global
+#         cur_time = datetime.strftime(datetime.now(), "%d.%m %H:%M:%S")
+#         object.setText(cur_time)
+#         status_widget_global.show_text()
+#         
+# =============================================================================
 
-    #    timer = QTimer()
-    #    timer.timeout.connect(self.auto_update)
-    #    timer.start(1000)
-    #def auto_update(self):
-    #    global status_widget_global
-    #    cur_time = datetime.strftime(datetime.now(), "%d.%m %H:%M:%S")
-    #    object.setText(cur_time)
-    #    status_widget_global.show_text()
-        
-
-
+        #Terminal
 class Command(QWidget):
 
     def __init__(self, parent=None):
@@ -215,18 +222,36 @@ class Command(QWidget):
 
         # message
         self.command_message = QTextEdit(self)
-        ###test
+        
+        '''
+        Welcome message
+        '''
         time = QTime.currentTime()
         welcome_message = ('<font color=blue>' + time.toString() + ' >> Welcome to TPS_BlueMagpie!</font>')
         self.command_message.setText(welcome_message)
         self.command_message.setReadOnly(True)
         #optional: string format:print('Hello, {:s}. You have {:d} messages.'.format('Rex', 999))
 
-        # history
+        '''
+        History
+         - callable (command: his)
+         - saved as log file.
+        '''
         self.history_index = ['Time','Text']
         self.history_log = pd.DataFrame(columns=self.history_index)
+        # modify counting mechanism => get index directly => check pandas document
         self.history_loc = 0
+        self.logname = str(dir_date)+"_commandlog"
+#        self.history_log.to_csv(file_path + self.logname, mode='w')
 
+        '''
+        Keyboard log
+         - empty list
+         - empty index
+        '''
+        self.kblog = []
+        self.kbi = 0
+        
         # user input
         self.command_input= QLineEdit(self)
         self.command_input.setFocusPolicy(Qt.StrongFocus)
@@ -238,24 +263,25 @@ class Command(QWidget):
         self.layoutVertical.addWidget(self.command_message)
         self.layoutVertical.addWidget(self.command_input)
         
-        # redefine function of QLineEdit(originally support return only) 
-
-    def keyPressEvent(command_input, event):
-        global cmd_global
         
-        imax = (cmd_global.history_log.size)/2
-        log = cmd_global.history_log
-        if event.key() == Qt.Key_Up and 1 < cmd_global.history_loc <= imax+1:
-            # locate history log
-            cmd_global.history_loc += -1
-            i = cmd_global.history_loc
-            Up_text = log.loc[i, "Text"]
+    def keyPressEvent(command_input, event):
+        '''
+        Up and Down
+         - redefine function of QLineEdit(originally support return only) 
+         - read kbi and kblog to type commands easily.
+        '''
+        global cmd_global
+        size = len(cmd_global.kblog)
+        if event.key() == Qt.Key_Up and 0 < cmd_global.kbi <= size:
+            cmd_global.kbi += -1
+            i = cmd_global.kbi
+            Up_text = cmd_global.kblog[i]
             cmd_global.command_input.setText(Up_text)
-        elif event.key() == Qt.Key_Down and 0 <= cmd_global.history_loc < imax:
-           cmd_global.history_loc += 1
-           i = cmd_global.history_loc
-           Down_text = log.loc[i, "Text"]
-           cmd_global.command_input.setText(Down_text)
+        elif event.key() == Qt.Key_Down and 0 <= cmd_global.kbi < size-1:
+            cmd_global.kbi += 1
+            i = cmd_global.kbi
+            Down_text = cmd_global.kblog[i]
+            cmd_global.command_input.setText(Down_text)
         else:
             super(Command, command_input).keyPressEvent(event)
 
@@ -267,26 +293,33 @@ class Command(QWidget):
         
         # user input_string
         text = self.command_input.text()
-
         
+        # keyboard log
+        if text != "":
+            self.kblog.append(text)
+            self.kbi = len(self.kblog)
+        
+        # commands
         if text == "help":
             self.validInput(text)
-            msg = ("his: recall previously typed messages.\n"
-                   "mv: set a parameter to its absolute value.\n"
-                   "mvr: change a parameter in terms of a relative value.\n"
-                   "p: list valid parameters.\n"
-                   "scan: stepwise scan a parameter and plot selected paramters with some dwell time.\n")
+            msg = ("his: recall previously typed messages.<br>\n"
+                   "mv: set a parameter to its absolute value.<br>\n"
+                   "mvr: change a parameter in terms of a relative value.<br>\n"
+                   "p: list valid parameters.<br>\n"
+                   "scan: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n")
             self.sysMsg(msg)
 
         elif text == "his":
             self.validInput(text)
             # TODO: Flexible display?
             his_text = self.history_log.to_string(index_names=False, index=False, header=False, max_rows=10)
-            self.sysMsg(his_text)
+            # TODO: figure out why this can't work
+#            self.sysMsg(his_text)
+            self.command_message.append(his_text)
 
         elif text == 'p':
             self.validInput(text)
-            p = str(param_index)
+            p = ', '.join(param_index)
             self.sysMsg(p)
 
         # MV function
@@ -322,7 +355,6 @@ class Command(QWidget):
                 if sptext[1] in param_index:
                     if self.checkFloat(sptext[2]) is True:
                         self.validInput(text,"v")
-                        self.log = True
                         param[sptext[1]] = float(param[sptext[1]])+float(sptext[2])
                         output = str(param[sptext[1]])
                         msg = (sptext[1] + " has been moved to " + output)
@@ -390,29 +422,31 @@ class Command(QWidget):
         cmd_global.command_input.setFocus()
 
     # log and show
-    
-    def validInput(self, x, v):
+    def validInput(self, x, v=""):
+        '''
+        decorate & log input_string;
+        when valid => log text in history & mark blue
+             invalid => mark gray
+        '''
         # time stamp
         timestamp = QTime.currentTime()
         t= timestamp.toString()
-        '''
-        check input_string in command; assume invalid input
-        when valid => log text in history & mark blue
-             error => mark gray
-        '''
+        
         if v == "iv":   
             # invalid command
             self.command_message.append('<font color=gray>' + t + ' >> ' + x + '</font>')
         else:
             if v == "v":
-                # refresh history log size when command is valid
                 # TODO: find efficient way in pandas
+                # current_size
                 i = (self.history_log.size)/2
                 self.history_loc = int(i+1)
                 # append valid command to history
-                self.row = pd.Series([t,x], index = self.history_index, name = self.history_loc)
-                self.history_log = self.history_log.append(self.row)
+                row = pd.Series([t,x], index = self.history_index, name = self.history_loc)
+                self.history_log = self.history_log.append(row)
                 print(self.history_log)
+                name = file_path + self.logname +".csv"
+                row.to_csv(name, mode='a', header=False)
             self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font>')
             
             
@@ -425,7 +459,7 @@ class Command(QWidget):
             # for error messages
             self.command_message.append('<font color=red>Input error; ' + m + '</font>')
         else:
-            self.command_message.append('<font color=black>' + m + '</font>')
+            self.command_message.append('<font color=black>\n'+m+'\n</font>\n')
 
     def convertSeconds(self,seconds):
         h = int(seconds//(60*60))
@@ -441,7 +475,7 @@ class Command(QWidget):
         except ValueError:
             return False
         
-        # TODO: TOO MANY RETURN_TEXT
+        
     def check_param_scan(self, text):
         global param, scan_data, param_index
         # input text format: scan scan_param start end step dwell
@@ -519,7 +553,7 @@ class ImageWidget(QWidget):
         #ccd related
         emccd = pecd("emccd", "41a:ccd1")
 #        emccd.getExposureTime()
-        print(emccd.getExposureTime())
+#        print(emccd.getExposureTime())
 
 #        emccd.getRIXS()
 
@@ -528,15 +562,15 @@ class ImageWidget(QWidget):
         self.vb = self.plotWidget.addViewBox()
 #        np.random.randn(2097152, 1)
         frame = np.random.normal(size=(1, 10))
-        print(frame)
+#        print(frame)
         transarray = np.empty((10, 5), float)
-        print(transarray)
+#        print(transarray)
         a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-        print(a)
+#        print(a)
         npa = np.asarray(a)
-        print(npa)
+#        print(npa)
         renpa = np.reshape(npa, (2, 5), order='F')
-        print(renpa)
+#        print(renpa)
 #        frame = emccd.getImage()
         img = pg.ImageItem(renpa)
         self.vb.addItem(img)
