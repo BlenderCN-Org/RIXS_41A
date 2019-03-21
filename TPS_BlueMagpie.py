@@ -272,7 +272,8 @@ class Command(QWidget):
         # check input_string in command; assume invalid input
         
         # whhen True => logged in history & marked blue 
-        self.log = False   
+        self.log = False
+        self.correct = True
 
         if text == "help":
             msg = ("his: recall previously typed messages.\n"
@@ -284,7 +285,7 @@ class Command(QWidget):
         elif text == "his":
             # TODO: Flexible display?
             his_text = self.history_log.to_string(index_names=False, index=False, header=False, max_rows=10)
-            msg = his_text
+            msg = (his_text)
 
         elif text == 'p':
             p = str(param_index)
@@ -303,12 +304,14 @@ class Command(QWidget):
                         param[sptext[1]] = float(sptext[2])
                         msg = (sptext[1] + " has been moved to " + sptext[2])
                         status_widget_global.show_text()
-                        self.validInput(t, text, True)
                     else:
+                        self.correct = False
                         msg = ("value must be number or float")
                 else:
+                    self.correct = False
                     msg = ("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters")
             else:
+                self.correct = False
                 msg = ("correct format: mv parameter value")
 
         # MVR function
@@ -326,10 +329,13 @@ class Command(QWidget):
                         msg = (sptext[1] + " has been moved to " + output)
                         status_widget_global.show_text()
                     else:
+                        self.correct = False
                         msg = ("value must be number or float")
                 else:
+                    self.correct = False
                     msg = ("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters")
             else:
+                self.correct = False
                 msg = ("correct format: mv parameter value")
 
         # SCAN function
@@ -372,13 +378,14 @@ class Command(QWidget):
                 msg = ('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
             else:
                 # already return error message
-                msg = check 
+                msg = check
+                self.correct = False
         else:
            msg = ("Type 'help' to list commands")
 
         # check user input
         self.validInput(t, text, self.log)
-        self.sysMsg(msg, self.log) 
+        self.sysMsg(msg, self.correct)
         
         # refresh and scroll down to latest message
         self.command_input.setText("")
@@ -402,7 +409,7 @@ class Command(QWidget):
             # invalid command
             self.command_message.append('<font color=gray>' + t + ' >> ' + x + '</font>')
             
-    def sysMsg(self, m, v=True): 
+    def sysMsg(self, m, v=True):
         if v==True:
             self.command_message.append('<font color=black>' + m + '</font>')
         else:
@@ -413,7 +420,6 @@ class Command(QWidget):
         h = int(seconds//(60*60))
         m = int((seconds-h*60*60)//60)
         s = round(seconds-(h*60*60)-(m*60), 3)
-        #print('h=   ', h)
         time_stg = '['+str(h)+' h, '+str(m)+' m, ' +str(s)+' sec]'
         return time_stg
 
