@@ -1,3 +1,5 @@
+#Last edited:20190321 10am
+
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QFileDialog, QInputDialog, QAction,
@@ -265,31 +267,27 @@ class Command(QWidget):
         
         # user input_string
         text = self.command_input.text()
-        # time stamp
-        timestamp = QTime.currentTime()
-        t= timestamp.toString()
 
-        # check input_string in command; assume invalid input
         
-        # whhen True => logged in history & marked blue 
-        self.log = False
-        self.correct = True
-
         if text == "help":
+            self.validInput(text)
             msg = ("his: recall previously typed messages.\n"
                    "mv: set a parameter to its absolute value.\n"
                    "mvr: change a parameter in terms of a relative value.\n"
                    "p: list valid parameters.\n"
                    "scan: stepwise scan a parameter and plot selected paramters with some dwell time.\n")
+            self.sysMsg(msg)
 
         elif text == "his":
+            self.validInput(text)
             # TODO: Flexible display?
             his_text = self.history_log.to_string(index_names=False, index=False, header=False, max_rows=10)
-            msg = (his_text)
+            self.sysMsg(his_text)
 
         elif text == 'p':
+            self.validInput(text)
             p = str(param_index)
-            msg = p
+            self.sysMsg(p)
 
         # MV function
         elif text[:2] == 'mv' or text[:3] == 'mv ':
@@ -300,19 +298,19 @@ class Command(QWidget):
             if space == 2:
                 if sptext[1] in param_index:
                     if self.checkFloat(sptext[2]) is True:
-                        self.log = True
+                        self.validInput(text,"v")
                         param[sptext[1]] = float(sptext[2])
-                        msg = (sptext[1] + " has been moved to " + sptext[2])
+                        self.sysMsg(sptext[1] + " has been moved to " + sptext[2])
                         status_widget_global.show_text()
                     else:
-                        self.correct = False
-                        msg = ("value must be number or float")
+                        self.validInput(text,"iv")
+                        self.sysMsg("value must be number or float", "err")
                 else:
-                    self.correct = False
-                    msg = ("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters")
+                    self.validInput(text,"iv")
+                    self.sysMsg("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters","err")
             else:
-                self.correct = False
-                msg = ("correct format: mv parameter value")
+                self.validInput(text,"iv")
+                self.sysMsg("correct format: mv parameter value", "err")
 
         # MVR function
         elif text[:4] == 'mvr ':
@@ -323,20 +321,21 @@ class Command(QWidget):
             if space == 2:
                 if sptext[1] in param_index:
                     if self.checkFloat(sptext[2]) is True:
+                        self.validInput(text,"v")
                         self.log = True
                         param[sptext[1]] = float(param[sptext[1]])+float(sptext[2])
                         output = str(param[sptext[1]])
                         msg = (sptext[1] + " has been moved to " + output)
                         status_widget_global.show_text()
                     else:
-                        self.correct = False
-                        msg = ("value must be number or float")
+                        self.validInput(text,"iv")
+                        self.sysMsg("value must be number or float", "err")
                 else:
-                    self.correct = False
-                    msg = ("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters")
+                    self.validInput(text,"iv")
+                    self.sysMsg("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters", "err")
             else:
-                self.correct = False
-                msg = ("correct format: mv parameter value")
+                self.validInput(text,"iv")
+                self.sysMsg("correct format: mv parameter value", "err")
 
         # SCAN function
         # command format: scan (det1 det2 ...;) scan_param start end step dwell
@@ -345,7 +344,7 @@ class Command(QWidget):
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)   # checking input command and parameters
             if check == 'OK':
-                self.log = True
+                self.validInput(text,"v")
                 if text.find(':') == -1: #scan x 1 10 1 0.1
                     c = 5
                     det=['I0'] #default detection parameter
@@ -375,17 +374,15 @@ class Command(QWidget):
                 spectrum_widget_global.scan_loop(det, sptext)
                 dt = round(time.time()- t1, 3)
                 print('timespan in senconds=', dt)
-                msg = ('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
+                self.sysMsg('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
             else:
-                # already return error message
-                msg = check
-                self.correct = False
+                # Return error message
+                self.validInput(text, "iv")
+                self.sysMsg(check, "err")
         else:
-           msg = ("Type 'help' to list commands")
+           self.validInput(text, "iv")
+           self.sysMsg("Type 'help' to list commands")
 
-        # check user input
-        self.validInput(t, text, self.log)
-        self.sysMsg(msg, self.correct)
         
         # refresh and scroll down to latest message
         self.command_input.setText("")
@@ -393,28 +390,42 @@ class Command(QWidget):
         cmd_global.command_input.setFocus()
 
     # log and show
-    def validInput(self, t, x, v):
-        if v == True:
-            # refresh history log size when command is valid
-            # TODO: find efficient way in pandas
-            i = (self.history_log.size)/2
-            self.history_loc = int(i+1)
-            # append text to history
-            self.row = pd.Series([t,x], index = self.history_index, name = self.history_loc)
-            self.history_log = self.history_log.append(self.row)
-            print(self.history_log)
-            # append valid command
-            self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font>')
-        else:
+    
+    def validInput(self, x, v):
+        # time stamp
+        timestamp = QTime.currentTime()
+        t= timestamp.toString()
+        '''
+        check input_string in command; assume invalid input
+        when valid => log text in history & mark blue
+             error => mark gray
+        '''
+        if v == "iv":   
             # invalid command
             self.command_message.append('<font color=gray>' + t + ' >> ' + x + '</font>')
-            
-    def sysMsg(self, m, v=True):
-        if v==True:
-            self.command_message.append('<font color=black>' + m + '</font>')
         else:
+            if v == "v":
+                # refresh history log size when command is valid
+                # TODO: find efficient way in pandas
+                i = (self.history_log.size)/2
+                self.history_loc = int(i+1)
+                # append valid command to history
+                self.row = pd.Series([t,x], index = self.history_index, name = self.history_loc)
+                self.history_log = self.history_log.append(self.row)
+                print(self.history_log)
+            self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font>')
+            
+            
+    def sysMsg(self, m, v=""):
+        '''
+        decorate msg in command; assume normal message.
+        when err => mark msg red
+        '''
+        if v == "err":
+            # for error messages
             self.command_message.append('<font color=red>Input error; ' + m + '</font>')
-       
+        else:
+            self.command_message.append('<font color=black>' + m + '</font>')
 
     def convertSeconds(self,seconds):
         h = int(seconds//(60*60))
