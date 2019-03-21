@@ -15,28 +15,14 @@ import numpy as np
 import pandas as pd
 import time, datetime, math
 
-
+# =============================================================================
+#
 # Import written .py
-#from pyepics_device import Devices as ped
-#from pyepics_tmp_device import TmpDevices as petd
+from pyepics_device import Devices as ped
+from pyepics_tmp_device import TmpDevices as petd
 from pyepics_ccd_device import CcdDevices as pecd
-#import epics as e
-
-# =============================================================================
-# 
-#  Import data from epics while program executed
-# 
-# row = pd.Series({'x': self.hexapod_x.getValue(),
-#                  'y': self.hexapod_y.getValue(),
-#                  'z': self.hexapod_z.getValue(),
-#                  'u': self.hexapod_u.getValue(),
-#                  'v': self.hexapod_v.getValue(),
-#                  'w': self.hexapod_w.getValue(),
-#                  'AGM_Energy': self.AGM.get_position(),
-#                  'I01': e.caget(self.currentPV0)},
-#                  name='test')
-# 
-# =============================================================================
+import epics as e
+#
 
 # Global parameters
 spectrum_widget_global = None
@@ -45,6 +31,57 @@ cmd_global = None
 
 param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
 param = pd.Series([0.00,2.00,50.00,710.00,720.00,11.00,22.00,33.00,0.00,0.00,0.00,10.00,30.00, 0.0], index=param_index)
+
+
+# =============================================================================
+# PyEPICS Devices
+#
+# #TODO: name hexapod as H811
+#x = ped("hx", "41a:hexapod:x")
+#y = ped("hy", "41a:hexapod:y")
+#z = ped("hz", "41a:hexapod:z")
+#u = ped("hu", "41a:hexapod:u")
+#v = ped("hv", "41a:hexapod:v")
+#w = ped("hw", "41a:hexapod:w")
+#
+#tsa = petd("tmp1", "41a:sample:tmp1")
+#tsb = petd("tmp2", "41a:sample:tmp2")
+#
+#currentPV0 = "41a:sample:i0"
+#currentPV1 = "41a:sample:phdi"
+#
+#AGM = e.Motor("41a:AGM:Energy")
+#AGS = e.Motor("41a:AGS:Energy")
+#
+#real_row = pd.Series({'t':0,
+#                      's1':0,
+#                      's2':0,
+#                      'agm': AGM.get_position(),
+#                      'ags': AGS.get_position(),
+#                      'x': x.getValue(),
+#                      'y': y.getValue(),
+#                      'z': z.getValue(),
+#                      'u': u.getValue(),
+#                      'v': v.getValue(),
+#                      'w': w.getValue(),
+#                      'ta':tsa.getValue(),
+#                      'tb':tsb.getValue(),
+#                      'I0': e.caget(currentPV0)})
+#print(real_row)
+#
+# =============================================================================
+
+
+# =============================================================================
+#   Don't Set False
+#
+safe = True
+if safe == False:
+    param = real_row
+#
+#
+# =============================================================================
+
 
 scan_data = None
 xas_data = None
@@ -194,7 +231,8 @@ class StatusWidget(QWidget):
                        " Entrance slit: " + str(param['s1']) + " &micro;m<br>"
                        " AGM: " + str(param['agm']) + " eV<br>"
                        " Exit slit: " + str(param['s2']) + " &micro;m<br>"
-                       " Sample:  x = " + str(param['x']) + ", y = " + str(param['y']) + ", z   = " + str(param['z']) + ", "
+                       " Sample:  <br>"
+                       " x = " + str(param['x']) + ", y = " + str(param['y']) + ", z = " + str(param['z']) + " <br>"
                        " u = " + str(param['u']) + ", v = " + str(param['v']) + ", w = " + str(param['w']) + " <br>"
                        "   Temperatures:  T<sub>a</sub> = " + str(param['ta']) + " K, T<sub>b</sub> = " + str(param['tb']) + " K<br>"
                        "           AGS: " + str(param['ags']) + " eV<br>")
@@ -229,6 +267,7 @@ class Command(QWidget):
         time = QTime.currentTime()
         welcome_message = ('<font color=blue>' + time.toString() + ' >> Welcome to TPS_BlueMagpie!</font>')
         self.command_message.setText(welcome_message)
+        self.command_message.setFont(QtGui.QFont("Times New Roman", 12))
         self.command_message.setReadOnly(True)
         #optional: string format:print('Hello, {:s}. You have {:d} messages.'.format('Rex', 999))
 
@@ -413,7 +452,7 @@ class Command(QWidget):
                 self.sysMsg(check, "err")
         else:
            self.validInput(text, "iv")
-           self.sysMsg("Type 'help' to list commands")
+           self.sysMsg("Type 'help' to list commands", "err")
 
         
         # refresh and scroll down to latest message
@@ -493,8 +532,8 @@ class Command(QWidget):
             sptext = text[c+2:].split(' ') # scan_param 1 10 1 0.1
             det=text[5:c-2].split(' ') # list of detection parameter
         print('det=', det)
-
-        scan_param = sptext[0]
+#################
+        text = sptext[0]
         # if the input command is correct, sptext should be a list containing a scan_param
         # and 4 numbers, e.g. sptext = ['x', '1', '10', '2', '0.1']
         print('text=', text)
