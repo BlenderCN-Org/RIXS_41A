@@ -1,4 +1,4 @@
-#Last edited:20190322 11 am
+#Last edited:20190322 2pm
 
 
 
@@ -766,12 +766,21 @@ class Command(QWidget):
 
 
         elif text == "h":
+            
+            i = self.history_log.size
+            print(i)
+            
+            if i>0:
+            
+                self.sysReturn(text, "v")
 
-            self.sysReturn(text, "v")
+                # TODO: Flexible display?
 
-            # TODO: Flexible display?
-
-            his_text = self.history_log.to_string(index_names=False, index=False, header=False, max_rows=10)
+                his_text = self.history_log.to_string(index_names=False, index=False, header=False, max_rows=10)
+                
+            else:
+                
+                his_text = "Magpie has not received operational input yet." 
 
             self.sysReturn(his_text)
 
