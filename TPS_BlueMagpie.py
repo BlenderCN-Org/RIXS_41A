@@ -423,6 +423,7 @@ class Command(QWidget):
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)   # checking input command and parameters
             if check == 'OK':
+                cmd_global.command_input.setEnabled(False)
                 self.sysReturn(text,"v", True)
                 if text.find(':') == -1: #scan x 1 10 1 0.1
                     c = 5
@@ -452,6 +453,7 @@ class Command(QWidget):
                 dt = round(time.time()- t1, 3)
                 print('timespan in senconds=', dt)
                 self.sysReturn('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
+                cmd_global.command_input.setEnabled(True)
 
             else:
                 # Return error message
