@@ -53,7 +53,7 @@ param = pd.Series([0.00,2.00,50.00,710.00,720.00,11.00,22.00,33.00,0.00,0.00,0.0
 
 # Don't Set True
 
-safe = True
+safe = False
 
 if safe == True:
 
@@ -1186,33 +1186,14 @@ class Command(QWidget):
 
         return check_msg
     
- #class Macro(QDialog):#
-#
-#    def __init__(self, parent=None):
-#        super(Form, self).__init__(parent)
-#        # Create widgets
-#        self.edit = QLineEdit("Write my name here")
-#        self.button = QPushButton("Show Greetings")
-#        # Create layout and add widgets
-#        layout = QVBoxLayout()
-##        layout.addWidget(self.edit)
-#        layout.addWidget(self.button)
-#        # Set dialog layout
-#        self.setLayout(layout)
-#        # Add button signal to greetings slot
-#        self.button.clicked.connect(self.greetings)
-
-    # Greets the user
-    def greetings(self):
-        print ("Hello %s" % self.edit.text())
-
+    
 class ImageWidget(QWidget):
 
     def __init__(self, parent=None):
 
         #ccd related
 
-        emccd = pecd("emccd", "41a:ccd1")
+#        emccd = pecd("emccd", "41a:ccd1")
 
 #        emccd.getExposureTime()
 
@@ -1234,8 +1215,8 @@ class ImageWidget(QWidget):
 
 #        print(transarray)
 
-#        a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-        a = emccd.getImage()
+        a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+#        a = emccd.getImage()
 
 #        print(a)
 
