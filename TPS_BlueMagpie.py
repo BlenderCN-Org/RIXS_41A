@@ -2,7 +2,7 @@
 
 #Last edited:20190325 7:43 am by DJH
 
-import os, sys, time, random
+import os, sys, time, random, threading
 
 from PyQt5 import QtGui, QtCore, QtWidgets
 
@@ -47,18 +47,13 @@ param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta',
 param = pd.Series([0.00,2.00,50.00,710.00,720.00,11.00,22.00,33.00,0.00,0.00,0.00,10.00,30.00, 0.0], index=param_index)
 
 
-
-
-
 # PyEPICS Devices
 
 
 
 # Don't Set True
 
-safe = False
-
-
+safe = True
 
 if safe == True:
 
@@ -130,6 +125,8 @@ if safe == True:
 
     print(real_row)
 
+    #
+
 
 
     param = real_row
@@ -175,6 +172,7 @@ else:
     # dir fo linux
 
     file_path = str(path) +'/'+ dir_name +'/'
+
 
 
 
@@ -408,21 +406,80 @@ class StatusWidget(QWidget):
 
 #
 
-#         timer = QTimer()
 
-#         timer.timeout.connect(self.auto_update)
 
-#         timer.start(1000)
+    def auto_update(self):
 
-#     def auto_update(self):
+         global status_widget_global
 
-#         global status_widget_global
+         real_row = pd.Series({'t': 0,
 
-#         cur_time = datetime.strftime(datetime.now(), "%d.%m %H:%M:%S")
+                               's1': 0,
 
-#         object.setText(cur_time)
+                               's2': 0,
 
-#         status_widget_global.show_text()
+                               'agm': AGM.get_position(),
+
+                               'ags': AGS.get_position(),
+
+                               'x': x.getValue(),
+
+                               'y': y.getValue(),
+
+                               'z': z.getValue(),
+
+                               'u': u.getValue(),
+
+                               'v': v.getValue(),
+
+                               'w': w.getValue(),
+
+                               'ta': tsa.getValue(),
+
+                               'tb': tsb.getValue(),
+
+                               'I0': e.caget(currentPV0)})
+
+         print(real_row)
+
+         param = real_row
+
+         # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
+
+         parameter_text = ("<font color=black><b><u>Parameters</b></u></font><br>"
+
+                           " Entrance slit: " + str(param['s1']) + " &micro;m<br>"
+
+                           " AGM: " + str(param['agm']) + " eV<br>"
+
+                           " Exit slit: " + str(param['s2']) + " &micro;m<br>"
+
+                            " Sample:  <br>"
+
+                            " x = " + str(param['x']) + ", y = " + str(param['y']) + ", z = " + str(param['z']) + " <br>"
+
+                           " u = " + str(param['u']) + ", v = " + str(param['v']) + ", w = " + str(param['w']) + " <br>"
+                            
+                            "   Temperatures:  T<sub>a</sub> = " + str(param['ta']) + " K, T<sub>b</sub> = " + str(param['tb']) + " K<br>"
+
+                             "           AGS: " + str(param['ags']) + " eV<br>")
+
+         status_widget_global.status_box.setText(parameter_text)
+
+         status_widget_global.show_text()
+
+    def p(self, x):
+        #get value by param_list index
+        value =  param[str(x)]
+        value = "%.2f" %value
+        reutrn (str(value))
+
+    # timer
+
+#    timer = threading.Timer(5, status_widget_global.auto_update)
+
+#    timer.start()
+
 
 #
 
@@ -676,7 +733,7 @@ class Command(QWidget):
 
         text = re.sub(' +', ' ', text) # an elegant way to remove extra whitespace,  "import re" is needed/
 
-
+        self.i = 0
 
         # keyboard log
 
@@ -734,6 +791,20 @@ class Command(QWidget):
 
             self.sysReturn(p)
 
+        elif text == 'ccd':
+            pvroot = "41a:ccd1"
+            p = e.PV(pvroot + ":image")
+            self.v = p.get()
+            print (self.v)
+
+            frame = pd.DataFrame(self.v)
+            cmd_global.i += 1
+            frame.to_csv(file_path+'ccd_image'+'0'+str(cmd_global.i), mode='w')
+            name = 'ccd_image'+'0'+str(cmd_global.i)
+            msg = 'image get, saved as: ' + name + '.csv'
+            self.sysReturn(msg)
+
+
 
 
         elif text == 'u':
@@ -744,10 +815,10 @@ class Command(QWidget):
 
             self.sysReturn("Parameter values have been updated.")
 
-        elif text == 'macro':
-            
-            m = Macro() 
-            m.show()
+ #       elif text == 'macro':
+ #
+ #           m = Macro()
+ #           m.show()
             
 
 
@@ -1115,21 +1186,21 @@ class Command(QWidget):
 
         return check_msg
     
- class Macro(QDialog):
-
-    def __init__(self, parent=None):
-        super(Form, self).__init__(parent)
-        # Create widgets
-        self.edit = QLineEdit("Write my name here")
-        self.button = QPushButton("Show Greetings")
-        # Create layout and add widgets
-        layout = QVBoxLayout()
-        layout.addWidget(self.edit)
-        layout.addWidget(self.button)
-        # Set dialog layout
-        self.setLayout(layout)
-        # Add button signal to greetings slot
-        self.button.clicked.connect(self.greetings)
+ #class Macro(QDialog):#
+#
+#    def __init__(self, parent=None):
+#        super(Form, self).__init__(parent)
+#        # Create widgets
+#        self.edit = QLineEdit("Write my name here")
+#        self.button = QPushButton("Show Greetings")
+#        # Create layout and add widgets
+#        layout = QVBoxLayout()
+##        layout.addWidget(self.edit)
+#        layout.addWidget(self.button)
+#        # Set dialog layout
+#        self.setLayout(layout)
+#        # Add button signal to greetings slot
+#        self.button.clicked.connect(self.greetings)
 
     # Greets the user
     def greetings(self):
@@ -1141,13 +1212,11 @@ class ImageWidget(QWidget):
 
         #ccd related
 
-#        emccd = pecd("emccd", "41a:ccd1")
+        emccd = pecd("emccd", "41a:ccd1")
 
 #        emccd.getExposureTime()
 
 #        print(emccd.getExposureTime())
-
-#        emccd.getRIXS()
 
         super(ImageWidget, self).__init__(parent=parent)
 
@@ -1165,7 +1234,8 @@ class ImageWidget(QWidget):
 
 #        print(transarray)
 
-        a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+#        a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        a = emccd.getImage()
 
 #        print(a)
 
@@ -1173,6 +1243,7 @@ class ImageWidget(QWidget):
 
 #        print(npa)
 
+#        renpa = np.reshape(npa, (1024, 2048), order='F')
         renpa = np.reshape(npa, (2, 5), order='F')
 
 #        print(renpa)
