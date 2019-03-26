@@ -1,5 +1,4 @@
-# edited:20190322 4pm by Jason
-#Last edited:20190326 2:50 am by DJH
+#Last edited:20190326 4pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -25,7 +24,7 @@ scan_data = None
 xas_data = None
 rixs_data = None
 data_matrix = None
-
+param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
 
 # PyEPICS Devices
 
@@ -52,9 +51,8 @@ if safe == True:
     AGM = e.Motor("41a:AGM:Energy")
     AGS = e.Motor("41a:AGS:Energy")
 
-
 def getRow():    
-    global safe    
+    global safe  
     if safe == True:        
         real_row = pd.Series({'t':0,
                               's1':0,
@@ -72,9 +70,9 @@ def getRow():
                               'I0': e.caget(currentPV0)})
         print(real_row)
         return real_row
-    else:        
-        param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
+    else:      
         param = pd.Series([0.00,2.00,50.00,710.00,720.00,11.00,22.00,33.3555,0.00,0.00,0.00,10.00,30.00, 0.0], index=param_index)
+        print (param)
         return param
     
 param = getRow()
@@ -83,9 +81,6 @@ param = getRow()
 param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
                         'ags': [480, 1200], 'x': [0,10], 'y': [0,10],'z': [0,10], 'u': [0,10],
                       'v': [0,10], 'w': [0,10], 'ta':[5,350], 'tb':[5,350], 'I0': [0,1]})
-
-
-
 
 file_no = 0
 
@@ -139,8 +134,26 @@ class RIXS(QMainWindow):
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
         self.show()
+# =============================================================================
+#         
+#         # Refresh
+#         self.timer = QtCore.QTimer(self, interval=1000) # 1000 ms
+#         self.timer.timeout.connect(self.on_timeout)
+#         
+#     def on_timeout(self):
+#         global status_widget_global
+#         # this method will be called every 1000 ms
+#         status_widget_global.show_text()
+# 
+#     @QtCore.pyqtSlot()
+#     def start(self):
+#         self.result_widget.show()
+#         # start timer
+#         self.timer.start()
+#         
+# =============================================================================
 
-
+        
 class Panel(QWidget):
 
     def __init__(self, parent):
@@ -178,7 +191,8 @@ class Panel(QWidget):
         hbox.addLayout(rightcolumn, 1)
 
         self.show()
-
+        
+       
 
 class StatusWidget(QWidget):
 
@@ -201,9 +215,8 @@ class StatusWidget(QWidget):
 
         # Forced refresh
     def show_text(self):
-            param = getRow()
         # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
-            parameter_text = ("<font color=black><b><u>Parameters</b></u></font><br>"
+        parameter_text = ("<font color=black><b><u>Parameters</b></u></font><br>"
                            " Entrance slit: " + self.p('s1') + " &micro;m<br>"
                            " AGM: " + self.p('agm') + " eV<br>"
                            " Exit slit: " + self.p('s2') + " &micro;m<br>"
@@ -212,9 +225,9 @@ class StatusWidget(QWidget):
                            " u = " + self.p('u') + ", v = " + self.p('v') + ", w = " + self.p('w') + " <br>"
                            "   Temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
                            "           AGS: " + self.p('ags') + " eV<br>")
-            self.status_box.setText(parameter_text)
-            print("status text shown")
-   
+        self.status_box.setText(parameter_text)
+        print("status text shown")
+      
     # define format of displayed numbers
     def p(self, x):
         #get value by param_list index
@@ -222,6 +235,9 @@ class StatusWidget(QWidget):
         value = round(value,2)
         return str(value)
 
+   
+   
+        
         #TODO : auto update parameter display in status widget
 # =============================================================================
 #
@@ -417,7 +433,7 @@ class Command(QWidget):
                         self.sysReturn(text,"v", True)
                         param[sptext[1]] = float(sptext[2]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
                         self.sysReturn(sptext[1] + " has been moved to " + sptext[2])
-                        status_widget_global.show_text()
+#                        status_widget_global.show_text()
                     else:
                         self.sysReturn(text,"iv")
                         self.sysReturn(check_param, "err")
@@ -546,8 +562,8 @@ class Command(QWidget):
                 check_msg = ('Oops! '+ param_name+ ' value was out of range; type \'r\' to show parameter ranges.')
         else:
             check_msg = (param_name + " value must be number or float", "err")
-        print('checking on the range of ', param_name, ':')
-        print(check_msg)
+#        print('checking on the range of ', param_name, ':')
+#        print(check_msg)
         return check_msg
 
 
@@ -789,6 +805,17 @@ def main():
     ex = RIXS()
     cmd_global.command_input.setFocus()
     sys.exit(app.exec_())
+    
+def pt():
+    print("AAAAAA")
 
+def a():       
+    threading.Timer(1.0, a).start()
+    t = threading.Timer
+    t.daemon = True
+    t.start()
+    pt()
+    
 if __name__ == '__main__':
     main()
+
