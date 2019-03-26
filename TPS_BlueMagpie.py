@@ -1,6 +1,4 @@
-# edited:20190322 4pm by Jason
-
-#Last edited:20190325 7:43 am by DJH
+#Last edited:20190325 3:20 pm by DJH
 
 import os, sys, time, random, threading
 
@@ -44,12 +42,7 @@ cmd_global = None
 
 param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
 
-param = pd.Series([0.00,2.00,50.00,710.00,720.00,11.00,22.00,33.00,0.00,0.00,0.00,10.00,30.00, 0.0], index=param_index)
-
-
 # PyEPICS Devices
-
-
 
 # Don't Set True
 
@@ -94,43 +87,84 @@ if safe == True:
     AGS = e.Motor("41a:AGS:Energy")
 
 
+def getRow():
+    
+    global safe
+    
+    if safe == True:
+        
+        real_row = pd.Series({'t':0,
 
-    real_row = pd.Series({'t':0,
+                              's1':0,
 
-                          's1':0,
+                              's2':0,
 
-                          's2':0,
+                              'agm': AGM.get_position(),
 
-                          'agm': AGM.get_position(),
+                              'ags': AGS.get_position(),
 
-                          'ags': AGS.get_position(),
+                              'x': x.getValue(),
 
-                          'x': x.getValue(),
+                              'y': y.getValue(),
+                          
+                              'z': z.getValue(),
 
-                          'y': y.getValue(),
+                              'u': u.getValue(),
 
-                          'z': z.getValue(),
+                              'v': v.getValue(),
 
-                          'u': u.getValue(),
+                              'w': w.getValue(),
 
-                          'v': v.getValue(),
+                              'ta':tsa.getValue(),
 
-                          'w': w.getValue(),
+                              'tb':tsb.getValue(),
 
-                          'ta':tsa.getValue(),
+                              'I0': e.caget(currentPV0)})
 
-                          'tb':tsb.getValue(),
+        print(real_row)
 
-                          'I0': e.caget(currentPV0)})
+        return real_row
+    else:
+        
+        param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
+        param = pd.Series([0.00,2.00,50.00,710.00,720.00,11.00,22.00,33.3555,0.00,0.00,0.00,10.00,30.00, 0.0], index=param_index)
 
-    print(real_row)
+        return param
+        
 
-    #
+# golable series for the parameter ranges set to protect instruments.
+
+param_range = pd.Series({'t':[0,1000],
+
+                      's1':[1,30],
+
+                      's2':[5,200],
+
+                      'agm': [480, 1200],
+
+                      'ags': [480, 1200],
+
+                      'x': [0,10],
+
+                      'y': [0,10],
+
+                      'z': [0,10],
+
+                      'u': [0,10],
+
+                      'v': [0,10],
+
+                      'w': [0,10],
+
+                      'ta':[5,350],
+
+                      'tb':[5,350],
+
+                      'I0': [0,1]})
 
 
 
-    param = real_row
-
+param = getRow()
 
 
 scan_data = None
@@ -373,119 +407,42 @@ class StatusWidget(QWidget):
 
 
     def show_text(self):
-
-        global param
-
+        
+        #while True:
+        #threading.Timer(1.0, show_text).start()
+            param = getRow()
         # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
 
-        parameter_text = ("<font color=black><b><u>Parameters</b></u></font><br>"
+            parameter_text = ("<font color=black><b><u>Parameters</b></u></font><br>"
 
-                       " Entrance slit: " + str(param['s1']) + " &micro;m<br>"
+                           " Entrance slit: " + self.p('s1') + " &micro;m<br>"
 
-                       " AGM: " + str(param['agm']) + " eV<br>"
+                           " AGM: " + self.p('agm') + " eV<br>"
 
-                       " Exit slit: " + str(param['s2']) + " &micro;m<br>"
+                           " Exit slit: " + self.p('s2') + " &micro;m<br>"
 
-                       " Sample:  <br>"
+                           " Sample:  <br>"
 
-                       " x = " + str(param['x']) + ", y = " + str(param['y']) + ", z = " + str(param['z']) + " <br>"
+                           " x = " + self.p('x') + ", y = " + self.p('y') + ", z = " + self.p('z') + " <br>"
 
-                       " u = " + str(param['u']) + ", v = " + str(param['v']) + ", w = " + str(param['w']) + " <br>"
+                           " u = " + self.p('u') + ", v = " + self.p('v') + ", w = " + self.p('w') + " <br>"
 
-                       "   Temperatures:  T<sub>a</sub> = " + str(param['ta']) + " K, T<sub>b</sub> = " + str(param['tb']) + " K<br>"
+                           "   Temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
 
-                       "           AGS: " + str(param['ags']) + " eV<br>")
+                           "           AGS: " + self.p('ags') + " eV<br>")
 
-        self.status_box.setText(parameter_text)
-
-
-
+            self.status_box.setText(parameter_text)
+            
+            print("show_text")
+   
         #TODO : auto update parameter display in status widget
 
-# =============================================================================
-
-#
-
-
-
-    def auto_update(self):
-
-         global status_widget_global
-
-         real_row = pd.Series({'t': 0,
-
-                               's1': 0,
-
-                               's2': 0,
-
-                               'agm': AGM.get_position(),
-
-                               'ags': AGS.get_position(),
-
-                               'x': x.getValue(),
-
-                               'y': y.getValue(),
-
-                               'z': z.getValue(),
-
-                               'u': u.getValue(),
-
-                               'v': v.getValue(),
-
-                               'w': w.getValue(),
-
-                               'ta': tsa.getValue(),
-
-                               'tb': tsb.getValue(),
-
-                               'I0': e.caget(currentPV0)})
-
-         print(real_row)
-
-         param = real_row
-
-         # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
-
-         parameter_text = ("<font color=black><b><u>Parameters</b></u></font><br>"
-
-                           " Entrance slit: " + str(param['s1']) + " &micro;m<br>"
-
-                           " AGM: " + str(param['agm']) + " eV<br>"
-
-                           " Exit slit: " + str(param['s2']) + " &micro;m<br>"
-
-                            " Sample:  <br>"
-
-                            " x = " + str(param['x']) + ", y = " + str(param['y']) + ", z = " + str(param['z']) + " <br>"
-
-                           " u = " + str(param['u']) + ", v = " + str(param['v']) + ", w = " + str(param['w']) + " <br>"
-                            
-                            "   Temperatures:  T<sub>a</sub> = " + str(param['ta']) + " K, T<sub>b</sub> = " + str(param['tb']) + " K<br>"
-
-                             "           AGS: " + str(param['ags']) + " eV<br>")
-
-         status_widget_global.status_box.setText(parameter_text)
-
-         status_widget_global.show_text()
 
     def p(self, x):
         #get value by param_list index
-        value =  param[str(x)]
-        value = "%.2f" %value
-        reutrn (str(value))
-
-    # timer
-
-#    timer = threading.Timer(5, status_widget_global.auto_update)
-
-#    timer.start()
-
-
-#
-
-# =============================================================================
-
-
+        value =  param[x]
+        value = round(value,2)
+        return str(value)
 
         #Terminal
 
@@ -837,8 +794,10 @@ class Command(QWidget):
             if space == 2: # e.g. mv x 1234
 
                 if sptext[1] in param_index:
+                    
+                    check_param =self.check_param_range(sptext[1], sptext[2])
 
-                    if self.checkFloat(sptext[2]) is True:
+                    if check_param == 'OK':
 
                         self.sysReturn(text,"v", True)
 
@@ -852,7 +811,7 @@ class Command(QWidget):
 
                         self.sysReturn(text,"iv")
 
-                        self.sysReturn("value must be number or float", "err")
+                        self.sysReturn(check_param, "err")
 
                 else:
 
@@ -884,7 +843,11 @@ class Command(QWidget):
 
                 if sptext[1] in param_index:
 
-                    if self.checkFloat(sptext[2]) is True:
+                    value= float(param[sptext[1]])+float(sptext[2])
+
+                    check_param =self.check_param_range(sptext[1], value)
+
+                    if check_param == 'OK':
 
                         self.sysReturn(text,"v", True)
 
@@ -900,8 +863,7 @@ class Command(QWidget):
 
                         self.sysReturn(text,"iv")
 
-                        self.sysReturn("value must be number or float", "err")
-
+                        self.sysReturn(check_param, "err")
                 else:
 
                     self.sysReturn(text,"iv")
@@ -966,33 +928,51 @@ class Command(QWidget):
 
                 n = int(abs((x2-x1)/step)) #set the number of scanning steps
 
-                param[scan_param] = x1
+                check_param1 =self.check_param_range(sptext[0], x1)
 
-                status_widget_global.show_text()
+                check_param2 =self.check_param_range(sptext[0], x2)
 
-                QtGui.QApplication.processEvents()
+                if (check_param1 =='OK') and (check_param2 =='OK'):
 
-                time.sleep(0.5)
+                    param[scan_param] = x1
 
-                t0=datetime.datetime.now()
+                    status_widget_global.show_text()
 
-                #self.command_message.append(t0.strftime("%c"))
+                    QtGui.QApplication.processEvents()
 
-                self.sysReturn('Scanning begins at ' + t0.strftime("%c"))
+                    time.sleep(0.5)
 
-                t1 = time.time()
+                    t0=datetime.datetime.now()
 
-                print('scan loop begins')
+                    #self.command_message.append(t0.strftime("%c"))
 
-                spectrum_widget_global.scan_loop(plot, sptext)
+                    self.sysReturn('Scanning begins at ' + t0.strftime("%c"))
 
-                dt = round(time.time()- t1, 3)
+                    t1 = time.time()
 
-                print('timespan in senconds=', dt)
+                    print('scan loop begins')
 
-                self.sysReturn('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
+                    spectrum_widget_global.scan_loop(plot, sptext)
 
-                cmd_global.command_input.setEnabled(True)
+                    dt = round(time.time()- t1, 3)
+
+                    print('timespan in senconds=', dt)
+
+                    self.sysReturn('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
+
+                    cmd_global.command_input.setEnabled(True)
+
+                else:
+
+                    # Return error message
+
+                    self.sysReturn(text, "iv")
+
+                    if (check_param1 !='OK'): check_param = check_param1
+
+                    if (check_param2 !='OK'): check_param = check_param2
+
+                    self.sysReturn(check_param, "err")
 
 
 
@@ -1054,6 +1034,23 @@ class Command(QWidget):
 
             return False
 
+
+    def check_param_range(self, param_name, param_value):
+        
+        global param, param_index, param_range
+        if self.checkFloat(param_value) is True:
+        #if (parame_name in param_index) and self.checkFloat(param_value) == True:
+
+            j= float(param_value)
+            if min(param_range[param_name]) <= j  and j <= max(param_range[param_name]):
+                check_msg = 'OK'
+            else:
+                check_msg = ('Oops! '+ param_name+ ' value was out of range')
+        else:
+            check_msg = (param_name + " value must be number or float", "err")
+
+        print('checking on the range of ', param_name, ':')
+        return check_msg
 
 
     def check_param_scan(self, text):
@@ -1490,21 +1487,15 @@ class SpectrumWidget(QWidget):
 
                 msg += str(round(param[plot[j]],3))+'     '
 
+            if i%5 == 0:  
+                
+                cmd_global.sysReturn('')
 
-
-            if i%5 == 0:  cmd_global.sysReturn('')
-
-            cmd_global.sysReturn('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ "     plot =  "+msg)
-
-
+                cmd_global.sysReturn('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ "     plot =  "+msg)
 
         print('data_matrix')
 
         print(data_matrix)
-
-
-
-
 
         # data saving
 
@@ -1531,10 +1522,16 @@ def main():
     cmd_global.command_input.setFocus()
 
     sys.exit(app.exec_())
+    
+             
+    if True:
+        status_widget_global.show_text()
+        QtGui.QApplication.processEvents()
+        time.sleep(1)
+
 
 
 
 if __name__ == '__main__':
-
     main()
 
