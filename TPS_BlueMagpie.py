@@ -71,7 +71,7 @@ def getRow():
         print(real_row)
         return real_row
     else:      
-        param = pd.Series([0.00,2.00,50.00,710.00,720.00,11.00,22.00,33.3555,0.00,0.00,0.00,10.00,30.00, 0.0], index=param_index)
+        param = pd.Series([0.00,2.00,50.00,710.00,720.00,5.00,5.00,5.00,2.00,2.00,2.00,20.00,30.00, 0.0], index=param_index)
         print (param)
         return param
     
@@ -134,24 +134,7 @@ class RIXS(QMainWindow):
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
         self.show()
-# =============================================================================
-#         
-#         # Refresh
-#         self.timer = QtCore.QTimer(self, interval=1000) # 1000 ms
-#         self.timer.timeout.connect(self.on_timeout)
-#         
-#     def on_timeout(self):
-#         global status_widget_global
-#         # this method will be called every 1000 ms
-#         status_widget_global.show_text()
-# 
-#     @QtCore.pyqtSlot()
-#     def start(self):
-#         self.result_widget.show()
-#         # start timer
-#         self.timer.start()
-#         
-# =============================================================================
+        
 
         
 class Panel(QWidget):
@@ -212,6 +195,18 @@ class StatusWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.status_box)
+        
+# =============================================================================
+#         # Refresh
+#         self.timer = QtCore.QTimer() # 1000 ms
+#         self.timer.timeout.connect(self.on_timeout)
+#         
+#     def on_timeout(self):
+#         # this method will be called every 1000 ms
+#         self.show_text()
+#         print("time_out_signal_triggered")
+# 
+# =============================================================================
 
         # Forced refresh
     def show_text(self):
@@ -226,8 +221,11 @@ class StatusWidget(QWidget):
                            "   Temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
                            "           AGS: " + self.p('ags') + " eV<br>")
         self.status_box.setText(parameter_text)
-        print("status text shown")
-      
+# =============================================================================
+#         print("status text shown")
+#         self.timer.start(1000)
+#       
+# =============================================================================
     # define format of displayed numbers
     def p(self, x):
         #get value by param_list index
@@ -806,15 +804,6 @@ def main():
     cmd_global.command_input.setFocus()
     sys.exit(app.exec_())
     
-def pt():
-    print("AAAAAA")
-
-def a():       
-    threading.Timer(1.0, a).start()
-    t = threading.Timer
-    t.daemon = True
-    t.start()
-    pt()
     
 if __name__ == '__main__':
     main()
