@@ -474,7 +474,6 @@ class Command(QWidget):
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)   # checking input command and parameters
             if check == 'OK':
-                cmd_global.command_input.setEnabled(False)
                 self.sysReturn(text,"v", True)     # "v": log text in history; True: mark blue
                 if text.find(',') == -1: #scan x 1 10 1 0.1
                     c = 3
@@ -497,6 +496,7 @@ class Command(QWidget):
                 check_param1 =self.check_param_range(sptext[0], x1)
                 check_param2 =self.check_param_range(sptext[0], x2)
                 if (check_param1 =='OK') and (check_param2 =='OK'):
+                    cmd_global.command_input.setEnabled(False)
                     param[scan_param] = x1
                     status_widget_global.show_text()
                     QtGui.QApplication.processEvents()
@@ -571,14 +571,14 @@ class Command(QWidget):
         # or  scan plot1 plot2 ....: scan_param begin end step dwell
         check_format = (' ')
         print('input command =', text)
-        if text.find(':') == -1:
+        if text.find(',') == -1:
             sptext = text[5:].split(' ') # scan_param 1 10 1 0.1
             space = text.count(' ') #space =5, e.g. scan x 1 10 2 0.1
             c=5
             plot=['I0']
 
         else:
-            c = text.find(':')
+            c = text.find(',')
             #print('\':\' found in the input command, index c=',c)
             space = text[c:].count(' ') # space = 5, after truncating "scan y z ...:" => e.g. : x 1 10 2 0.1
             sptext = text[c+2:].split(' ') # scan_param 1 10 1 0.1
@@ -591,7 +591,7 @@ class Command(QWidget):
         #print('sptext=', sptext)
         #print('legn', len(sptext))
 
-        if text[c+1:].find(':') == -1 and space == 5:
+        if text[c+1:].find(',') == -1 and space == 5:
             if (sptext[0] != '') and (len(sptext) == 5):
                 j=0 #check index
                 for i in range(4): # i from 0 to 3
@@ -608,9 +608,9 @@ class Command(QWidget):
                 else:
                     check_msg = ("parameter values are invalid; \'begin end step dwell\' shoiuld be numeric.")
             else:
-                check_msg = ("format: scan [plot1 plot2 .. :] parameter begin end step dwell_time")
+                check_msg = ("format: scan [plot1 plot2 .. ,] parameter begin end step dwell_time")
         else:
-            check_msg = ("format: scan [plot1 plot2 ... :] parameter begin end step dwell_time")
+            check_msg = ("format: scan [plot1 plot2 ... ,] parameter begin end step dwell_time")
 
 
         # checking if dection parameters have been correctly selected
