@@ -1,4 +1,4 @@
-#Last edited:20190327 11am by Jason
+#Last edited:20190327 5pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -25,6 +25,15 @@ xas_data = None
 rixs_data = None
 data_matrix = None
 param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
+
+'''
+Abort
+ - execution flag for commands.
+   default : False
+   if abort = True, breaks loop.
+ - reset in Command(send function)
+'''
+abort = False
 
 # PyEPICS Devices
 
@@ -82,9 +91,9 @@ param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1
                         'ags': [480, 1200], 'x': [0,10], 'y': [0,10],'z': [0,10], 'u': [0,10],
                       'v': [0,10], 'w': [0,10], 'ta':[5,350], 'tb':[5,350], 'I0': [0,1]})
 
-file_no = 0
 
 # Create temp dir for datasaving
+file_no = 0
 path=os.getcwd()
 dir_date = datetime.datetime.today().strftime('%Y%m%d')
 dir_name = dir_date+'temp'
@@ -145,9 +154,7 @@ class Panel(QWidget):
         self.UI_layout()
 
     def UI_layout(self):
-        self.setFixedSize(1300, 750)
-        self.setWindowTitle('TPS blue magpie')
-
+        
         # Left_Column
         global cmd_global
         hbox = QHBoxLayout(self)
@@ -196,6 +203,7 @@ class StatusWidget(QWidget):
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.status_box)
         
+        #TODO : auto update parameter display in status widget
 # =============================================================================
 #         # Refresh
 #         self.timer = QtCore.QTimer() # 1000 ms
@@ -221,6 +229,8 @@ class StatusWidget(QWidget):
                            "   Temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
                            "           AGS: " + self.p('ags') + " eV<br>")
         self.status_box.setText(parameter_text)
+        
+        #TODO : auto update parameter display in status widget
 # =============================================================================
 #         print("status text shown")
 #         self.timer.start(1000)
@@ -282,7 +292,7 @@ class Command(QWidget):
         self.logname = str(dir_date)+"_commandlog"
 #        self.history_log.to_csv(file_path + self.logname, mode='w')
         '''
-        Keyboard log
+        Keyboard log (for KeyPressEvent function)
          - empty list
          - empty index
         '''
@@ -294,17 +304,37 @@ class Command(QWidget):
         self.command_input.setFocusPolicy(Qt.StrongFocus)
         self.command_input.setPlaceholderText("Type help to list commands ...")
         self.command_input.returnPressed.connect(self.send)
+        
+        
+        '''
+        Abort Button
+        default: closed
+         - Button enabled while sysReturn function checked input as valid,
+         - Disabled again with final sysReturn.
+        '''
+        # send/abort button
+        self.abort_button = QPushButton('Abort', self)
+        self.abort_button.clicked.connect(self.abortCommand)
+        self.abort_button.setEnabled(False)
+            
         # widget design
-        self.layoutVertical = QVBoxLayout(self)
-        self.layoutVertical.addWidget(self.command_message)
-        self.layoutVertical.addWidget(self.command_input)
-
+        self.Commandlayout = QVBoxLayout(self)
+        self.Commandlayout.addWidget(self.command_message)
+        self.Input= QHBoxLayout(self)
+        self.Input.addWidget(self.command_input)
+        self.Input.addWidget(self.abort_button)
+        self.Commandlayout.addLayout(self.Input)
+        
+    def abortCommand(self):
+        global abort
+        abort = True
+        print("set abort = True", abort)
 
     def keyPressEvent(command_input, event):
         '''
         Up and Down
          - redefine function of QLineEdit(originally support return only)
-         - read kbi and kblog to type commands easily.
+         - read kbi and kblog for command convenience.
         '''
         global cmd_global
         size = len(cmd_global.kblog)
@@ -345,6 +375,7 @@ class Command(QWidget):
 
         elif v == "v":
             if log == True:
+                self.abort_button.setEnabled(True)
                 # TODO: find efficient way in pandas
                 # current_size
                 i = (self.history_log.size)/2
@@ -370,7 +401,10 @@ class Command(QWidget):
 
 
     def send(self):
-        global param_index, param, cmd_global
+        global param_index, param, cmd_global, abort 
+        abort = False
+        print("abort reset", abort)
+        
         # user input_string
         text = self.command_input.text()
         text = re.sub(' +', ' ', text) # an elegant way to remove extra whitespace,  "import re" is needed/
@@ -504,15 +538,21 @@ class Command(QWidget):
                     t0=datetime.datetime.now()
                     #self.command_message.append(t0.strftime("%c"))
                     self.sysReturn('Scanning begins at ' + t0.strftime("%c"))
-                    t1 = time.time()
-                    print('scan loop begins')
+# =============================================================================
+#                     t1 = time.time()
+#                     print('scan loop begins')
+# =============================================================================
                     spectrum_widget_global.scan_loop(plot, sptext)
-                    dt = round(time.time()- t1, 3)
-                    print('timespan in senconds=', dt)
-                    self.sysReturn('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
+# =============================================================================
+#                     dt = round(time.time()- t1, 3)
+#                     print('timespan in senconds=', dt)
+#                     if abort:
+#                         cmd_global.sysReturn('Scan loop terminated; timespan  = ' + self.convertSeconds(dt),'err')
+#                     else:
+#                         cmd_global.sysReturn('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
+# =============================================================================
                     cmd_global.command_input.setEnabled(True)
                 else:
-                    # Return error message
                     self.sysReturn(text, "iv")
                     if (check_param1 !='OK'): check_param = check_param1
                     if (check_param2 !='OK'): check_param = check_param2
@@ -531,6 +571,7 @@ class Command(QWidget):
 
         self.command_input.setText("")
         self.command_message.moveCursor(QtGui.QTextCursor.End)
+        self.abort_button.setEnabled(False)
         cmd_global.command_input.setFocus()
 
 
@@ -697,6 +738,8 @@ class SpectrumWidget(QWidget):
 
     def scan_loop(self, plot, sptext):
         global file_no, param_index, param
+        t1 = time.time()
+        print('scan loop begins')
         if plot==[]:
             plot=['I0']
 
@@ -746,7 +789,8 @@ class SpectrumWidget(QWidget):
 
         print('plot', plot)
         print('color', color)
-
+        
+        # TODO: reconstruct this part
         if plot_no >= 1: self.curve0 = self.plotWidget.plot(scan_x, scan_data1, pen='g', linewidth=2, name=plot[0])
         if plot_no >= 2: self.curve1 = self.plotWidget.plot(scan_x, scan_data1, pen='r', linewidth=2, name=plot[1])
         if plot_no >= 3: self.curve2 = self.plotWidget.plot(scan_x, scan_data1, pen='w', linewidth=2, name=plot[2])
@@ -757,6 +801,9 @@ class SpectrumWidget(QWidget):
         # scanning loop
         print('for loop begins')
         for i in range(n+1):
+            if abort == True:
+                print("loop stopped")
+                break
             print(i,'_th scanning point')
             scan_x.append(x1 + i*step)
             data_i =[]
@@ -775,9 +822,8 @@ class SpectrumWidget(QWidget):
 
             #after finishing the update of all param values
             data_matrix.loc[len(data_matrix), :] =  param.tolist() #appending param to data_matrix
-            #print('data_matrix')
-            #print(data_matrix)
 
+            # TODO: reconstruct this part
             if plot_no >= 1: self.curve0.setData(scan_x, data_matrix.loc[:,plot[0]])
             if plot_no >= 2: self.curve1.setData(scan_x, data_matrix.loc[:,plot[1]])
             if plot_no >= 3: self.curve2.setData(scan_x, data_matrix.loc[:,plot[2]])
@@ -799,13 +845,27 @@ class SpectrumWidget(QWidget):
         print('data_matrix')
         print(data_matrix)
 
-
-        # data saving
+        dt = round(time.time()- t1, 3)
+        print('timespan in senconds=', dt)
+        if abort:
+            cmd_global.sysReturn('Scan loop terminated; timespan  = ' + cmd_global.convertSeconds(dt),'err')
+        else:
+            cmd_global.sysReturn('Scanning is completed; timespan  = ' + cmd_global.convertSeconds(dt))
+            
+        '''    
+        Data saving
+        - File name from global, including directory and number
+        - Can be saved as .csv or .hdf, but hdf format requires development.
+        - Save terminated data?
+        
+        TODO: check exist number, don't overwrite old ones.
+        '''
         file_no += 1
         filename = str(dir_date)+"scan_"+str(file_no)
         # set file_path to folder
-        #data_matrix.to_csv(file_path+filename, mode='w')
-        data_matrix.to_hdf(file_path+filename, key='df', mode='w')
+        data_matrix.to_csv(file_path+filename, mode='w')
+        #data_matrix.to_hdf(file_path+filename, key='df', mode='w')
+        cmd_global.sysReturn('Scan data saved as ['+filename+'.csv]')
 
 
 def main():
