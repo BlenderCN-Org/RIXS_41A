@@ -1,4 +1,4 @@
-#Last edited:20190326 4pm by Jason
+#Last edited:20190327 11am by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -431,7 +431,7 @@ class Command(QWidget):
                         self.sysReturn(text,"v", True)
                         param[sptext[1]] = float(sptext[2]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
                         self.sysReturn(sptext[1] + " has been moved to " + sptext[2])
-#                        status_widget_global.show_text()
+                        status_widget_global.show_text()
                     else:
                         self.sysReturn(text,"iv")
                         self.sysReturn(check_param, "err")
@@ -476,14 +476,14 @@ class Command(QWidget):
             if check == 'OK':
                 cmd_global.command_input.setEnabled(False)
                 self.sysReturn(text,"v", True)     # "v": log text in history; True: mark blue
-                if text.find(':') == -1: #scan x 1 10 1 0.1
+                if text.find(',') == -1: #scan x 1 10 1 0.1
                     c = 3
                     plot=['I0'] #default detection parameter
                 else: #scan y z: x 1 10 1 0.1
-                    c = text.find(':')
+                    c = text.find(',')
                     plot=text[5:c].split(' ') # list of detection parameters
 
-                print('index c of \':\' in the input command,  c=',c, ' (c=3 if there is no \':\')')
+                print('index c of \',\' in the input command,  c=',c, ' (c=3 if there is no \',\')')
                 print('input plot=', plot)
                 sptext = text[c+2:].split(' ') # list of scan parameters
                 print('sptext=', sptext)
@@ -661,6 +661,16 @@ class ImageWidget(QWidget):
 #     def spectrumplot(self, x):
 # #        self.plotWidget.plotItem.clear()
 #         self.plotWidget
+
+    def rixs_sum(self, image_data):
+        rixs_tmp = np.zeros((1, 2048), float)
+
+        for i in range(renpa.shape[0]):
+            rixs_tmp = rixs_tmp + renpa[i, :]
+
+        print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
+        print(rixs_tmp)
+
 class SpectrumWidget(QWidget):
 
     def __init__(self, parent=None):
@@ -794,8 +804,8 @@ class SpectrumWidget(QWidget):
         file_no += 1
         filename = str(dir_date)+"scan_"+str(file_no)
         # set file_path to folder
-        data_matrix.to_csv(file_path+filename, mode='w')
-        # data_matrix.to_hdf('', key='df', mode='w')
+        #data_matrix.to_csv(file_path+filename, mode='w')
+        data_matrix.to_hdf(file_path+filename, key='df', mode='w')
 
 
 def main():
