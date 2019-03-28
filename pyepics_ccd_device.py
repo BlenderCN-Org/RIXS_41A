@@ -36,7 +36,7 @@ class CcdDevices(object):
         self.savebgnd = 0
         self.imagetype = 0
 
-    def statr(self, value):
+    def start(self, value):
         if self.sim:
             print('[sim EMCCD] start = ' + value)
         else:

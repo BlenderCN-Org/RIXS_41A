@@ -21,7 +21,7 @@ class TmpDevices(object):
         
     def getValue(self):
         p = e.PV(self.pvroot)
-        v = p.get('value', as_string=False)
+        v = p.get()
         return v
         
 #    def setValue(self, value):

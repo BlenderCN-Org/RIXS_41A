@@ -190,7 +190,6 @@ class Panel(QWidget):
 
 class StatusWidget(QWidget):
     global param, parameter_text
-    UpdateSignal = pyqtSignal()
     def __init__(self, parent=None):
         super(StatusWidget, self).__init__(parent=parent)
         self.status_bar = QLabel(self)
@@ -677,34 +676,57 @@ class Command(QWidget):
 
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
-        #ccd related
-#        emccd = pecd("emccd", "41a:ccd1")
-#        emccd.getExposureTime()
-#        print(emccd.getExposureTime())
-#        emccd.getRIXS()
+        global safe
         super(ImageWidget, self).__init__(parent=parent)
+
+        if safe:
+            #ccd related
+            emccd = pecd("emccd", "41a:ccd1")
+            emccd.getExposureTime()
+            exposure_time = 3
+            print(emccd.getExposureTime())
+            print(emccd.getCooler())
+            print(emccd.getGain())
+            print(emccd.getTemperature())
+            print(emccd.getStatus())
+
+#         emccd.setExposureTime(exposure_time)
+#         emccd.setGain(10)
+#         emccd.start(1)
+# #        emccd.setCooler(0)
+# #        emccd.setTemperature(-80)
+# #        emccd.setCooler(1)
+
+#        time.sleep(1)
+            print(emccd.getExposureTime())
+            print(emccd.getGain())
+            print(emccd.getStatus())
+
+#        time.sleep(exposure_time + 5)
+            print(emccd.getStatus())
+            a = emccd.getImage()
+
+#            print(a)
+            npa = np.asarray(a)
+#            print(npa)
+            renpa = np.reshape(npa, (1024, 2048), order='F')
+#            print(renpa)
+
+        else:
+            a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+            npa = np.asarray(a)
+#            print(npa)
+            renpa = np.reshape(npa, (2, 5), order='F')
+#            print(renpa)
+
         self.plotWidget = GraphicsLayoutWidget(self)
         self.vb = self.plotWidget.addViewBox()
-#        np.random.randn(2097152, 1)
-        frame = np.random.normal(size=(1, 10))
-#        print(frame)
-        transarray = np.empty((10, 5), float)
-#        print(transarray)
-        a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-#        print(a)
-        npa = np.asarray(a)
-#        print(npa)
-        renpa = np.reshape(npa, (2, 5), order='F')
-#        print(renpa)
-#        frame = emccd.getImage()
+
         img = pg.ImageItem(renpa)
         self.vb.addItem(img)
         self.vb.autoRange()
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.plotWidget)
-#     def spectrumplot(self, x):
-# #        self.plotWidget.plotItem.clear()
-#         self.plotWidget
 
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
