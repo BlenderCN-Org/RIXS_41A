@@ -1,5 +1,4 @@
-#edited:20190327 5pm by Jason
-#Last edited:20190328 9:30 am by DJH
+#Last edited:20190328 1:40 by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
