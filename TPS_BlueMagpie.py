@@ -1,4 +1,5 @@
-#Last edited:20190327 5pm by Jason
+#edited:20190327 5pm by Jason
+#Last edited:20190328 9:30 am by DJH
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -18,13 +19,13 @@ from threading import Thread
 
 # Global parameters
 spectrum_widget_global = None
-status_widget_global = None
+status_global = None
 cmd_global = None
 scan_data = None
 xas_data = None
 rixs_data = None
 data_matrix = None
-param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
+param_index = ['f','t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
 
 '''
 Abort
@@ -60,16 +61,16 @@ if safe == True:
     AGM = e.Motor("41a:AGM:Energy")
     AGS = e.Motor("41a:AGS:Energy")
 
-def getRow():    
-    global safe  
-    if safe == True:        
-        real_row = pd.Series({'t':0,
+def getRow():
+    global safe
+    if safe == True:
+        real_row = pd.Series({'f': 0, 't':0,
                               's1':0,
                               's2':0,
                               'agm': AGM.get_position(),
                               'ags': AGS.get_position(),
                               'x': x.getValue(),
-                              'y': y.getValue(),                          
+                              'y': y.getValue(),
                               'z': z.getValue(),
                               'u': u.getValue(),
                               'v': v.getValue(),
@@ -79,12 +80,13 @@ def getRow():
                               'I0': e.caget(currentPV0)})
         print(real_row)
         return real_row
-    else:      
-        param = pd.Series([0.00,2.00,50.00,710.00,720.00,5.00,5.00,5.00,2.00,2.00,2.00,20.00,30.00, 0.0], index=param_index)
+    else:
+        param = pd.Series([int(0), 0.00,2.00,50.00,710.00,720.00,5.00,5.00,5.00,2.00,2.00,2.00,20.00,30.00, 0.0], index=param_index)
         print (param)
         return param
-    
+
 param = getRow()
+
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
@@ -106,6 +108,9 @@ if '\\' in path:
 else:
     # dir fo linux
     file_path = str(path) +'/'+ dir_name +'/'
+
+
+
 
 
 class RIXS(QMainWindow):
@@ -143,9 +148,9 @@ class RIXS(QMainWindow):
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
         self.show()
-        
 
-        
+
+
 class Panel(QWidget):
 
     def __init__(self, parent):
@@ -154,7 +159,7 @@ class Panel(QWidget):
         self.UI_layout()
 
     def UI_layout(self):
-        
+
         # Left_Column
         global cmd_global
         hbox = QHBoxLayout(self)
@@ -166,11 +171,11 @@ class Panel(QWidget):
         leftcolumn.addWidget(command_widget)
 
         # Right_Column
-        global status_widget_global, spectrum_widget_global
+        global status_global, spectrum_widget_global
         rightcolumn = QVBoxLayout()
 
         status_widget=StatusWidget(self)
-        status_widget_global = status_widget
+        status_global = status_widget
         rightcolumn.addWidget(status_widget)
 
         spectrum_widget = SpectrumWidget(self)
@@ -181,8 +186,8 @@ class Panel(QWidget):
         hbox.addLayout(rightcolumn, 1)
 
         self.show()
-        
-       
+
+
 
 class StatusWidget(QWidget):
 
@@ -202,50 +207,52 @@ class StatusWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.status_box)
-        
+
         #TODO : auto update parameter display in status widget
 # =============================================================================
 #         # Refresh
 #         self.timer = QtCore.QTimer() # 1000 ms
 #         self.timer.timeout.connect(self.on_timeout)
-#         
+#
 #     def on_timeout(self):
 #         # this method will be called every 1000 ms
 #         self.show_text()
 #         print("time_out_signal_triggered")
-# 
+#
 # =============================================================================
 
         # Forced refresh
     def show_text(self):
         # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
-        parameter_text = ("<font color=black><b><u>Parameters</b></u></font><br>"
-                           " Entrance slit: " + self.p('s1') + " &micro;m<br>"
+        parameter_text = ( "<font color=black><b> file number: " + self.p('f','int') + "<b><br>"
+                            " <br>"
+                          "<u>Parameters</u></font><br>"
                            " AGM: " + self.p('agm') + " eV<br>"
+                           " AGS: " + self.p('ags') + " eV<br>"
+                           " <br>"
+                           " Entrance slit: " + self.p('s1') + " &micro;m<br>"
                            " Exit slit: " + self.p('s2') + " &micro;m<br>"
+                           " <br>"
                            " Sample:  <br>"
                            " x = " + self.p('x') + ", y = " + self.p('y') + ", z = " + self.p('z') + " <br>"
                            " u = " + self.p('u') + ", v = " + self.p('v') + ", w = " + self.p('w') + " <br>"
                            "   Temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
-                           "           AGS: " + self.p('ags') + " eV<br>")
+                          # "Current"++""
+                        )
         self.status_box.setText(parameter_text)
-        
-        #TODO : auto update parameter display in status widget
-# =============================================================================
-#         print("status text shown")
-#         self.timer.start(1000)
-#       
-# =============================================================================
+
     # define format of displayed numbers
-    def p(self, x):
+    # - default: round, 2
+    def p(self, x, a='Round'):
         #get value by param_list index
         value =  param[x]
-        value = round(value,2)
+        if a =='Round':
+            value = round(value,2)
+        elif a =='int':
+            value = int(value)
         return str(value)
 
-   
-   
-        
+
         #TODO : auto update parameter display in status widget
 # =============================================================================
 #
@@ -286,11 +293,10 @@ class Command(QWidget):
         '''
         self.history_index = ['Time','Text']
         self.history_log = pd.DataFrame(columns=self.history_index)
-
         # modify counting mechanism => get index directly => check pandas document
         self.history_loc = 0
         self.logname = str(dir_date)+"_commandlog"
-#        self.history_log.to_csv(file_path + self.logname, mode='w')
+        
         '''
         Keyboard log (for KeyPressEvent function)
          - empty list
@@ -304,8 +310,8 @@ class Command(QWidget):
         self.command_input.setFocusPolicy(Qt.StrongFocus)
         self.command_input.setPlaceholderText("Type help to list commands ...")
         self.command_input.returnPressed.connect(self.send)
-        
-        
+
+
         '''
         Abort Button
         default: closed
@@ -316,7 +322,7 @@ class Command(QWidget):
         self.abort_button = QPushButton('Abort', self)
         self.abort_button.clicked.connect(self.abortCommand)
         self.abort_button.setEnabled(False)
-            
+
         # widget design
         self.Commandlayout = QVBoxLayout(self)
         self.Commandlayout.addWidget(self.command_message)
@@ -324,7 +330,7 @@ class Command(QWidget):
         self.Input.addWidget(self.command_input)
         self.Input.addWidget(self.abort_button)
         self.Commandlayout.addLayout(self.Input)
-        
+
     def abortCommand(self):
         global abort
         abort = True
@@ -363,8 +369,8 @@ class Command(QWidget):
         decorate msg in command; assume normal message.
         To mark color or log input_string;
         v=
-                    "v":    valid => log text in history
-              "v", True:      log => mark blue
+                    "v":    valid => mark blue
+              "v", True:      log => mark blue and log text in history
                    "iv":  invalid => mark gray
                   "err":    error => mark msg red
         '''
@@ -376,11 +382,10 @@ class Command(QWidget):
         elif v == "v":
             if log == True:
                 self.abort_button.setEnabled(True)
-                # TODO: find efficient way in pandas
+                #=================== history log======================= 
                 # current_size
                 i = (self.history_log.size)/2
                 self.history_loc = int(i+1)
-
                 # append valid command to history
                 row = pd.Series([t,x], index = self.history_index, name = self.history_loc)
                 self.history_log = self.history_log.append(row)
@@ -388,6 +393,7 @@ class Command(QWidget):
                 # TODO: format
                 name = file_path + self.logname +".csv"
                 row.to_csv(name, mode='a', header=False, index=False)
+                #=================== history log========================
 
             self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font><font color=black> </font>')
 
@@ -401,12 +407,15 @@ class Command(QWidget):
 
 
     def send(self):
-        global param_index, param, cmd_global, abort 
+        global param_index, param, cmd_global, abort, file_no
         abort = False
         print("abort reset", abort)
-        
+
         # user input_string
         text = self.command_input.text()
+        print('command input:  ',len(text), '   ',text )
+        while text[len(text)-1] ==' ':
+            text = text[:len(text)-1]
         text = re.sub(' +', ' ', text) # an elegant way to remove extra whitespace,  "import re" is needed/
 
         # keyboard log
@@ -436,6 +445,7 @@ class Command(QWidget):
 
         elif text == 'p':
             self.sysReturn(text,"v")
+            #adjust return msg format of parameter index
             p = ', '.join(param_index) # what does this line do?
             self.sysReturn(p)
 
@@ -447,7 +457,7 @@ class Command(QWidget):
             self.sysReturn(msg)
 
         elif text == 'u':
-            status_widget_global.show_text()
+            status_global.show_text()
             self.sysReturn(text,"v")
             self.sysReturn("Parameter values have been updated.")
 
@@ -465,7 +475,7 @@ class Command(QWidget):
                         self.sysReturn(text,"v", True)
                         param[sptext[1]] = float(sptext[2]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
                         self.sysReturn(sptext[1] + " has been moved to " + sptext[2])
-                        status_widget_global.show_text()
+                        status_global.show_text()
                     else:
                         self.sysReturn(text,"iv")
                         self.sysReturn(check_param, "err")
@@ -491,7 +501,7 @@ class Command(QWidget):
                         param[sptext[1]] = float(param[sptext[1]])+float(sptext[2])
                         output = str(param[sptext[1]])
                         self.sysReturn(sptext[1] + " has been moved to " + output)
-                        status_widget_global.show_text()
+                        status_global.show_text()
                     else:
                         self.sysReturn(text,"iv")
                         self.sysReturn(check_param, "err")
@@ -530,27 +540,21 @@ class Command(QWidget):
                 check_param1 =self.check_param_range(sptext[0], x1)
                 check_param2 =self.check_param_range(sptext[0], x2)
                 if (check_param1 =='OK') and (check_param2 =='OK'):
+# ==================Save file==================================================
+                    file_no +=1
+                    param['f'] =file_no
+                    print('file no =', file_no)
+                    print('param[\'f\']', param['f'])
+# =============================================================================
                     cmd_global.command_input.setEnabled(False)
                     param[scan_param] = x1
-                    status_widget_global.show_text()
+                    status_global.show_text()
                     QtGui.QApplication.processEvents()
                     time.sleep(0.5)
                     t0=datetime.datetime.now()
                     #self.command_message.append(t0.strftime("%c"))
-                    self.sysReturn('Scanning begins at ' + t0.strftime("%c"))
-# =============================================================================
-#                     t1 = time.time()
-#                     print('scan loop begins')
-# =============================================================================
+                    self.sysReturn('Scan '+ str(int(param['f'])) +' begins at ' + t0.strftime("%c"))
                     spectrum_widget_global.scan_loop(plot, sptext)
-# =============================================================================
-#                     dt = round(time.time()- t1, 3)
-#                     print('timespan in senconds=', dt)
-#                     if abort:
-#                         cmd_global.sysReturn('Scan loop terminated; timespan  = ' + self.convertSeconds(dt),'err')
-#                     else:
-#                         cmd_global.sysReturn('Scanning is completed; timespan  = ' + self.convertSeconds(dt))
-# =============================================================================
                     cmd_global.command_input.setEnabled(True)
                 else:
                     self.sysReturn(text, "iv")
@@ -740,6 +744,7 @@ class SpectrumWidget(QWidget):
         global file_no, param_index, param
         t1 = time.time()
         print('scan loop begins')
+        print('scan no = ', file_no)
         if plot==[]:
             plot=['I0']
 
@@ -757,7 +762,7 @@ class SpectrumWidget(QWidget):
 
         plot_no = min(len(plot),5.0) # maximum number of curves to be plotted is 5.
         plot = plot[:plot_no]
-        title_plot = 'scanning '+ scan_param +';  plotting'
+        title_plot = 'Scan '+ str(int(param['f']))+': scanning '+ scan_param +',  plotting'
         for i in range(plot_no):
             if i== 0: title_plot += ' ' + plot[i]
             else: title_plot += ', ' +plot[i]
@@ -789,7 +794,7 @@ class SpectrumWidget(QWidget):
 
         print('plot', plot)
         print('color', color)
-        
+
         # TODO: reconstruct this part
         if plot_no >= 1: self.curve0 = self.plotWidget.plot(scan_x, scan_data1, pen='g', linewidth=2, name=plot[0])
         if plot_no >= 2: self.curve1 = self.plotWidget.plot(scan_x, scan_data1, pen='r', linewidth=2, name=plot[1])
@@ -804,7 +809,7 @@ class SpectrumWidget(QWidget):
             if abort == True:
                 print("loop stopped")
                 break
-            print(i,'_th scanning point')
+            #print(i,'_th scanning point')
             scan_x.append(x1 + i*step)
             data_i =[]
             # set scanning parameters --> wait --> get data
@@ -818,7 +823,7 @@ class SpectrumWidget(QWidget):
                 param[plot[j]]=0.8**(j)*100*math.sin((10*j+1)*(scan_x[i]-(x1+x2)/2)/2) # math.cos(scan_x[i]/100) #get numeric data:  assuming  Sin function
                 if j==1: param[plot[j]]=i
                 data_i.append(param[plot[j]])
-                print('i= ', i, '  j=', j, '   ', scan_param, '=', scan_x[i], '     ', plot[j], '=', param[plot[j]])
+                #print('i= ', i, '  j=', j, '   ', scan_param, '=', scan_x[i], '     ', plot[j], '=', param[plot[j]])
 
             #after finishing the update of all param values
             data_matrix.loc[len(data_matrix), :] =  param.tolist() #appending param to data_matrix
@@ -830,9 +835,9 @@ class SpectrumWidget(QWidget):
             if plot_no >= 4: self.curve3.setData(scan_x, data_matrix.loc[:,plot[3]])
             if plot_no >= 5: self.curve4.setData(scan_x, data_matrix.loc[:,plot[4]])
 
-            print('data_matrix.iloc[i,:]')
-            print(data_matrix.iloc[i,:])
-            status_widget_global.show_text()
+            #print('data_matrix.iloc[i,:]')
+            #print(data_matrix.iloc[i,:])
+            status_global.show_text()
             QtGui.QApplication.processEvents()
             msg=''
             j=0
@@ -848,24 +853,26 @@ class SpectrumWidget(QWidget):
         dt = round(time.time()- t1, 3)
         print('timespan in senconds=', dt)
         if abort:
-            cmd_global.sysReturn('Scan loop terminated; timespan  = ' + cmd_global.convertSeconds(dt),'err')
+            cmd_global.sysReturn('Scaning loop has been terminated; timespan  = ' + cmd_global.convertSeconds(dt),'err')
         else:
-            cmd_global.sysReturn('Scanning is completed; timespan  = ' + cmd_global.convertSeconds(dt))
-            
-        '''    
+            cmd_global.sysReturn('Scan '+ str(int(param['f'])) +' is completed; timespan  = ' + cmd_global.convertSeconds(dt))
+
+        '''
         Data saving
         - File name from global, including directory and number
         - Can be saved as .csv or .hdf, but hdf format requires development.
         - Save terminated data?
-        
+
         TODO: check exist number, don't overwrite old ones.
         '''
-        file_no += 1
         filename = str(dir_date)+"scan_"+str(file_no)
-        # set file_path to folder
         data_matrix.to_csv(file_path+filename, mode='w')
         #data_matrix.to_hdf(file_path+filename, key='df', mode='w')
         cmd_global.sysReturn('Scan data saved as ['+filename+'.csv]')
+
+#class MacroWindow(QWidget):
+    
+    
 
 
 def main():
@@ -873,8 +880,7 @@ def main():
     ex = RIXS()
     cmd_global.command_input.setFocus()
     sys.exit(app.exec_())
-    
-    
+
+
 if __name__ == '__main__':
     main()
-
