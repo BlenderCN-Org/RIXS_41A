@@ -190,14 +190,13 @@ class Panel(QWidget):
 
 
 class StatusWidget(QWidget):
-
+    global param, parameter_text
+    UpdateSignal = pyqtSignal()
     def __init__(self, parent=None):
         super(StatusWidget, self).__init__(parent=parent)
-        global param, parameter_text
-        time = QTime.currentTime()
-        self.status_bar = QLabel("Experiment No.  1234;   PI: A. B. C. ", self)
+        self.status_bar = QLabel(self)
+        self.show_bar()
         self.status_box = QTextEdit(self)
-
         self.show_text()
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
         self.status_box.setFont(QtGui.QFont("UbuntuMono",14))
@@ -207,19 +206,36 @@ class StatusWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.status_box)
+        
+        '''
+        Update
+         - repeat show_text function every 1 sec.
+        '''
+        self._status_update_timer = QTimer(self)
+        self._status_update_timer.setSingleShot(False)
+        self._status_update_timer.timeout.connect(self.show_text)
+        self._status_update_timer.timeout.connect(self.show_bar)
+        self._status_update_timer.start(1000)
 
-        #TODO : auto update parameter display in status widget
+    def show_bar(self):
+        time = QDateTime.currentDateTime()
+        time_str = time.toString("yyyy-mm-dd hh:mm:ss")
+        self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C. ")
+    
 # =============================================================================
-#         # Refresh
-#         self.timer = QtCore.QTimer() # 1000 ms
-#         self.timer.timeout.connect(self.on_timeout)
-#
-#     def on_timeout(self):
-#         # this method will be called every 1000 ms
-#         self.show_text()
-#         print("time_out_signal_triggered")
-#
+#         self.UpdateSignal.connect(self.show_text)
+#         self.checklist = param
+#     
+#         # check two list matches
+#         match=[i for i, j in zip(self.checklist, param) if i == j]
+#         if len(match) < len(param):
+#             print ("parameters has been changed.")
+#             # refresh checklist
+#             self.checklist = param
+#             self.updateSignal.emit()
+# 
 # =============================================================================
+
 
         # Forced refresh
     def show_text(self):
@@ -253,19 +269,6 @@ class StatusWidget(QWidget):
         return str(value)
 
 
-        #TODO : auto update parameter display in status widget
-# =============================================================================
-#
-#         timer = QTimer()
-#         timer.timeout.connect(self.auto_update)
-#         timer.start(1000)
-#     def auto_update(self):
-#         global status_widget_global
-#         cur_time = datetime.strftime(datetime.now(), "%d.%m %H:%M:%S")
-#         object.setText(cur_time)
-#         status_widget_global.show_text()
-#
-# =============================================================================
 
         #Terminal
 class Command(QWidget):
@@ -475,7 +478,6 @@ class Command(QWidget):
                         self.sysReturn(text,"v", True)
                         param[sptext[1]] = float(sptext[2]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
                         self.sysReturn(sptext[1] + " has been moved to " + sptext[2])
-                        status_global.show_text()
                     else:
                         self.sysReturn(text,"iv")
                         self.sysReturn(check_param, "err")
@@ -501,7 +503,6 @@ class Command(QWidget):
                         param[sptext[1]] = float(param[sptext[1]])+float(sptext[2])
                         output = str(param[sptext[1]])
                         self.sysReturn(sptext[1] + " has been moved to " + output)
-                        status_global.show_text()
                     else:
                         self.sysReturn(text,"iv")
                         self.sysReturn(check_param, "err")
@@ -548,7 +549,6 @@ class Command(QWidget):
 # =============================================================================
                     cmd_global.command_input.setEnabled(False)
                     param[scan_param] = x1
-                    status_global.show_text()
                     QtGui.QApplication.processEvents()
                     time.sleep(0.5)
                     t0=datetime.datetime.now()
@@ -837,7 +837,6 @@ class SpectrumWidget(QWidget):
 
             #print('data_matrix.iloc[i,:]')
             #print(data_matrix.iloc[i,:])
-            status_global.show_text()
             QtGui.QApplication.processEvents()
             msg=''
             j=0
