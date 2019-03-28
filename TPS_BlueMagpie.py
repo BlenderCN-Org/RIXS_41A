@@ -218,7 +218,7 @@ class StatusWidget(QWidget):
 
     def show_bar(self):
         time = QDateTime.currentDateTime()
-        time_str = time.toString("yyyy-mm-dd hh:mm:ss")
+        time_str = time.toString("yyyy-MM-dd hh:mm:ss")
         self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C. ")
     
 # =============================================================================
