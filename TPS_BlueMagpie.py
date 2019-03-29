@@ -1,4 +1,4 @@
-#Last edited:20190328 1:40 by Jason
+#Last edited:20190329 6pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -92,21 +92,45 @@ param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1
                         'ags': [480, 1200], 'x': [0,10], 'y': [0,10],'z': [0,10], 'u': [0,10],
                       'v': [0,10], 'w': [0,10], 'ta':[5,350], 'tb':[5,350], 'I0': [0,1]})
 
+'''
+Dir for datasaving and macro
+ - create a project folder named after date
+ - sub folders including log, macro, and data
+ - TODO: build class?
 
-# Create temp dir for datasaving
+'''
 file_no = 0
-path=os.getcwd()
-dir_date = datetime.datetime.today().strftime('%Y%m%d')
-dir_name = dir_date+'temp'
+
+# Name of projectDir
+dir_date = datetime.datetime.today().strftime("%Y_%b%d")
+print(dir_date)
+dir_name = "project #0"    
+
+# very stupid way for test, probably os package has solution
+current_path=os.getcwd()
+
+if '\\' in current_path:
+    # for windows
+    sla = '\\'
+else:
+    # for linux
+    sla = '/'
+    
+project_path = str(current_path)+ sla + dir_name + sla
+macro_dir = str(project_path)+ 'macro' + sla
+log_dir = str(project_path)+ 'log' + sla
+data_dir = str(project_path)+ 'data' + sla
+    
 
 if not os.path.exists(dir_name):
     os.makedirs(dir_name)
-if '\\' in path:
-    # dir for windows
-    file_path = str(path) +'\\'+ dir_name +'\\'
-else:
-    # dir fo linux
-    file_path = str(path) +'/'+ dir_name +'/'
+    os.makedirs(macro_dir)
+    os.makedirs(log_dir)
+    os.makedirs(data_dir)
+
+
+    
+        
 
 
 
@@ -183,7 +207,7 @@ class Panel(QWidget):
 
         hbox.addLayout(leftcolumn, 1)
         hbox.addLayout(rightcolumn, 1)
-
+        
         self.show()
 
 
@@ -270,7 +294,8 @@ class StatusWidget(QWidget):
 
         #Terminal
 class Command(QWidget):
-
+    popup = pyqtSignal()
+    open_macro = pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent)
         # message
@@ -283,9 +308,19 @@ class Command(QWidget):
         welcome_message = ('<font color=blue>' + time.toString() + ' >> Welcome to TPS Blue Magpie!</font>')
         self.command_message.setText(welcome_message)
         self.command_message.setFont(QtGui.QFont("UbuntuMono", 10))
-        #consolas?
         self.command_message.setReadOnly(True)
         #optional: string format:print('Hello, {:s}. You have {:d} messages.'.format('Rex', 999))
+        
+        # user input
+        self.command_input= QLineEdit(self)
+        self.command_input.setFocusPolicy(Qt.StrongFocus)
+        self.command_input.setPlaceholderText("Type help to list commands ...")
+        self.command_input.returnPressed.connect(self.send)
+        
+        # macro related
+        self.macro = None
+        self.popup.connect(self.popupMacro)
+    
 
         '''
         History
@@ -306,13 +341,6 @@ class Command(QWidget):
         self.kblog = []
         self.kbi = 0
 
-        # user input
-        self.command_input= QLineEdit(self)
-        self.command_input.setFocusPolicy(Qt.StrongFocus)
-        self.command_input.setPlaceholderText("Type help to list commands ...")
-        self.command_input.returnPressed.connect(self.send)
-
-
         '''
         Abort Button
         default: closed
@@ -323,26 +351,46 @@ class Command(QWidget):
         self.abort_button = QPushButton('Abort', self)
         self.abort_button.clicked.connect(self.abortCommand)
         self.abort_button.setEnabled(False)
-
-        # widget design
+        
+        # CommandWidget design
         self.Commandlayout = QVBoxLayout(self)
         self.Commandlayout.addWidget(self.command_message)
         self.Input= QHBoxLayout(self)
         self.Input.addWidget(self.command_input)
         self.Input.addWidget(self.abort_button)
         self.Commandlayout.addLayout(self.Input)
-
+        
     def abortCommand(self):
         global abort
         abort = True
         print("set abort = True", abort)
 
-    def keyPressEvent(command_input, event):
+        
+        '''
+        Macro Window
+         - under construction
+         - pop up TextEdit
+        '''
+        
+    def popupMacro(self):
+        print ("Opening a new popup window...")
+        self.macro = MacroWindow()
+        self.macro.setWindowTitle("Macro Editor")
+        self.macro.resize(300,500)
+        self.macro.setWindowFlags(self.macro.windowFlags() & QtCore.Qt.CustomizeWindowHint)
+        self.macro.setWindowFlags(self.macro.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint)
+        self.open_macro.connect(self.macro.macro_exist)
+        self.macro.macroMsg.connect(self.sysReturn)
+        self.macro.show()
+        
+
         '''
         Up and Down
          - redefine function of QLineEdit(originally support return only)
          - read kbi and kblog for command convenience.
+         
         '''
+    def keyPressEvent(command_input, event):
         global cmd_global
         size = len(cmd_global.kblog)
         if event.key() == Qt.Key_Up and 0 < cmd_global.kbi <= size:
@@ -361,20 +409,21 @@ class Command(QWidget):
         else:
             super(Command, command_input).keyPressEvent(event)
 
-    # log and show
-    def sysReturn(self, x, v="", log=False):
-        # time stamp
-        timestamp = QTime.currentTime()
-        t= timestamp.toString()
         '''
-        decorate msg in command; assume normal message.
-        To mark color or log input_string;
+        Log and show
+         - Decorate msg in command; assume normal message.
+         - To mark color or log input_string;
         v=
                     "v":    valid => mark blue
               "v", True:      log => mark blue and log text in history
                    "iv":  invalid => mark gray
                   "err":    error => mark msg red
         '''
+        
+    def sysReturn(self, x, v="", log=False):
+        # time stamp
+        timestamp = QTime.currentTime()
+        t= timestamp.toString()
 
         if v == "iv":
             # invalid command
@@ -392,7 +441,7 @@ class Command(QWidget):
                 self.history_log = self.history_log.append(row)
                 print(self.history_log)
                 # TODO: format
-                name = file_path + self.logname +".csv"
+                name = log_dir + self.logname +".csv"
                 row.to_csv(name, mode='a', header=False, index=False)
                 #=================== history log========================
 
@@ -432,6 +481,7 @@ class Command(QWidget):
                    "<b>p</b>: list valid parameters.<br>\n"
                    "<b>r</b>: show all parameter ranges.<br>\n"
                    "<b>u</b>: update all parameter values.<br>\n"
+                   "<b>macro</b>: to open a macro editor.<br>\n"
                    "<b>scan</b>: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n")
             self.sysReturn(msg)
         elif text == "h":
@@ -565,6 +615,25 @@ class Command(QWidget):
                 self.sysReturn(text, "iv")
                 self.sysReturn(check, "err")
 
+        elif text[:5] == "macro":
+            space = text.count(' ')
+            sptext = text.split(' ')
+            if space == 1:
+                '''
+                reading exist macro is under construction.
+                '''
+                if sptext[1] is str:
+                    name = sptext[1]
+                    self.sysReturn(text,"v")
+                    self.open_macro.emit(name)
+                else:         
+                    self.sysReturn(text, "iv")
+                    self.sysReturn("correct format: macro(+ name)", "err")
+            elif space ==0:
+                self.sysReturn(text,"v")
+                self.popup.emit()
+            else:
+                self.sysReturn("correct format: macro(+ name)", "err")
         elif text != "":
            self.sysReturn(text, "iv")
            self.sysReturn("Type 'help' to list commands", "err")
@@ -674,6 +743,10 @@ class Command(QWidget):
         print('scan paramter check:', check_msg)
         return check_msg
 
+
+        
+        
+        
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
         global safe
@@ -740,7 +813,7 @@ class ImageWidget(QWidget):
 class SpectrumWidget(QWidget):
 
     def __init__(self, parent=None):
-        super(SpectrumWidget, self).__init__(parent=parent)
+        super().__init__(parent=parent)
         self.data = [random.random() for i in range(250)]
         self.plotWidget = PlotWidget(self)
         self.spectrumplot(self.data)
@@ -886,11 +959,52 @@ class SpectrumWidget(QWidget):
         TODO: check exist number, don't overwrite old ones.
         '''
         filename = str(dir_date)+"scan_"+str(file_no)
-        data_matrix.to_csv(file_path+filename, mode='w')
+        data_matrix.to_csv(data_dir+filename, mode='w')
         #data_matrix.to_hdf(file_path+filename, key='df', mode='w')
         cmd_global.sysReturn('Scan data saved as ['+filename+'.csv]')
 
-#class MacroWindow(QWidget):
+class MacroWindow(QWidget):
+    macroMsg = pyqtSignal(str)
+    def __init__(self):
+        super().__init__()
+        self.macro_editor = QTextEdit(self)
+        self.macro_editor.resize(300,400)
+        self.save_button = QPushButton("save",self)
+        self.save_button.clicked.connect(self.save_macro)
+        self.window_layout = QVBoxLayout(self)
+        self.window_layout.addWidget(self.macro_editor)
+        self.window_layout.addWidget(self.save_button)
+    
+    
+    def save_macro(self):
+        text = self.macro_editor.toPlainText() 
+        print(text)
+        print(text.split("\n"))
+        # will be extended as user defined macro name
+        file_title = "macro"+".txt"
+        #open new file
+        txt_file = macro_dir + file_title
+        file = open(txt_file, "w")
+        # write line to output file
+        file.write(text)
+        file.close()
+        self.macro_editor.append("file saved: "+txt_file)
+        self.macro_editor.setEnabled(False)
+        
+# =============================================================================
+#         
+#     def open_macro(self):
+#         if macro_exist():
+#             file = open(txt_file, "r")
+#         
+# =============================================================================
+        
+    def macro_exist(self, name):
+        if name == 'macro':
+            self.macroMsg.emit('file exist, not read yet.')
+        else:
+            self.macroMsg.emit("macro name doesn't exist", "err")
+        
     
     
 
