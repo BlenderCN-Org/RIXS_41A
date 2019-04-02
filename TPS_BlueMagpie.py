@@ -1,4 +1,4 @@
-#Last edited:20190329 6pm by Jason
+#Last edited:20190402 5pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -33,14 +33,14 @@ Abort
    if abort = True, breaks loop.
  - reset in Command(send function)
 '''
-abort = False
+ABORT = False
 
 # PyEPICS Devices
 
 # Don't Set True
-safe = False
+SAFE = False
 
-if safe == True:
+if SAFE == True:
 # Import written .py
     from pyepics_device import Devices as ped
     from pyepics_tmp_device import TmpDevices as petd
@@ -61,8 +61,9 @@ if safe == True:
     AGS = e.Motor("41a:AGS:Energy")
 
 def getRow():
-    global safe
-    if safe == True:
+    global SAFE
+
+    if SAFE == True:
         real_row = pd.Series({'f': 0, 't':0,
                               's1':0,
                               's2':0,
@@ -237,7 +238,7 @@ class StatusWidget(QWidget):
         self._status_update_timer.setSingleShot(False)
         self._status_update_timer.timeout.connect(self.show_text)
         self._status_update_timer.timeout.connect(self.show_bar)
-        self._status_update_timer.start(1000)
+        self._status_update_timer.start(500)
 
     def show_bar(self):
         time = QDateTime.currentDateTime()
@@ -262,6 +263,8 @@ class StatusWidget(QWidget):
         # Forced refresh
     def show_text(self):
         # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
+        if SAFE:
+            param = getRow()
         parameter_text = ( "<font color=black><b> file number: " + self.p('f','int') + "<b><br>"
                             " <br>"
                           "<u>Parameters</u></font><br>"
@@ -295,7 +298,8 @@ class StatusWidget(QWidget):
         #Terminal
 class Command(QWidget):
     popup = pyqtSignal()
-    open_macro = pyqtSignal(str)
+    inputext = pyqtSignal(str)
+    mcrostat = pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent)
         # message
@@ -315,11 +319,14 @@ class Command(QWidget):
         self.command_input= QLineEdit(self)
         self.command_input.setFocusPolicy(Qt.StrongFocus)
         self.command_input.setPlaceholderText("Type help to list commands ...")
-        self.command_input.returnPressed.connect(self.send)
+        ####
+        self.command_input.returnPressed.connect(self.send_message)
+        self.inputext.connect(self.send)
         
         # macro related
         self.macro = None
         self.popup.connect(self.popupMacro)
+#        self.mcrostat[str].connect(self.command_input.setText)
     
 
         '''
@@ -359,13 +366,18 @@ class Command(QWidget):
         self.Input.addWidget(self.command_input)
         self.Input.addWidget(self.abort_button)
         self.Commandlayout.addLayout(self.Input)
+              
+    def send_message(self):
+        txt = self.command_input.text()
+        self.inputext[str].emit(txt)
         
+    '''
+    set global abort flag when button clicked
+    '''
     def abortCommand(self):
-        global abort
-        abort = True
-        print("set abort = True", abort)
+        global ABORT
+        ABORT = True
 
-        
         '''
         Macro Window
          - under construction
@@ -379,7 +391,6 @@ class Command(QWidget):
         self.macro.resize(300,500)
         self.macro.setWindowFlags(self.macro.windowFlags() & QtCore.Qt.CustomizeWindowHint)
         self.macro.setWindowFlags(self.macro.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint)
-        self.open_macro.connect(self.macro.macro_exist)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.show()
         
@@ -456,13 +467,13 @@ class Command(QWidget):
             self.command_message.append(x)
 
 
-    def send(self):
-        global param_index, param, cmd_global, abort, file_no
-        abort = False
-        print("abort reset", abort)
+    def send(self, txt):
+        global param_index, param, cmd_global, ABORT, file_no
+        ABORT = False
 
-        # user input_string
-        text = self.command_input.text()
+        # user input_string 
+        text = txt
+#        text = self.command_input.text()
         print('command input:  ',len(text), '   ',text )
         while text[len(text)-1] ==' ':
             text = text[:len(text)-1]
@@ -481,8 +492,9 @@ class Command(QWidget):
                    "<b>p</b>: list valid parameters.<br>\n"
                    "<b>r</b>: show all parameter ranges.<br>\n"
                    "<b>u</b>: update all parameter values.<br>\n"
+                   "<b>scan</b>: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n"
                    "<b>macro</b>: to open a macro editor.<br>\n"
-                   "<b>scan</b>: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n")
+                   "<b>do</b>: execute macro by calling text file name.<br>\n")
             self.sysReturn(msg)
         elif text == "h":
             self.sysReturn(text, "v")
@@ -616,24 +628,38 @@ class Command(QWidget):
                 self.sysReturn(check, "err")
 
         elif text[:5] == "macro":
+            # popup window
+            self.sysReturn(text,"v")
+            self.popup.emit()
+                
+        elif text[:3] == "do ":
             space = text.count(' ')
             sptext = text.split(' ')
+            # read macro file
             if space == 1:
-                '''
-                reading exist macro is under construction.
-                '''
-                if sptext[1] is str:
-                    name = sptext[1]
-                    self.sysReturn(text,"v")
-                    self.open_macro.emit(name)
-                else:         
-                    self.sysReturn(text, "iv")
-                    self.sysReturn("correct format: macro(+ name)", "err")
-            elif space ==0:
-                self.sysReturn(text,"v")
-                self.popup.emit()
+                name = sptext[1]
+                self.sysReturn(text,"v", True)
+                self.doMacro(name)
             else:
-                self.sysReturn("correct format: macro(+ name)", "err")
+                self.sysReturn("correct format: do macroname","err")
+        
+        elif text[:5] == "wait ":
+            space = text.count(' ')
+            sptext = text.split(' ')
+            # set delay time
+            if space == 1:
+                t = sptext[1]
+                if self.checkFloat(t):
+                    self.lockInput(True)
+                    self.sysReturn(text, "v")
+                    self.sysReturn("wait for "+t+"seconds.")
+                    _timer = QTimer(self)
+                    _timer.timeout.connect(self.lockInput)
+                    _timer.start(1000*float(t))
+#                    self.command_input.setEnabled(True)
+                else:
+                    self.sysReturn("correct format: wait time", "err")
+            
         elif text != "":
            self.sysReturn(text, "iv")
            self.sysReturn("Type 'help' to list commands", "err")
@@ -644,8 +670,15 @@ class Command(QWidget):
         self.command_message.moveCursor(QtGui.QTextCursor.End)
         self.abort_button.setEnabled(False)
         cmd_global.command_input.setFocus()
-
-
+        
+    def lockInput(self, lock=False):
+        if lock:
+            self.command_input.setDisabled(True)
+        else:
+            self.command_input.setEnabled(True)
+        
+        
+        
     def convertSeconds(self,seconds):
         h = int(seconds//(60*60))
         m = int((seconds-h*60*60)//60)
@@ -742,17 +775,55 @@ class Command(QWidget):
 
         print('scan paramter check:', check_msg)
         return check_msg
-
-
-        
+    
+    def doMacro(self, name):
+        #start from 0
+        self.macro_index = 0
+        self.macro_n = 0
+        readfile=[]
+        macro_name = macro_dir + str(name) + ".txt"
+        #check file exist
+        if os.path.exists(macro_name):
+            cmd_global.command_input.setEnabled(False)
+            #==============Macro start===============
+            f = open(macro_name,"r")  
+            for x in f:
+                x = x.replace('\n','')
+                readfile.append(x)
+            self.macro_n = len(readfile)
+            self.sysReturn("macro begins: "+macro_name)
+            #=============Macro cycle================
+            self.runLine(self.macro_index, self.macro_n, macro_name)
+            #==============Macro End=================
+            self.sysReturn("macro completed.")
+            cmd_global.command_input.setEnabled(True)
+        else:
+            self.sysReturn("macro file name: "+macro_name+" not found.","err")
+            
+    def runLine(self,i,n,name):
+        if i<n:
+            #==============Read again===============
+            readfile=[]
+            f = open(name,"r")
+            for x in f:
+                x = x.replace('\n','')
+                readfile.append(x)
+            self.macro_n = len(readfile)
+            #======Execute command line by line=====
+            run = readfile[i] 
+            msg = ("<b>running line</b> ["+str(i)+"] : "+str(run))
+            self.sysReturn(msg)
+            self.send(run)
+            self.macro_index+=1
+            self.runLine(self.macro_index, self.macro_n, name)
         
         
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
-        global safe
+        global SAFE
         super(ImageWidget, self).__init__(parent=parent)
 
-        if safe:
+        if SAFE:
             #ccd related
             emccd = pecd("emccd", "41a:ccd1")
             emccd.getExposureTime()
@@ -900,7 +971,7 @@ class SpectrumWidget(QWidget):
         # scanning loop
         print('for loop begins')
         for i in range(n+1):
-            if abort == True:
+            if ABORT:
                 print("loop stopped")
                 break
             #print(i,'_th scanning point')
@@ -945,7 +1016,7 @@ class SpectrumWidget(QWidget):
 
         dt = round(time.time()- t1, 3)
         print('timespan in senconds=', dt)
-        if abort:
+        if ABORT:
             cmd_global.sysReturn('Scaning loop has been terminated; timespan  = ' + cmd_global.convertSeconds(dt),'err')
         else:
             cmd_global.sysReturn('Scan '+ str(int(param['f'])) +' is completed; timespan  = ' + cmd_global.convertSeconds(dt))
@@ -990,20 +1061,7 @@ class MacroWindow(QWidget):
         file.close()
         self.macro_editor.append("file saved: "+txt_file)
         self.macro_editor.setEnabled(False)
-        
-# =============================================================================
-#         
-#     def open_macro(self):
-#         if macro_exist():
-#             file = open(txt_file, "r")
-#         
-# =============================================================================
-        
-    def macro_exist(self, name):
-        if name == 'macro':
-            self.macroMsg.emit('file exist, not read yet.')
-        else:
-            self.macroMsg.emit("macro name doesn't exist", "err")
+      
         
     
     
