@@ -21,10 +21,26 @@ spectrum_widget_global = None
 status_global = None
 cmd_global = None
 scan_data = None
-xas_data = None
-rixs_data = None
+xas_data = None    # XAS spectrum
+rixs_data = None # RIXS spectrum
+rixs_img = None  # RIXS image data, np.ndrray
 data_matrix = None
-param_index = ['f','t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0']
+
+# device parameters
+param_index = ['f',   't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0','imager', 'Tccd', 'shutter', 'ccd', 'gain']
+param_value = [int(0), 0.,  2.0,  50.,  710.,  720.,  5.,  5.,  5.,  2.,  2.,  2.,  20.,  30.,  0.,  0,         25,      0,        0,      30]
+param = pd.Series(param_value, index=param_index)
+
+# make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
+param_index0 = list(param_index) #note: we can't use param_index0 = param_index
+for element in ['t','f', 's1', 's2','imager', 'shutter', 'ccd','gain']:
+    param_index0.remove(element)
+
+# golable series for the parameter ranges set to protect instruments.
+param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
+                        'ags': [480, 1200], 'x': [0,10], 'y': [0,10],'z': [0,10], 'u': [0,10],
+                      'v': [0,10], 'w': [0,10], 'ta':[5,350], 'tb':[5,350], 'I0': [0,1], 'Tccd': [-100, 30], 'gain': [0, 100]})
+
 
 '''
 Abort
@@ -60,10 +76,12 @@ if SAFE == True:
     AGM = e.Motor("41a:AGM:Energy")
     AGS = e.Motor("41a:AGS:Energy")
 
-def getRow():
+def get_param():
     global SAFE
 
     if SAFE == True:
+        ##### 'imager','Tccd', 'shutter' need to be included
+        '''
         real_row = pd.Series({'f': 0, 't':0,
                               's1':0,
                               's2':0,
@@ -78,34 +96,24 @@ def getRow():
                               'ta':tsa.getValue(),
                               'tb':tsb.getValue(),
                               'I0': e.caget(currentPV0)})
-        print(real_row)
-        return real_row
-    else:
-        param = pd.Series([int(0), 0.00,2.00,50.00,710.00,720.00,5.00,5.00,5.00,2.00,2.00,2.00,20.00,30.00, 0.0], index=param_index)
-        print (param)
-        return param
+        '''
+        #get  param values from devices
+        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0'] = [AGM.get_position(), AGS.get_position(), x.getValue(), y.getValue(), z.getValue(), u.getValue(), v.getValue(), w.getValue(), tsa.getValue(), tsb.getValue(), e.caget(currentPV0)]
 
-param = getRow()
-
-
-# golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
-                        'ags': [480, 1200], 'x': [0,10], 'y': [0,10],'z': [0,10], 'u': [0,10],
-                      'v': [0,10], 'w': [0,10], 'ta':[5,350], 'tb':[5,350], 'I0': [0,1]})
+    print(param)
 
 '''
 Dir for datasaving and macro
  - create a project folder named after date
  - sub folders including log, macro, and data
  - TODO: build class?
-
 '''
 file_no = 0
 
 # Name of projectDir
 dir_date = datetime.datetime.today().strftime("%Y_%b%d")
 print(dir_date)
-dir_name = "project #0"    
+dir_name = "project #0"
 
 # very stupid way for test, probably os package has solution
 current_path=os.getcwd()
@@ -116,23 +124,19 @@ if '\\' in current_path:
 else:
     # for linux
     sla = '/'
-    
+
+
 project_path = str(current_path)+ sla + dir_name + sla
 macro_dir = str(project_path)+ 'macro' + sla
 log_dir = str(project_path)+ 'log' + sla
 data_dir = str(project_path)+ 'data' + sla
-    
+
 
 if not os.path.exists(dir_name):
     os.makedirs(dir_name)
     os.makedirs(macro_dir)
     os.makedirs(log_dir)
     os.makedirs(data_dir)
-
-
-    
-        
-
 
 
 
@@ -208,7 +212,7 @@ class Panel(QWidget):
 
         hbox.addLayout(leftcolumn, 1)
         hbox.addLayout(rightcolumn, 1)
-        
+
         self.show()
 
 
@@ -229,7 +233,7 @@ class StatusWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.status_box)
-        
+
         '''
         Update
          - repeat show_text function every 1 sec.
@@ -244,11 +248,11 @@ class StatusWidget(QWidget):
         time = QDateTime.currentDateTime()
         time_str = time.toString("yyyy-MM-dd hh:mm:ss")
         self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C. ")
-    
+
 # =============================================================================
 #         self.UpdateSignal.connect(self.show_text)
 #         self.checklist = param
-#     
+#
 #         # check two list matches
 #         match=[i for i, j in zip(self.checklist, param) if i == j]
 #         if len(match) < len(param):
@@ -256,7 +260,7 @@ class StatusWidget(QWidget):
 #             # refresh checklist
 #             self.checklist = param
 #             self.updateSignal.emit()
-# 
+#
 # =============================================================================
 
 
@@ -264,21 +268,25 @@ class StatusWidget(QWidget):
     def show_text(self):
         # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
         if SAFE:
-            param = getRow()
+            param = get_param()
+
         parameter_text = ( "<font color=black><b> file number: " + self.p('f','int') + "<b><br>"
                             " <br>"
                           "<u>Parameters</u></font><br>"
                            " AGM: " + self.p('agm') + " eV<br>"
                            " AGS: " + self.p('ags') + " eV<br>"
                            " <br>"
-                           " Entrance slit: " + self.p('s1') + " &micro;m<br>"
-                           " Exit slit: " + self.p('s2') + " &micro;m<br>"
+                           " entrance slit   s1= " + self.p('s1') + " &micro;m<br>"
+                           " exit slit   s2= " + self.p('s2') + " &micro;m<br>"
+                           " shutter: " + self.p('shutter')+ "<br>"
                            " <br>"
                            " Sample:  <br>"
                            " x = " + self.p('x') + ", y = " + self.p('y') + ", z = " + self.p('z') + " <br>"
                            " u = " + self.p('u') + ", v = " + self.p('v') + ", w = " + self.p('w') + " <br>"
-                           "   Temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
-                          # "Current"++""
+                           "   temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
+                           " <br>"
+                           " RIXS imager:  <br>"
+                           " temperature = " + self.p('Tccd') +" \u2103"+ ",     CCD "+ self.p('ccd')+',   gain = ' + self.p('gain') + " <br>"
                         )
         self.status_box.setText(parameter_text)
 
@@ -287,10 +295,21 @@ class StatusWidget(QWidget):
     def p(self, x, a='Round'):
         #get value by param_list index
         value =  param[x]
+
+        #if isinstance(value, int) or isinstance(value, float):
         if a =='Round':
             value = round(value,2)
         elif a =='int':
             value = int(value)
+
+        if x=='shutter':
+            if param[x]==0: value='close'
+            if param[x]==1: value='open'
+
+        if x=='ccd':
+            if param[x]==0: value='off'
+            if param[x]==1: value='on'
+
         return str(value)
 
 
@@ -314,7 +333,7 @@ class Command(QWidget):
         self.command_message.setFont(QtGui.QFont("UbuntuMono", 10))
         self.command_message.setReadOnly(True)
         #optional: string format:print('Hello, {:s}. You have {:d} messages.'.format('Rex', 999))
-        
+
         # user input
         self.command_input= QLineEdit(self)
         self.command_input.setFocusPolicy(Qt.StrongFocus)
@@ -322,12 +341,12 @@ class Command(QWidget):
         ####
         self.command_input.returnPressed.connect(self.send_message)
         self.inputext.connect(self.send)
-        
+
         # macro related
         self.macro = None
         self.popup.connect(self.popupMacro)
 #        self.mcrostat[str].connect(self.command_input.setText)
-    
+
 
         '''
         History
@@ -339,7 +358,7 @@ class Command(QWidget):
         # modify counting mechanism => get index directly => check pandas document
         self.history_loc = 0
         self.logname = str(dir_date)+"_commandlog"
-        
+
         '''
         Keyboard log (for KeyPressEvent function)
          - empty list
@@ -358,7 +377,7 @@ class Command(QWidget):
         self.abort_button = QPushButton('Abort', self)
         self.abort_button.clicked.connect(self.abortCommand)
         self.abort_button.setEnabled(False)
-        
+
         # CommandWidget design
         self.Commandlayout = QVBoxLayout(self)
         self.Commandlayout.addWidget(self.command_message)
@@ -366,11 +385,11 @@ class Command(QWidget):
         self.Input.addWidget(self.command_input)
         self.Input.addWidget(self.abort_button)
         self.Commandlayout.addLayout(self.Input)
-              
+
     def send_message(self):
         txt = self.command_input.text()
         self.inputext[str].emit(txt)
-        
+
     '''
     set global abort flag when button clicked
     '''
@@ -383,7 +402,7 @@ class Command(QWidget):
          - under construction
          - pop up TextEdit
         '''
-        
+
     def popupMacro(self):
         print ("Opening a new popup window...")
         self.macro = MacroWindow()
@@ -393,13 +412,13 @@ class Command(QWidget):
         self.macro.setWindowFlags(self.macro.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.show()
-        
+
 
         '''
         Up and Down
          - redefine function of QLineEdit(originally support return only)
          - read kbi and kblog for command convenience.
-         
+
         '''
     def keyPressEvent(command_input, event):
         global cmd_global
@@ -430,7 +449,7 @@ class Command(QWidget):
                    "iv":  invalid => mark gray
                   "err":    error => mark msg red
         '''
-        
+
     def sysReturn(self, x, v="", log=False):
         # time stamp
         timestamp = QTime.currentTime()
@@ -443,7 +462,7 @@ class Command(QWidget):
         elif v == "v":
             if log == True:
                 self.abort_button.setEnabled(True)
-                #=================== history log======================= 
+                #=================== history log=======================
                 # current_size
                 i = (self.history_log.size)/2
                 self.history_loc = int(i+1)
@@ -467,18 +486,19 @@ class Command(QWidget):
             self.command_message.append(x)
 
 
-    def send(self, txt):
+    def send(self, text):
         global param_index, param, cmd_global, ABORT, file_no
         ABORT = False
 
-        # user input_string 
-        text = txt
-#        text = self.command_input.text()
+        text = self.command_input.text()
         print('command input:  ',len(text), '   ',text )
+
+        # remove whitespace spaces ("  ") in the end of command input
         while text[len(text)-1] ==' ':
             text = text[:len(text)-1]
-        text = re.sub(' +', ' ', text) # an elegant way to remove extra whitespace,  "import re" is needed/
 
+        # an elegant way to remove extra whitespace,  "import re" is needed/
+        text = re.sub(' +', ' ', text)
         # keyboard log
         if text != "":
             self.kblog.append(text)
@@ -487,14 +507,21 @@ class Command(QWidget):
         if text == "help":
             self.sysReturn(text, "v")
             msg = ("<b>h</b>: recall previous commands executed sucessfully.<br>\n"
-                   "<b>mv</b>: set a parameter to its absolute value.<br>\n"
-                   "<b>mvr</b>: change a parameter in terms of a relative value.<br>\n"
                    "<b>p</b>: list valid parameters.<br>\n"
                    "<b>r</b>: show all parameter ranges.<br>\n"
-                   "<b>u</b>: update all parameter values.<br>\n"
+                   "<b>macro</b>: open a macro editor.<br>\n"
+                   "<b>do</b>: execute a macro by calling a text file.<br>\n"
+                   "<br>\n"
+                   "<b>mv</b>: set a parameter to its absolute value.<br>\n"
+                   "<b>mvr</b>: change a parameter in terms of a relative value.<br>\n"
                    "<b>scan</b>: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n"
-                   "<b>macro</b>: to open a macro editor.<br>\n"
-                   "<b>do</b>: execute macro by calling text file name.<br>\n")
+                   "<b>xas</b>:  <br>\n"
+                   "<b>rixs</b>:  <br>\n"
+                   "<br>\n"
+                   "<b>s2</b>: set the opening of the exit slit.<br>\n"
+                   "<b>shut</b>: open or close the BL shutter.<br>\n"
+                   "<b>ccd</b>: turn on or turn off the CCD.<br>\n")
+
             self.sysReturn(msg)
         elif text == "h":
             self.sysReturn(text, "v")
@@ -509,8 +536,42 @@ class Command(QWidget):
         elif text == 'p':
             self.sysReturn(text,"v")
             #adjust return msg format of parameter index
-            p = ', '.join(param_index) # what does this line do?
+            p = ', '.join(param_index0) # what does this line do?
             self.sysReturn(p)
+
+        elif text == "shut" or text[:5] == 'shut ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            if space == 1: # e.g. shut 0
+                if sptext[1] in ['0', '1']:
+                    self.sysReturn(text,"v", True)
+                    param['shutter'] = float(sptext[1]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
+                    if sptext[1]=='0': shutt ='close'
+                    if sptext[1]=='1': shutt ='open'
+                    self.sysReturn("The shutter is " + shutt)
+                else:
+                    self.sysReturn(text,"iv")
+                    self.sysReturn('shutter parameter has to be 0 ot 1 for close and open, respectively.', "err")
+            else:
+                self.sysReturn(text,"iv")
+                self.sysReturn('incorrect format: shut  0 or 1', 'err')
+
+        elif text == "ccd" or text[:4] == 'ccd ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            if space == 1: # e.g. ccd 1
+                if sptext[1] in ['0', '1']:
+                    self.sysReturn(text,"v", True)
+                    param['ccd'] = float(sptext[1]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
+                    if sptext[1]=='0': shutt ='off'
+                    if sptext[1]=='1': shutt ='on'
+                    self.sysReturn("The CCD is " + shutt)
+                else:
+                    self.sysReturn(text,"iv")
+                    self.sysReturn(' ccd parameter has to be 0 ot 1 for off and on, respectively.', "err")
+            else:
+                self.sysReturn(text,"iv")
+                self.sysReturn('incorrect format: ccd  0 or 1', 'err')
 
         elif text == 'r':
             self.sysReturn(text,"v")
@@ -524,6 +585,21 @@ class Command(QWidget):
             self.sysReturn(text,"v")
             self.sysReturn("Parameter values have been updated.")
 
+        elif text == "s2" or text[:3] == 's2 ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            if space == 1: # e.g. s1 5
+                if sptext[1] in ['5', '10', '20', '50', '100', '150']:
+                    self.sysReturn(text,"v", True)
+                    param['s2'] = float(sptext[1]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
+                    self.sysReturn("The exit slit opening has been set to " + sptext[1])
+                else:
+                    self.sysReturn(text,"iv")
+                    self.sysReturn('s2 opening is discrete, 5, 10, 20, 50, 100 & 150', "err")
+            else:
+                self.sysReturn(text,"iv")
+                self.sysReturn("incommand format: s2 opening (5, 10, 20, 50, 100 or 150)", "err")
+
         # mv function
         elif text == 'mv' or text[:3] == 'mv ':
         # All sequence below should be organized as function(text) which returns msg & log
@@ -531,7 +607,7 @@ class Command(QWidget):
             sptext = text.split(' ')
             # check format
             if space == 2: # e.g. mv x 1234
-                if sptext[1] in param_index:
+                if sptext[1] in param_index0:
                     check_param =self.check_param_range(sptext[1], sptext[2])
                     #print(check_param)
                     if check_param == 'OK':
@@ -546,7 +622,7 @@ class Command(QWidget):
                     self.sysReturn("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters","err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn("correct format: mv parameter value", "err")
+                self.sysReturn("incorrect format: mv parameter value", "err")
 
         # mvr function
         elif text[:4] == 'mvr ':
@@ -555,7 +631,7 @@ class Command(QWidget):
             sptext = text.split(' ')
             # check format
             if space == 2:
-                if sptext[1] in param_index:
+                if sptext[1] in param_index0:
                     value= float(param[sptext[1]])+float(sptext[2])
                     check_param =self.check_param_range(sptext[1], value)
                     if check_param == 'OK':
@@ -571,7 +647,7 @@ class Command(QWidget):
                     self.sysReturn("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters", "err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn("correct format: mv parameter value", "err")
+                self.sysReturn("incorrect format: mv parameter value", "err")
 
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
@@ -631,7 +707,7 @@ class Command(QWidget):
             # popup window
             self.sysReturn(text,"v")
             self.popup.emit()
-                
+
         elif text[:3] == "do ":
             space = text.count(' ')
             sptext = text.split(' ')
@@ -641,8 +717,8 @@ class Command(QWidget):
                 self.sysReturn(text,"v", True)
                 self.doMacro(name)
             else:
-                self.sysReturn("correct format: do macroname","err")
-        
+                self.sysReturn("incorrect format: do macroname","err")
+
         elif text[:5] == "wait ":
             space = text.count(' ')
             sptext = text.split(' ')
@@ -658,8 +734,8 @@ class Command(QWidget):
                     _timer.start(1000*float(t))
 #                    self.command_input.setEnabled(True)
                 else:
-                    self.sysReturn("correct format: wait time", "err")
-            
+                    self.sysReturn("incorrect format: wait time", "err")
+
         elif text != "":
            self.sysReturn(text, "iv")
            self.sysReturn("Type 'help' to list commands", "err")
@@ -670,15 +746,15 @@ class Command(QWidget):
         self.command_message.moveCursor(QtGui.QTextCursor.End)
         self.abort_button.setEnabled(False)
         cmd_global.command_input.setFocus()
-        
+
     def lockInput(self, lock=False):
         if lock:
             self.command_input.setDisabled(True)
         else:
             self.command_input.setEnabled(True)
-        
-        
-        
+
+
+
     def convertSeconds(self,seconds):
         h = int(seconds//(60*60))
         m = int((seconds-h*60*60)//60)
@@ -697,7 +773,7 @@ class Command(QWidget):
         global param, param_index, param_range
 
         if self.checkFloat(param_value) is True:
-        #if (parame_name in param_index) and self.checkFloat(param_value) == True:
+        #if (parame_name in param_index0) and self.checkFloat(param_value) == True:
             j= float(param_value)
             if min(param_range[param_name]) <= j  and j <= max(param_range[param_name]):
                 check_msg = 'OK'
@@ -743,7 +819,7 @@ class Command(QWidget):
                     if self.checkFloat(sptext[i+1]) is True:
                         j +=1.0
                 if j==4:
-                    if sptext[0] in param_index:
+                    if sptext[0] in param_index0:
                         if float(sptext[4]) > 0:  #float(sptext[4]) assigns dwell time
                             check_format = ('OK')
                         else:
@@ -761,7 +837,7 @@ class Command(QWidget):
         # checking if dection parameters have been correctly selected
         j=0 #check index
         for i in range(len(plot)): # i from 0 to len(plot)-1
-            if plot[i] in param_index: j +=1.0
+            if plot[i] in param_index0: j +=1.0
         #
         if j== len(plot):
             check_plot='OK'
@@ -775,7 +851,7 @@ class Command(QWidget):
 
         print('scan paramter check:', check_msg)
         return check_msg
-    
+
     def doMacro(self, name):
         #start from 0
         self.macro_index = 0
@@ -786,7 +862,7 @@ class Command(QWidget):
         if os.path.exists(macro_name):
             cmd_global.command_input.setEnabled(False)
             #==============Macro start===============
-            f = open(macro_name,"r")  
+            f = open(macro_name,"r")
             for x in f:
                 x = x.replace('\n','')
                 readfile.append(x)
@@ -799,7 +875,7 @@ class Command(QWidget):
             cmd_global.command_input.setEnabled(True)
         else:
             self.sysReturn("macro file name: "+macro_name+" not found.","err")
-            
+
     def runLine(self,i,n,name):
         if i<n:
             #==============Read again===============
@@ -810,14 +886,14 @@ class Command(QWidget):
                 readfile.append(x)
             self.macro_n = len(readfile)
             #======Execute command line by line=====
-            run = readfile[i] 
+            run = readfile[i]
             msg = ("<b>running line</b> ["+str(i)+"] : "+str(run))
             self.sysReturn(msg)
             self.send(run)
             self.macro_index+=1
             self.runLine(self.macro_index, self.macro_n, name)
-        
-        
+
+
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
         global SAFE
@@ -1045,10 +1121,10 @@ class MacroWindow(QWidget):
         self.window_layout = QVBoxLayout(self)
         self.window_layout.addWidget(self.macro_editor)
         self.window_layout.addWidget(self.save_button)
-    
-    
+
+
     def save_macro(self):
-        text = self.macro_editor.toPlainText() 
+        text = self.macro_editor.toPlainText()
         print(text)
         print(text.split("\n"))
         # will be extended as user defined macro name
@@ -1061,10 +1137,10 @@ class MacroWindow(QWidget):
         file.close()
         self.macro_editor.append("file saved: "+txt_file)
         self.macro_editor.setEnabled(False)
-      
-        
-    
-    
+
+
+
+
 
 
 def main():
