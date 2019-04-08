@@ -1,4 +1,4 @@
-#Last edited:20190408 2pm by Jason
+#Last edited:20190408 6pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -27,14 +27,16 @@ rixs_img = None  # RIXS image data, np.ndrray
 data_matrix = None
 
 # device parameters
-param_index = ['f',   't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0','imager', 'Tccd', 'shutter', 'ccd', 'gain']
-param_value = [int(0), 0.,  2.0,  50.,  710.,  720.,  5.,  5.,  5.,  2.,  2.,  2.,  20.,  30.,  0.,  0,         25,      0,        0,      30]
+param_index = [   'f','t', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0','imager', 'Tccd', 'shutter', 'ccd', 'gain']
+param_value = [int(0), 0.,  2.0,  50.,  710.,  720.,  5.,  5.,  5.,  2.,  2.,  2.,  20.,  30.,   0.,       0,     25,         0,     0,     30]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
-param_index0 = list(param_index) #note: we can't use param_index0 = param_index
-for element in ['t','f', 's1', 's2','imager', 'shutter', 'ccd','gain']:
-    param_index0.remove(element)
+# note: we can't use param_index0 = param_index
+non_device =  ['t','f', 's1', 's2','imager', 'shutter', 'ccd','gain']
+param_index0 = list(set(param_index)-set(non_device))
+print (param_index0)
+
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
@@ -56,52 +58,58 @@ ABORT = False
 # Don't Set True
 SAFE = False
 
-if SAFE is True:
+if SAFE:
 # Import written .py
     from pyepics_device import Devices as ped
     from pyepics_tmp_device import TmpDevices as petd
     from pyepics_ccd_device import CcdDevices as pecd
     import epics as e
- #TODO: name hexapod as H811
-    x = ped("hx", "41a:hexapod:x")
-    y = ped("hy", "41a:hexapod:y")
-    z = ped("hz", "41a:hexapod:z")
-    u = ped("hu", "41a:hexapod:u")
-    v = ped("hv", "41a:hexapod:v")
-    w = ped("hw", "41a:hexapod:w")
-    tsa = petd("tmp1", "41a:sample:tmp1")
-    tsb = petd("tmp2", "41a:sample:tmp2")
-    currentPV0 = "41a:sample:i0"
-    currentPV1 = "41a:sample:phdi"
+ #global parameter named capital for safety
+    X = ped("hx", "41a:hexapod:x")
+    Y = ped("hy", "41a:hexapod:y")
+    Z = ped("hz", "41a:hexapod:z")
+    U = ped("hu", "41a:hexapod:u")
+    V = ped("hv", "41a:hexapod:v")
+    W = ped("hw", "41a:hexapod:w")
+    TSA = petd("tmp1", "41a:sample:tmp1")
+    TSB = petd("tmp2", "41a:sample:tmp2")
+    IPV0 = "41a:sample:i0"
+    IPV1 = "41a:sample:phdi"
     AGM = e.Motor("41a:AGM:Energy")
     AGS = e.Motor("41a:AGS:Energy")
 
 def get_param():
-    global SAFE
-
-    if SAFE is True:
+    if SAFE:
         ##### 'imager','Tccd', 'shutter' need to be included
-        '''
-        real_row = pd.Series({'f': 0, 't':0,
-                              's1':0,
-                              's2':0,
-                              'agm': AGM.get_position(),
-                              'ags': AGS.get_position(),
-                              'x': x.getValue(),
-                              'y': y.getValue(),
-                              'z': z.getValue(),
-                              'u': u.getValue(),
-                              'v': v.getValue(),
-                              'w': w.getValue(),
-                              'ta':tsa.getValue(),
-                              'tb':tsb.getValue(),
-                              'I0': e.caget(currentPV0)})
-        '''
-        #get  param values from devices
-        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0'] = [AGM.get_position(), AGS.get_position(), x.getValue(), y.getValue(), z.getValue(), u.getValue(), v.getValue(), w.getValue(), tsa.getValue(), tsb.getValue(), e.caget(currentPV0)]
+        #get param values from devices
+        real_list = [AGM.get_position(), AGS.get_position(), 
+                     X.getValue(), Y.getValue(), Z.getValue(), 
+                     U.getValue(), V.getValue(), W.getValue(), 
+                     TSA.getValue(), TSB.getValue(), e.caget(IPV0)]
+        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0'] = real_list
 
-    print(param)
 
+def set_param(p, v):
+    # p : name of parameter, should be string
+    # v : ***should only be range-checked value
+    #pname already checked in param_index0 by check format
+    if SAFE:
+        ped_dict = {'x':X,'y':Y,'z':Z,'u':U,'v':V,'w':W}
+        epics_dict = {'agm':AGM,'ags':AGS,'I0':IPV0}
+        #for ped
+        if p in ped_dict:
+            P = d[p]
+            P.setValue(v)
+        #for epics
+        elif p in epics_dict:
+            P = d[p]
+        #for petd (not written, will not be activated)
+        #elif p is 'tsa' or 'tsb':
+    else:
+        #dummy set
+        param[p] = v
+        
+        
 '''
 Dir for datasaving and macro
  - create a project folder named after date
@@ -146,8 +154,8 @@ class RIXS(QMainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
         # Window attributes
-#        self.setFixedSize(1300, 820)
-        self.setFixedSize(1900, 1600)
+        self.setFixedSize(1300, 820)
+#        self.setFixedSize(1900, 1600)
         self.setWindowTitle('TPS blue magpie')
 
         exitAct = QAction(QIcon('exit.png'), ' &Quit', self)
@@ -250,21 +258,6 @@ class StatusWidget(QWidget):
         time_str = time.toString("yyyy-MM-dd hh:mm:ss")
         self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C. ")
 
-# =============================================================================
-#         self.UpdateSignal.connect(self.show_text)
-#         self.checklist = param
-#
-#         # check two list matches
-#         match=[i for i, j in zip(self.checklist, param) if i == j]
-#         if len(match) < len(param):
-#             print ("parameters has been changed.")
-#             # refresh checklist
-#             self.checklist = param
-#             self.updateSignal.emit()
-#
-# =============================================================================
-
-
         # Forced refresh
     def show_text(self):
         # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
@@ -293,28 +286,21 @@ class StatusWidget(QWidget):
 
     # define format of displayed numbers
     # - default: round, 2
-    def p(self, x, a='Round'):
+    def p(self, x, y='Round'):
         #get value by param_list index
         value =  param[x]
-
-        #if isinstance(value, int) or isinstance(value, float):
-        if a =='Round':
-            value = round(value,2)
-        elif a =='int':
-            value = int(value)
-
         if x=='shutter':
-            if param[x]==0: value='close'
-            if param[x]==1: value='open'
-
-        if x=='ccd':
-            if param[x]==0: value='off'
-            if param[x]==1: value='on'
-
-        return str(value)
-
-
-
+            if value is 0: read='close'
+            else: read='open'
+        elif x=='ccd':
+            if value is 0: read='off'
+            else: read='on'
+        #if isinstance(value, int) or isinstance(value, float):
+        else: 
+            if y is 'Round': read = round(value,2)
+            elif y is 'int': read = int(value)
+        return str(read)
+    
         #Terminal
 class Command(QWidget):
     popup = pyqtSignal()
@@ -497,15 +483,16 @@ class Command(QWidget):
         # remove whitespace spaces ("  ") in the end of command input
         if text[len(text)-1] ==' ':
             text = text[:len(text)-1]
-
         # an elegant way to remove extra whitespace,  "import re" is needed/
         text = re.sub(' +', ' ', text)
-        # keyboard log
-        if text != "":
+        # keyboard log for Up and Down
+        if text is not "":
             self.kblog.append(text)
             self.kbi = len(self.kblog)
-        # commands
-        if text == "help":
+        '''
+        Valid Commands
+        '''
+        if text is "help":
             self.sysReturn(text, "v")
             msg = ("<b>h</b>: recall previous commands executed sucessfully.<br>\n"
                    "<b>p</b>: list valid parameters.<br>\n"
@@ -522,9 +509,9 @@ class Command(QWidget):
                    "<b>s2</b>: set the opening of the exit slit.<br>\n"
                    "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>ccd</b>: turn on or turn off the CCD.<br>\n")
-
             self.sysReturn(msg)
-        elif text == "h":
+            
+        elif text is "h":
             self.sysReturn(text, "v")
             i = self.history_log.size
             if i>0:
@@ -534,13 +521,13 @@ class Command(QWidget):
                 his_text = "Blue Magpie has not executed any command yet."
             self.sysReturn(his_text)
 
-        elif text == 'p':
+        elif text is 'p':
             self.sysReturn(text,"v")
             #adjust return msg format of parameter index
             p = ', '.join(param_index0) # what does this line do?
             self.sysReturn(p)
 
-        elif text == "shut" or text[:5] == 'shut ':
+        elif "shut" in text[:5]:
             space = text.count(' ')
             sptext = text.split(' ')
             if space == 1: # e.g. shut 0
@@ -557,7 +544,7 @@ class Command(QWidget):
                 self.sysReturn(text,"iv")
                 self.sysReturn('incorrect format: shut  0 or 1', 'err')
 
-        elif text == "ccd" or text[:4] == 'ccd ':
+        elif "ccd" in text:
             space = text.count(' ')
             sptext = text.split(' ')
             if space == 1: # e.g. ccd 1
@@ -574,19 +561,19 @@ class Command(QWidget):
                 self.sysReturn(text,"iv")
                 self.sysReturn('incorrect format: ccd  0 or 1', 'err')
 
-        elif text == 'r':
+        elif text is 'r':
             self.sysReturn(text,"v")
             msg='parameter ranges:\n'
             for i in range(param_range.size):
                 msg += str(param_range.index[i]) + ' = '+ str(param_range[i])+'\n'
             self.sysReturn(msg)
             
-        elif text == 'u':
+        elif text is 'u':
             status_global.show_text()
             self.sysReturn(text,"v")
             self.sysReturn("Parameter values have been updated.")
             
-        elif text == "s2" or text[:3] == 's2 ':
+        elif "s2" in text[:3]:
             space = text.count(' ')
             sptext = text.split(' ')
             if space == 1: # e.g. s1 5
@@ -599,7 +586,7 @@ class Command(QWidget):
                     self.sysReturn('s2 opening is discrete, 5, 10, 20, 50, 100 & 150', "err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn("incommand format: s2 opening (5, 10, 20, 50, 100 or 150)", "err")
+                self.sysReturn("incorrect format: s2 opening (5, 10, 20, 50, 100 or 150)", "err")
 
         # mv function
         elif text == 'mv' or text[:3] == 'mv ':
@@ -608,19 +595,23 @@ class Command(QWidget):
             sptext = text.split(' ')
             # check format
             if space == 2: # e.g. mv x 1234
-                if sptext[1] in param_index0:
-                    check_param =self.check_param_range(sptext[1], sptext[2])
+                # p as parameter ; v as value.
+                p = sptext[1]
+                v = sptext[2]
+                if p in param_index0:
+                    check_param =self.check_param_range(p, v)
                     #print(check_param)
                     if check_param == 'OK':
                         self.sysReturn(text,"v", True)
-                        param[sptext[1]] = float(sptext[2]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
-                        self.sysReturn(sptext[1] + " has been moved to " + sptext[2])
+                        set_param(p, v)
+#                        param[sptext[1]] = float(sptext[2]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
+                        self.sysReturn(p + " has been moved to " + v)
                     else:
                         self.sysReturn(text,"iv")
                         self.sysReturn(check_param, "err")
                 else:
                     self.sysReturn(text,"iv")
-                    self.sysReturn("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters","err")
+                    self.sysReturn("parameter \'"+ p+ "\' is invalid; type \'p\' to list valid parameters","err")
             else:
                 self.sysReturn(text,"iv")
                 self.sysReturn("incorrect format: mv parameter value", "err")
@@ -648,16 +639,16 @@ class Command(QWidget):
                     self.sysReturn("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters", "err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn("incorrect format: mv parameter value", "err")
+                self.sysReturn("incorrect format: mvr parameter value", "err")
 
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
-        elif text == 'scan' or text[:5] == 'scan ':
+        elif 'scan' in text[:5]:
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)   # checking input command and parameters
             if check == 'OK':
                 self.sysReturn(text,"v", True)     # "v": log text in history; True: mark blue
-                if text.find(',') == -1: #scan x 1 10 1 0.1
+                if text.find(',') is -1: #scan x 1 10 1 0.1
                     c = 3
                     plot=['I0'] #default detection parameter
                 else: #scan y z: x 1 10 1 0.1
@@ -704,7 +695,7 @@ class Command(QWidget):
                 self.sysReturn(text, "iv")
                 self.sysReturn(check, "err")
 
-        elif text[:5] == "macro":
+        elif text is "macro":
             # popup window
             self.sysReturn(text,"v")
             self.popup.emit()
@@ -770,8 +761,6 @@ class Command(QWidget):
             return False
 
     def check_param_range(self, param_name, param_value):
-        global param, param_index, param_range
-
         if self.checkFloat(param_value) is True:
         #if (parame_name in param_index0) and self.checkFloat(param_value) == True:
             j= float(param_value)
@@ -877,7 +866,7 @@ class Command(QWidget):
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir),"err")
 
     def runLine(self,n,name):
-        while True:
+        while self.macro_index < self.macro_n:
             QtGui.QApplication.processEvents()
             #==========Check macro update===========
             readfile=[]
@@ -893,14 +882,10 @@ class Command(QWidget):
             self.sysReturn(msg)
             self.send(line)
             time.sleep(1.0)
-            #============index plus one=============
-            if self.macro_index is self.macro_n:
-                break
-
+            QtGui.QApplication.processEvents()
 
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
-        global SAFE
         super(ImageWidget, self).__init__(parent=parent)
 
         if SAFE:
