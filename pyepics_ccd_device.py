@@ -198,7 +198,7 @@ class CcdDevices(object):
             p = e.PV(self.pvroot + ":cooler")
             p.put(value)
 
-    def getTemperature(self):
+    def getTemp(self):
         if self.sim:
             v = self.temperature
             print('[sim EMCCD] getTemperature = ' + str(v))
@@ -207,7 +207,7 @@ class CcdDevices(object):
             v = p.get()
         return v
 
-    def setTemperature(self, value):
+    def setTemp(self, value):
         if self.sim:
             self.temperature = value
             print('[sim EMCCD] setTemperature = ' + value)

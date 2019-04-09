@@ -1,4 +1,4 @@
-#Last edited:20190408 6pm by Jason
+#Last edited:20190409 1pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -13,8 +13,6 @@ from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
 import time, datetime, math, re
-import threading
-from threading import Thread
 
 # Global parameters
 spectrum_widget_global = None
@@ -33,10 +31,11 @@ param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
 # note: we can't use param_index0 = param_index
-non_device =  ['t','f', 's1', 's2','imager', 'shutter', 'ccd','gain']
-param_index0 = list(set(param_index)-set(non_device))
-print (param_index0)
-
+non_movables =  ['t','f', 's1', 's2','imager', 'shutter', 'ccd','gain','I0', 'tb']
+param_index0 = list(param_index)
+for e in non_movables:
+    param_index0.remove(e)
+#param_index0 = ['agm','ags','x','y','z','u','v','w','ta','Tccd']
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
@@ -64,7 +63,7 @@ if SAFE:
     from pyepics_tmp_device import TmpDevices as petd
     from pyepics_ccd_device import CcdDevices as pecd
     import epics as e
- #global parameter named capital for safety
+ #global parameter named capital for safety (not mixed with global)
     X = ped("hx", "41a:hexapod:x")
     Y = ped("hy", "41a:hexapod:y")
     Z = ped("hz", "41a:hexapod:z")
@@ -77,16 +76,19 @@ if SAFE:
     IPV1 = "41a:sample:phdi"
     AGM = e.Motor("41a:AGM:Energy")
     AGS = e.Motor("41a:AGS:Energy")
+    CCD = pecd("emccd", "41a:ccd1")
 
+# called when SAFE == True
 def get_param():
-    if SAFE:
         ##### 'imager','Tccd', 'shutter' need to be included
         #get param values from devices
         real_list = [AGM.get_position(), AGS.get_position(), 
                      X.getValue(), Y.getValue(), Z.getValue(), 
                      U.getValue(), V.getValue(), W.getValue(), 
-                     TSA.getValue(), TSB.getValue(), e.caget(IPV0)]
-        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0'] = real_list
+                     TSA.getValue(), TSB.getValue(), e.caget(IPV0), CCD.getTemp()]
+        #replace current list elements in param_index0
+        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0', 'Tccd'] = real_list
+        return param
 
 
 def set_param(p, v):
@@ -95,16 +97,18 @@ def set_param(p, v):
     #pname already checked in param_index0 by check format
     if SAFE:
         ped_dict = {'x':X,'y':Y,'z':Z,'u':U,'v':V,'w':W}
-        epics_dict = {'agm':AGM,'ags':AGS,'I0':IPV0}
+        epics_dict = {'agm':AGM,'ags':AGS} #I0 read only
         #for ped
         if p in ped_dict:
-            P = d[p]
+            P = ped_dict[p]
             P.setValue(v)
         #for epics
         elif p in epics_dict:
-            P = d[p]
-        #for petd (not written, will not be activated)
-        #elif p is 'tsa' or 'tsb':
+            P = epics_dict[p]
+            e.caput(P, v)
+        # tb read-only
+        elif p == 'ta': TSA.setValue(v)
+        elif p =='Tccd': CCD.setTemp(v)
     else:
         #dummy set
         param[p] = v
@@ -547,12 +551,13 @@ class Command(QWidget):
         elif "ccd" in text:
             space = text.count(' ')
             sptext = text.split(' ')
+            set_ccd = sptext[1]
             if space == 1: # e.g. ccd 1
-                if sptext[1] in ['0', '1']:
+                if set_ccd in ['0', '1']:
                     self.sysReturn(text,"v", True)
-                    param['ccd'] = float(sptext[1]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
-                    if sptext[1]=='0': shutt ='off'
-                    if sptext[1]=='1': shutt ='on'
+                    param['ccd'] = float(set_ccd) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
+                    if set_ccd=='0': shutt ='off'
+                    if set_ccd=='1': shutt ='on'
                     self.sysReturn("The CCD is " + shutt)
                 else:
                     self.sysReturn(text,"iv")
@@ -762,6 +767,7 @@ class Command(QWidget):
 
     def check_param_range(self, param_name, param_value):
         if self.checkFloat(param_value) is True:
+            global param_range
         #if (parame_name in param_index0) and self.checkFloat(param_value) == True:
             j= float(param_value)
             if min(param_range[param_name]) <= j  and j <= max(param_range[param_name]):
@@ -890,30 +896,30 @@ class ImageWidget(QWidget):
 
         if SAFE:
             #ccd related
-            emccd = pecd("emccd", "41a:ccd1")
-            emccd.getExposureTime()
+            global CCD
+            CCD.getExposureTime()
             exposure_time = 3
-            print(emccd.getExposureTime())
-            print(emccd.getCooler())
-            print(emccd.getGain())
-            print(emccd.getTemperature())
-            print(emccd.getStatus())
+            print(CCD.getExposureTime())
+            print(CCD.getCooler())
+            print(CCD.getGain())
+            print(CCD.getTemperature())
+            print(CCD.getStatus())
 
-#         emccd.setExposureTime(exposure_time)
-#         emccd.setGain(10)
-#         emccd.start(1)
-# #        emccd.setCooler(0)
-# #        emccd.setTemperature(-80)
-# #        emccd.setCooler(1)
+#         CCD.setExposureTime(exposure_time)
+#         CCD.setGain(10)
+#         CCD.start(1)
+# #        CCD.setCooler(0)
+# #        CCD.setTemperature(-80)
+# #        CCD.setCooler(1)
 
 #        time.sleep(1)
-            print(emccd.getExposureTime())
-            print(emccd.getGain())
-            print(emccd.getStatus())
+            print(CCD.getExposureTime())
+            print(CCD.getGain())
+            print(CCD.getStatus())
 
 #        time.sleep(exposure_time + 5)
-            print(emccd.getStatus())
-            a = emccd.getImage()
+            print(CCD.getStatus())
+            a = CCD.getImage()
 
 #            print(a)
             npa = np.asarray(a)

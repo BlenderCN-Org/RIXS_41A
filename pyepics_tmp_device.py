@@ -24,9 +24,9 @@ class TmpDevices(object):
         v = p.get()
         return v
         
-#    def setValue(self, value):
-#        p = e.PV(self.pvroot + "w")
-#        v = p.put(value)
-#        return v
+    def setValue(self, value):
+        p = e.PV(self.pvroot + "w")
+        v = p.put(value)
+#        return v   #why return?
 
     

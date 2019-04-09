@@ -41,7 +41,7 @@ class Devices(object):
         else:
             p = e.PV("w")
             v = p.put(value) 
-        return v
+#        return v   #why return?
     
     def getStatus(self):
         if self.sim:
