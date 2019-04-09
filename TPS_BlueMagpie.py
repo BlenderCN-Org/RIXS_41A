@@ -290,15 +290,15 @@ class StatusWidget(QWidget):
         #get value by param_list index
         value =  param[x]
         if x=='shutter':
-            if value is 0: read='close'
+            if value == 0: read='close'
             else: read='open'
         elif x=='ccd':
-            if value is 0: read='off'
+            if value == 0: read='off'
             else: read='on'
         #if isinstance(value, int) or isinstance(value, float):
         else: 
-            if y is 'Round': read = round(value,2)
-            elif y is 'int': read = int(value)
+            if y == 'Round': read = round(value,2)
+            elif y == 'int': read = int(value)
         return str(read)
     
         #Terminal
@@ -486,13 +486,13 @@ class Command(QWidget):
         # an elegant way to remove extra whitespace,  "import re" is needed/
         text = re.sub(' +', ' ', text)
         # keyboard log for Up and Down
-        if text is not "":
+        if text != "":
             self.kblog.append(text)
             self.kbi = len(self.kblog)
         '''
         Valid Commands
         '''
-        if text is "help":
+        if text == "help":
             self.sysReturn(text, "v")
             msg = ("<b>h</b>: recall previous commands executed sucessfully.<br>\n"
                    "<b>p</b>: list valid parameters.<br>\n"
@@ -511,7 +511,7 @@ class Command(QWidget):
                    "<b>ccd</b>: turn on or turn off the CCD.<br>\n")
             self.sysReturn(msg)
             
-        elif text is "h":
+        elif text == "h":
             self.sysReturn(text, "v")
             i = self.history_log.size
             if i>0:
@@ -521,7 +521,7 @@ class Command(QWidget):
                 his_text = "Blue Magpie has not executed any command yet."
             self.sysReturn(his_text)
 
-        elif text is 'p':
+        elif text == 'p':
             self.sysReturn(text,"v")
             #adjust return msg format of parameter index
             p = ', '.join(param_index0) # what does this line do?
@@ -561,14 +561,14 @@ class Command(QWidget):
                 self.sysReturn(text,"iv")
                 self.sysReturn('incorrect format: ccd  0 or 1', 'err')
 
-        elif text is 'r':
+        elif text == 'r':
             self.sysReturn(text,"v")
             msg='parameter ranges:\n'
             for i in range(param_range.size):
                 msg += str(param_range.index[i]) + ' = '+ str(param_range[i])+'\n'
             self.sysReturn(msg)
             
-        elif text is 'u':
+        elif text == 'u':
             status_global.show_text()
             self.sysReturn(text,"v")
             self.sysReturn("Parameter values have been updated.")
@@ -695,7 +695,7 @@ class Command(QWidget):
                 self.sysReturn(text, "iv")
                 self.sysReturn(check, "err")
 
-        elif text is "macro":
+        elif text == "macro":
             # popup window
             self.sysReturn(text,"v")
             self.popup.emit()
