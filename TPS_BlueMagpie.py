@@ -1,4 +1,4 @@
-#Last edited:20190409 1pm by Jason
+#Last edited:20190409 5pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -17,6 +17,7 @@ import time, datetime, math, re
 # Global parameters
 spectrum_widget_global = None
 status_global = None
+img_global = None
 cmd_global = None
 scan_data = None
 xas_data = None    # XAS spectrum
@@ -24,24 +25,26 @@ rixs_data = None # RIXS spectrum
 rixs_img = None  # RIXS image data, np.ndrray
 data_matrix = None
 
-# device parameters
-param_index = [   'f','t', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0','imager', 'Tccd', 'shutter', 'ccd', 'gain']
-param_value = [int(0), 0.,  2.0,  50.,  710.,  720.,  5.,  5.,  5.,  2.,  2.,  2.,  20.,  30.,   0.,       0,     25,         0,     0,     30]
+# SETUP_parameters
+#TODO: img?
+param_index = [   'f','t', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w','th', 'tth', 'ta', 'tb', 'I0','imager', 'Tccd', 'shutter', 'ccd', 'gain']
+param_value = [int(0), 0.,  2.0,  50.,  710.,  720.,  0.,  0.,  0.,  0.,  0.,  0.,   0,    90,  20.,  30.,   0.,       0,     25,         0,     0,     10]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
 # note: we can't use param_index0 = param_index
-non_movables =  ['t','f', 's1', 's2','imager', 'shutter', 'ccd','gain','I0', 'tb']
+non_movables =  ['t','f', 's1', 's2','imager', 'shutter', 'ccd','I0', 'tb']
 param_index0 = list(param_index)
-for e in non_movables:
-    param_index0.remove(e)
-#param_index0 = ['agm','ags','x','y','z','u','v','w','ta','Tccd']
+for elements in non_movables:
+    param_index0.remove(elements)
+
+#param_index0 = ['agm','ags','x','y','z','u','v','w','th','tth','ta','Tccd']
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
-                        'ags': [480, 1200], 'x': [0,10], 'y': [0,10],'z': [0,10], 'u': [0,10],
-                      'v': [0,10], 'w': [0,10], 'ta':[5,350], 'tb':[5,350], 'I0': [0,1], 'Tccd': [-100, 30], 'gain': [0, 100]})
-
+                        'ags': [480, 1200], 'x': [-10,10], 'y': [-10,10],'z': [-6.5,6.5], 'u': [-10,10],
+                          'v': [-10,10], 'w': [-10,10], 'th':[-5, 185], 'tth':[-35, 0],
+                        'ta':[5,350], 'tb':[5,350], 'I0': [0,1], 'Tccd': [-100, 30], 'gain': [0, 100]})
 
 '''
 Abort
@@ -52,13 +55,12 @@ Abort
 '''
 ABORT = False
 
-# PyEPICS Devices
-
-# Don't Set True
+# Don't Set True; same as self.sim in ped and CCD
 SAFE = False
 
+# SETUP_epics
 if SAFE:
-# Import written .py
+# Initial values for setup communication
     from pyepics_device import Devices as ped
     from pyepics_tmp_device import TmpDevices as petd
     from pyepics_ccd_device import CcdDevices as pecd
@@ -70,25 +72,38 @@ if SAFE:
     U = ped("hu", "41a:hexapod:u")
     V = ped("hv", "41a:hexapod:v")
     W = ped("hw", "41a:hexapod:w")
+    TH = ped("sm_th", "41a:sample:th")
+    TTH = ped("sm_tth", "41a:sample:tth")
     TSA = petd("tmp1", "41a:sample:tmp1")
     TSB = petd("tmp2", "41a:sample:tmp2")
     IPV0 = "41a:sample:i0"
     IPV1 = "41a:sample:phdi"
     AGM = e.Motor("41a:AGM:Energy")
     AGS = e.Motor("41a:AGS:Energy")
+    #CCDsetup
     CCD = pecd("emccd", "41a:ccd1")
+    exposure_time = 2
+    CCD.setExposureTime(exposure_time)
+    CCD.setGain(10)
+    CCD.setAcqMode(2)  #0: video; 1: single (obsolete); 2: accumulation
+    CCD.setAccuType(0) #0: raw image; 2: differnece image
+
+
 
 # called when SAFE == True
 def get_param():
         ##### 'imager','Tccd', 'shutter' need to be included
         #get param values from devices
+        I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
         real_list = [AGM.get_position(), AGS.get_position(), 
                      X.getValue(), Y.getValue(), Z.getValue(), 
-                     U.getValue(), V.getValue(), W.getValue(), 
-                     TSA.getValue(), TSB.getValue(), e.caget(IPV0), CCD.getTemp()]
+                     U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
+                     TSA.getValue(), TSB.getValue(), I0_read,
+                     CCD.getTemp(), CCD.getGain()]
         #replace current list elements in param_index0
-        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb', 'I0', 'Tccd'] = real_list
+        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Tccd','gain'] = real_list
         return param
+
 
 
 def set_param(p, v):
@@ -96,22 +111,29 @@ def set_param(p, v):
     # v : ***should only be range-checked value
     #pname already checked in param_index0 by check format
     if SAFE:
-        ped_dict = {'x':X,'y':Y,'z':Z,'u':U,'v':V,'w':W}
+        ped_dict = {'x':X,'y':Y,'z':Z,'u':U,'v':V,'w':W,'th':TH,'tth':TTH}
         epics_dict = {'agm':AGM,'ags':AGS} #I0 read only
         #for ped
         if p in ped_dict:
             P = ped_dict[p]
             P.setValue(v)
-        #for epics
-        elif p in epics_dict:
-            P = epics_dict[p]
-            e.caput(P, v)
+            print(X.getValue())
+        #for AGM, AGS
+#        elif p in epics_dict:
+#        elif p == 'ags': #AGM don't test
+#            P = epics_dict[p]
+#            e.caput(P, v)
         # tb read-only
-        elif p == 'ta': TSA.setValue(v)
+        elif p == 'ta':
+            e.caput("41a:sample:heater", 1)
+            TSA.setValue(v)
         elif p =='Tccd': CCD.setTemp(v)
+        elif p == 'gain': CCD.setGain(v)
+        print("parameter moved.")
     else:
         #dummy set
         param[p] = v
+
         
         
 '''
@@ -202,10 +224,11 @@ class Panel(QWidget):
     def UI_layout(self):
 
         # Left_Column
-        global cmd_global
+        global cmd_global, img_global
         hbox = QHBoxLayout(self)
         leftcolumn = QVBoxLayout()
         image_widget = ImageWidget(self)
+        img_global = image_widget
         leftcolumn.addWidget(image_widget, 1)
         command_widget=Command(self)
         cmd_global = command_widget
@@ -239,7 +262,7 @@ class StatusWidget(QWidget):
         self.status_box = QTextEdit(self)
         self.show_text()
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
-        self.status_box.setFont(QtGui.QFont("UbuntuMono",14))
+        self.status_box.setFont(QtGui.QFont("UbuntuMono",12))
         self.status_box.setReadOnly(True)
 
         # Widget layout
@@ -264,7 +287,6 @@ class StatusWidget(QWidget):
 
         # Forced refresh
     def show_text(self):
-        # index: param_index = ['t', 's1', 's2', 'agm', 'ags','x', 'y', 'z', 'u', 'v', 'w', 'ta', 'tb']
         if SAFE:
             param = get_param()
 
@@ -281,7 +303,9 @@ class StatusWidget(QWidget):
                            " Sample:  <br>"
                            " x = " + self.p('x') + ", y = " + self.p('y') + ", z = " + self.p('z') + " <br>"
                            " u = " + self.p('u') + ", v = " + self.p('v') + ", w = " + self.p('w') + " <br>"
-                           "   temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
+                           " th = "+ self.p('th') + ", tth = " + self.p('tth')+"<br>"
+                           "   temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K, "
+                           " I<sub>0</sub> = "+ self.p('I0') + " Amp <br>"
                            " <br>"
                            " RIXS imager:  <br>"
                            " temperature = " + self.p('Tccd') +" \u2103"+ ",     CCD "+ self.p('ccd')+',   gain = ' + self.p('gain') + " <br>"
@@ -300,9 +324,11 @@ class StatusWidget(QWidget):
             if value == 0: read='off'
             else: read='on'
         #if isinstance(value, int) or isinstance(value, float):
-        else: 
+        elif x != 'I0':
             if y == 'Round': read = round(value,2)
             elif y == 'int': read = int(value)
+        else:
+            read = value
         return str(read)
     
         #Terminal
@@ -478,11 +504,11 @@ class Command(QWidget):
             #self.command_message.append('<font color=red>Input error; ' + x + '</font><font color=black> </font>')
             self.command_message.append('<font color=red> '+ x + '</font><font color=black> </font>')
         else:
-            self.command_message.append(x+'<font color=black> </font>')
+            self.command_message.append(x)
 
 
     def send(self, txt):
-        global param_index, param, cmd_global, file_no
+        global param_index, param, cmd_global, file_no, img_global
         text = txt
         # remove whitespace spaces ("  ") in the end of command input
         if text[len(text)-1] ==' ':
@@ -548,7 +574,7 @@ class Command(QWidget):
                 self.sysReturn(text,"iv")
                 self.sysReturn('incorrect format: shut  0 or 1', 'err')
 
-        elif "ccd" in text:
+        elif text == "ccd":
             space = text.count(' ')
             sptext = text.split(' ')
             set_ccd = sptext[1]
@@ -566,13 +592,36 @@ class Command(QWidget):
                 self.sysReturn(text,"iv")
                 self.sysReturn('incorrect format: ccd  0 or 1', 'err')
 
+        elif text == 'img' or text[:4] == 'img ':
+            if SAFE:
+                # All sequence below should be organized as function(text) which returns msg & log
+                space = text.count(' ')
+                sptext = text.split(' ')
+                # check format
+                if space == 1:  # e.g. img 1234
+                    t = sptext[1]
+                    self.sysReturn(text, "v", True)
+                    CCD.setExposureTime(t)
+                    CCD.start(1)
+                    self.sysReturn("getting ccd image ...")
+                    QtGui.QApplication.processEvents()
+                    time.sleep(int(t)+3)
+                    img_global.getCCDImage()
+                    self.sysReturn("ccd image obtained.")
+                else:
+                    self.sysReturn(text, "iv")
+                    self.sysReturn("incorrect format: mv parameter value", "err")
+            else:
+                self.sysReturn("error:CCD package not activated", "err")
+
+
         elif text == 'r':
             self.sysReturn(text,"v")
             msg='parameter ranges:\n'
             for i in range(param_range.size):
                 msg += str(param_range.index[i]) + ' = '+ str(param_range[i])+'\n'
             self.sysReturn(msg)
-            
+
         elif text == 'u':
             status_global.show_text()
             self.sysReturn(text,"v")
@@ -894,54 +943,37 @@ class ImageWidget(QWidget):
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
 
-        if SAFE:
-            #ccd related
-            global CCD
-            CCD.getExposureTime()
-            exposure_time = 3
-            print(CCD.getExposureTime())
-            print(CCD.getCooler())
-            print(CCD.getGain())
-            print(CCD.getTemperature())
-            print(CCD.getStatus())
+        # give dummy image
+        a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        npa = np.asarray(a)
+        renpa = np.reshape(npa, (2, 5), order='F')
 
-#         CCD.setExposureTime(exposure_time)
-#         CCD.setGain(10)
-#         CCD.start(1)
-# #        CCD.setCooler(0)
-# #        CCD.setTemperature(-80)
-# #        CCD.setCooler(1)
+        # self.plotWidget = GraphicsLayoutWidget(self)
+        # self.vb = self.plotWidget.addViewBox()
+        # img = pg.ImageItem(renpa)
+        # self.vb.addItem(img)
+        # self.vb.autoRange()
 
-#        time.sleep(1)
-            print(CCD.getExposureTime())
-            print(CCD.getGain())
-            print(CCD.getStatus())
+        self.imv = pg.ImageView()
+        self.imv.setImage(renpa, xvals=np.linspace(0., 2., renpa.shape[0]))
 
-#        time.sleep(exposure_time + 5)
-            print(CCD.getStatus())
-            a = CCD.getImage()
+        ## Set a custom color map
+        rainbow_colors = [
+            (0, 0, 255),
+            (0, 128, 255),
+            (0, 255, 128),
+            (128, 255, 0),
+            (255, 128, 0),
+            (255, 0, 0)
+        ]
+        cmap = pg.ColorMap(pos=np.linspace(0.0, 1.0, 6), color=rainbow_colors)
+        self.imv.setColorMap(cmap)
 
-#            print(a)
-            npa = np.asarray(a)
-#            print(npa)
-            renpa = np.reshape(npa, (1024, 2048), order='F')
-#            print(renpa)
+        self.imv.ui.roiBtn.hide()
+        self.imv.ui.menuBtn.hide()
 
-        else:
-            a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-            npa = np.asarray(a)
-#            print(npa)
-            renpa = np.reshape(npa, (2, 5), order='F')
-#            print(renpa)
-
-        self.plotWidget = GraphicsLayoutWidget(self)
-        self.vb = self.plotWidget.addViewBox()
-
-        img = pg.ImageItem(renpa)
-        self.vb.addItem(img)
-        self.vb.autoRange()
         self.layoutVertical = QVBoxLayout(self)
-        self.layoutVertical.addWidget(self.plotWidget)
+        self.layoutVertical.addWidget(self.imv)
 
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
@@ -951,6 +983,20 @@ class ImageWidget(QWidget):
 
         print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
         print(rixs_tmp)
+
+    def getCCDImage(self):
+        if SAFE:
+            raw_img = CCD.getImage()
+            print(raw_img)
+            img_list = np.asarray(raw_img) #convert raw image to 1d numpy array
+            img_np = np.reshape(img_list, (1024, 2048), order='F') #reshape from 1d to 2d numpy array
+        else:
+            raw_img = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+            img_list = np.asarray(raw_img)
+            img_np = np.reshape(img_list, (2, 5), order='F')
+
+        self.imv.setImage(img_np, xvals=np.linspace(0., 2., img_np.shape[0]))
+
 
 class SpectrumWidget(QWidget):
 

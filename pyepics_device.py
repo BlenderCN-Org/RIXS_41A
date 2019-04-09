@@ -30,7 +30,7 @@ class Devices(object):
 #            print('sim position = ' + str(v))
         else:
             p = e.PV(self.pvroot + "r")
-            v = p.get('value', as_string=False)
+            v = p.get()
         return v        
         
     def setValue(self, value):
@@ -39,9 +39,9 @@ class Devices(object):
             v = self.currentValuse
             print(self.name + ' move completed.')
         else:
-            p = e.PV("w")
+            p = e.PV(self.pvroot + "w")
             v = p.put(value) 
-#        return v   #why return?
+        return v   #why return?
     
     def getStatus(self):
         if self.sim:
