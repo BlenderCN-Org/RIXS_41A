@@ -1,4 +1,4 @@
-#Last edited:20190412 12am by Jason
+#Last edited:20190412 3pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -260,6 +260,7 @@ class Panel(QWidget):
         
         #qtsignal/slot method
         command_widget.takeimage.connect(image_widget.getCCDImage)
+        command_widget.loadimage.connect(image_widget.loadImg)
         
         self.show()
 
@@ -350,6 +351,7 @@ class Command(QWidget):
     inputext = pyqtSignal(str)
     macrostat = pyqtSignal(str)
     pause = pyqtSignal(float)
+    loadimage = pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent)
         # message
@@ -529,7 +531,7 @@ class Command(QWidget):
         global param_index, param, cmd_global, file_no, img_global
         text = txt
         # remove whitespace spaces ("  ") in the end of command input
-        if text[len(text)-1] ==' ':
+        if text[len(text)-1] ==' ' and text != "":
             text = text[:len(text)-1]
         # an elegant way to remove extra whitespace,  "import re" is needed/
         text = re.sub(' +', ' ', text)
@@ -623,14 +625,15 @@ class Command(QWidget):
                         self.sysReturn("getting ccd image ...")
                         CCD.setExposureTime(t)
                         CCD.start(1)
+                        #get real image for t seconds 
+                        # emit signal to image widget and plot data
+                        self.takeimage.emit(True,1) 
+                        # wait for t+3 seconds for image exposure
+                        QtGui.QApplication.processEvents()
+                        time.sleep(float(t)+3)
                     else:
                         self.sysReturn("Warning: CCD not connected", "err")
                         self.sysReturn("generating random image by numpy...")
-                    QtGui.QApplication.processEvents()
-                    time.sleep(int(t)+3)
-                    if SAFE:
-                        self.takeimage.emit(True,1) #get one shot real image
-                    else:
                         self.takeimage.emit(False,1) #get one shot numpy random image
                     #img_global.getCCDImage()
                     self.sysReturn("image obtained.")
@@ -659,8 +662,15 @@ class Command(QWidget):
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("incorrect format: img + on/off/exposure_time", "err")
-
-
+        elif 'load' in text[:5]:
+            # All sequence below should be organized as function(text) which returns msg & log
+            space = text.count(' ')
+            sptext = text.split(' ')
+            if space == 1 and text[4]==" ":  # e.g. img 1234
+                self.sysReturn(text, "v", True)
+                file_name = sptext[1]
+                self.loadimage[str].emit(file_name)
+                self.sysReturn(file_name+" has been loaded.")
         elif text == 'r':
             self.sysReturn(text,"v")
             msg='parameter ranges:\n'
@@ -932,7 +942,6 @@ class Command(QWidget):
         '''
     def inputPause(self, t):
         global BUSY
-        print("pause message")
         BUSY = True
         timer = QTimer(self)
         timer.timeout.connect(self.cmdDone)
@@ -950,6 +959,8 @@ class Command(QWidget):
     
     def lockInput(self):
         self.command_input.setDisabled(BUSY)
+        if BUSY == False:
+            self.command_input.setFocus()
     
     def doMacro(self, name):
         #reset macro numbers
@@ -998,7 +1009,7 @@ class ImageWidget(QWidget):
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
 
-        # give dummy image
+        # Default Image
         a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         npa = np.asarray(a)
         renpa = np.reshape(npa, (2, 5), order='F')
@@ -1025,8 +1036,13 @@ class ImageWidget(QWidget):
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
         
-        self.imv.setImage(renpa)
-
+        self.plotImg()
+        
+        #for command calling to plot
+        self.img_timer = QTimer(self)
+        self.img_timer.timeout.connect(self.getImg)
+        self.img_timer.timeout.connect(self.plotImg)
+            
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.imv)
 
@@ -1049,16 +1065,14 @@ class ImageWidget(QWidget):
             self.img_timer.stop()
         else:
             self.safe = safe_flag # same as SAFE
-            self.img_timer = QTimer(self)
             if mode == 2:
                 self.img_timer.setSingleShot(False) #default
-            self.img_timer.timeout.connect(self.getImage)
-            self.img_timer.timeout.connect(self.plotImage)
             self.img_timer.start(1000) # default: loop every 1 sec
-    def getImage(self):
+            
+    def getImg(self):
         if self.safe:
             # checked safe
-            raw_img = CCD.getImage()
+            raw_img = CCD.getImage() #calling pyepics_ccd_device.py 
             print(raw_img)
             img_list = np.asarray(raw_img) #convert raw image to 1d numpy array
             img_np = np.reshape(img_list, (1024, 2048), order='F') #reshape from 1d to 2d numpy array
@@ -1069,9 +1083,21 @@ class ImageWidget(QWidget):
             img_np = np.reshape(img_list, (1024, 2048), order='F')   
         self.imgdata = img_np
         
-    def plotImage(self):
+    def plotImg(self):
         self.imv.setImage(self.imgdata)
     
+    def loadImg(self, name):
+        raw_data = np.genfromtxt(name, delimiter=',', usecols=1)
+        data = np.asarray(raw_data)
+        data = np.delete(data, 0)
+        self.imgdata = np.reshape(data, (1024, 2048), order='F')
+        self.plotImg()
+        
+        
+        #raw_data = np.genfromtxt(name, delimiter=',') #convert raw image to 1d numpy array
+        #data = raw_data[:,0:1024] # The type of data1 is <class 'numpy.ndarray'>
+        
+        
 
 class SpectrumWidget(QWidget):
 
@@ -1270,7 +1296,6 @@ class MacroWindow(QWidget):
 def main():
     app = QApplication(sys.argv)
     ex = RIXS()
-    cmd_global.command_input.setFocus()
     sys.exit(app.exec_())
 
 
