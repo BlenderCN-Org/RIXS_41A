@@ -1,4 +1,4 @@
-#Last edited:20190412 10am by Jason
+#Last edited:20190412 12am by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -345,7 +345,7 @@ class StatusWidget(QWidget):
     
         #Terminal
 class Command(QWidget):
-    takeimage = pyqtSignal(bool)
+    takeimage = pyqtSignal(bool,int)
     popup = pyqtSignal()
     inputext = pyqtSignal(str)
     macrostat = pyqtSignal(str)
@@ -606,37 +606,59 @@ class Command(QWidget):
                     self.sysReturn("The CCD is " + shutt)
                 else:
                     self.sysReturn(text,"iv")
-                    self.sysReturn(' ccd parameter has to be 0 ot 1 for off and on, respectively.', "err")
+                    self.sysReturn('ccd parameter has to be 0 ot 1 for off and on, respectively.', "err")
             else:
                 self.sysReturn(text,"iv")
                 self.sysReturn('incorrect format: ccd  0 or 1', 'err')
 
-        elif text == 'img' or text[:4] == 'img ':
-            # All sequence below should be organized as function(text) which returns msg & log
+        elif 'img' in text[:4]:
+            # All sequence below should be organized as function(text)
             space = text.count(' ')
             sptext = text.split(' ')
-            #check format
             if space == 1:  # e.g. img 1234
-                t = sptext[1]
-                self.sysReturn(text, "v", True)
-                if SAFE:
-                    self.sysReturn("getting ccd image ...")
-                    CCD.setExposureTime(t)
-                    CCD.start(1)
-                else:
-                    self.sysReturn("Warning: CCD not connected", "err")
-                    self.sysReturn("generating random image by numpy...")
-                QtGui.QApplication.processEvents()
-                time.sleep(int(t)+3)
-                if SAFE:
-                    self.takeimage[bool].emit(True) #get real image
-                else:
-                    self.takeimage[bool].emit(False) #get numpy random image
-                #img_global.getCCDImage()
-                self.sysReturn("image obtained.")
+                if self.checkFloat(sptext[1]):
+                    t = sptext[1]
+                    self.sysReturn(text, "v", True)
+                    if SAFE:
+                        self.sysReturn("getting ccd image ...")
+                        CCD.setExposureTime(t)
+                        CCD.start(1)
+                    else:
+                        self.sysReturn("Warning: CCD not connected", "err")
+                        self.sysReturn("generating random image by numpy...")
+                    QtGui.QApplication.processEvents()
+                    time.sleep(int(t)+3)
+                    if SAFE:
+                        self.takeimage.emit(True,1) #get one shot real image
+                    else:
+                        self.takeimage.emit(False,1) #get one shot numpy random image
+                    #img_global.getCCDImage()
+                    self.sysReturn("image obtained.")
+                elif sptext[1] == "on" or sptext[1] == "off":
+                    turn = sptext[1]
+                    if turn == "on" :
+                        self.sysReturn(text, "v", True)
+                        self.sysReturn("live image mode on.")
+                        if SAFE:
+                            CCD.setAcqMode(0)
+                            CCD.start(1)
+                            self.takeimage.emit(True, 2) #get image continuously
+                        else:
+                            self.sysReturn("CCD not connected, feeding random images.","err")
+                            self.takeimage.emit(False, 2) #get random image continuously
+                    elif turn == "off":
+                        self.sysReturn(text, "v", True)
+                        if SAFE:
+                            CCD.stop()
+                            CCD.setAcqMode(2) # back to accumulation mode
+                            self.takeimage.emit(True, 0)
+                            self.sysReturn("live image stopped.")
+                        else:
+                            self.takeimage.emit(False,0)
+                            self.sysReturn("random live image stopped")
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("incorrect format: img exposure_time", "err")
+                self.sysReturn("incorrect format: img + on/off/exposure_time", "err")
 
 
         elif text == 'r':
@@ -980,16 +1002,13 @@ class ImageWidget(QWidget):
         a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         npa = np.asarray(a)
         renpa = np.reshape(npa, (2, 5), order='F')
-
-        # self.plotWidget = GraphicsLayoutWidget(self)
-        # self.vb = self.plotWidget.addViewBox()
-        # img = pg.ImageItem(renpa)
-        # self.vb.addItem(img)
-        # self.vb.autoRange()
-
-        self.imv = pg.ImageView()
-        self.imv.setImage(renpa, xvals=np.linspace(0., 2., renpa.shape[0]))
-
+        self.imgdata = renpa # default image when program startup 
+                             # replace by RGB pixel Magpie picture?  
+        
+        plt = pg.PlotItem(labels={'bottom':('x',''), 'left':('y','')})
+        plt.invertY(False)
+        plt.setAspectLocked(True)
+        
         ## Set a custom color map
         rainbow_colors = [
             (0, 0, 255),
@@ -1000,10 +1019,13 @@ class ImageWidget(QWidget):
             (255, 0, 0)
         ]
         cmap = pg.ColorMap(pos=np.linspace(0.0, 1.0, 6), color=rainbow_colors)
+        
+        self.imv = pg.ImageView(view=plt)
         self.imv.setColorMap(cmap)
-
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
+        
+        self.imv.setImage(renpa)
 
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.imv)
@@ -1017,8 +1039,24 @@ class ImageWidget(QWidget):
         print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
         print(rixs_tmp)
 
-    def getCCDImage(self, safe_flag):
-        if safe_flag:
+    def getCCDImage(self, safe_flag, mode):
+        '''
+        mode 0: stop timer
+        mode 1: singleshot
+        mode 2: continuously
+        '''
+        if mode ==0:
+            self.img_timer.stop()
+        else:
+            self.safe = safe_flag # same as SAFE
+            self.img_timer = QTimer(self)
+            if mode == 2:
+                self.img_timer.setSingleShot(False) #default
+            self.img_timer.timeout.connect(self.getImage)
+            self.img_timer.timeout.connect(self.plotImage)
+            self.img_timer.start(1000) # default: loop every 1 sec
+    def getImage(self):
+        if self.safe:
             # checked safe
             raw_img = CCD.getImage()
             print(raw_img)
@@ -1028,10 +1066,12 @@ class ImageWidget(QWidget):
             # else 
             raw_img = np.random.uniform(0,500+1,1024*2048)
             img_list = np.asarray(raw_img)
-            img_np = np.reshape(img_list, (1024, 2048), order='F')
-
-        self.imv.setImage(img_np, xvals=np.linspace(0., 2., img_np.shape[0]))
-
+            img_np = np.reshape(img_list, (1024, 2048), order='F')   
+        self.imgdata = img_np
+        
+    def plotImage(self):
+        self.imv.setImage(self.imgdata)
+    
 
 class SpectrumWidget(QWidget):
 
