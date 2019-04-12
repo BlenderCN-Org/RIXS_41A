@@ -1,4 +1,4 @@
-#Last edited:20190412 3pm by Jason
+#Last edited:20190412 7pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -60,7 +60,23 @@ ABORT = False
 Busy
  - check flag for complicated commands
    default : False
- - if busy = True, command_input will be disabled.
+ - if busy = True, c
+# called when SAFE == True
+def get_param():
+        ##### 'imager','Tccd', 'shutter' need to be included
+        #get param values from devices
+        I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
+        real_list = [AGM.get_position(), AGS.get_position(), 
+                     X.getValue(), Y.getValue(), Z.getValue(), 
+                     U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
+                     TSA.getValue(), TSB.getValue(), I0_read,
+                     CCD.getTemp(), CCD.getGain()]
+        #replace current list elements in param_index0
+        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Tccd','gain'] = real_list
+        return param
+
+
+ommand_input will be disabled.
  - checked in Command(commandDone function)
 '''
 BUSY = False
@@ -93,8 +109,7 @@ if SAFE:
     AGS = e.Motor("41a:AGS:Energy")
     #CCDsetup
     CCD = pecd("emccd", "41a:ccd1")
-    exposure_time = 2
-    CCD.setExposureTime(exposure_time)
+    CCD.setExposureTime(2)
     CCD.setGain(10)
     CCD.setAcqMode(2)  #0: video; 1: single (obsolete); 2: accumulation
     CCD.setAccuType(0) #0: raw image; 2: differnece image
@@ -259,7 +274,7 @@ class Panel(QWidget):
         status_global = status_widget
         
         #qtsignal/slot method
-        command_widget.takeimage.connect(image_widget.getCCDImage)
+        command_widget.takeimage.connect(image_widget.ccdLoop)
         command_widget.loadimage.connect(image_widget.loadImg)
         
         self.show()
@@ -346,7 +361,7 @@ class StatusWidget(QWidget):
     
         #Terminal
 class Command(QWidget):
-    takeimage = pyqtSignal(bool,int)
+    takeimage = pyqtSignal(bool,float)
     popup = pyqtSignal()
     inputext = pyqtSignal(str)
     macrostat = pyqtSignal(str)
@@ -627,41 +642,30 @@ class Command(QWidget):
                         CCD.start(1)
                         #get real image for t seconds 
                         # emit signal to image widget and plot data
-                        self.takeimage.emit(True,1) 
-                        # wait for t+3 seconds for image exposure
-                        QtGui.QApplication.processEvents()
-                        time.sleep(float(t)+3)
+                        self.takeimage.emit(True,float(t))
                     else:
                         self.sysReturn("Warning: CCD not connected", "err")
                         self.sysReturn("generating random image by numpy...")
-                        self.takeimage.emit(False,1) #get one shot numpy random image
+                        self.takeimage.emit(True,float(t)) #get one shot numpy random image
                     #img_global.getCCDImage()
                     self.sysReturn("image obtained.")
-                elif sptext[1] == "on" or sptext[1] == "off":
-                    turn = sptext[1]
-                    if turn == "on" :
-                        self.sysReturn(text, "v", True)
-                        self.sysReturn("live image mode on.")
-                        if SAFE:
-                            CCD.setAcqMode(0)
-                            CCD.start(1)
-                            self.takeimage.emit(True, 2) #get image continuously
-                        else:
-                            self.sysReturn("CCD not connected, feeding random images.","err")
-                            self.takeimage.emit(False, 2) #get random image continuously
-                    elif turn == "off":
-                        self.sysReturn(text, "v", True)
-                        if SAFE:
-                            CCD.stop()
-                            CCD.setAcqMode(2) # back to accumulation mode
-                            self.takeimage.emit(True, 0)
-                            self.sysReturn("live image stopped.")
-                        else:
-                            self.takeimage.emit(False,0)
-                            self.sysReturn("random live image stopped")
+                elif sptext[1] == "off":
+                    self.sysReturn(text, "v", True)
+                    if SAFE:
+                        CCD.stop(1)
+                        CCD.setAcqMode(2) # back to accumulation mode
+                        self.takeimage[bool].emit(False)
+                        self.sysReturn("live image stopped.")
+                    else:
+                        self.takeimage[bool].emit(False)
+                        self.sysReturn("random live image stopped")
+                else:
+                    self.sysReturn(text, "iv")
+                    self.sysReturn("incorrect format: img + exposure_time/off", "err")
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("incorrect format: img + on/off/exposure_time", "err")
+                self.sysReturn("incorrect format: img + exposure_time/off", "err")
+
         elif 'load' in text[:5]:
             # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
@@ -1037,42 +1041,54 @@ class ImageWidget(QWidget):
         self.imv.ui.menuBtn.hide()
         
         self.plotImg()
-        
-        #for command calling to plot
-        self.img_timer = QTimer(self)
-        self.img_timer.timeout.connect(self.getImg)
-        self.img_timer.timeout.connect(self.plotImg)
-            
+
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.imv)
 
-    def rixs_sum(self, image_data):
-        rixs_tmp = np.zeros((1, 2048), float)
-
-        for i in range(renpa.shape[0]):
-            rixs_tmp = rixs_tmp + renpa[i, :]
-
-        print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
-        print(rixs_tmp)
-
-    def getCCDImage(self, safe_flag, mode):
+    def ccdLoop(self, mode, t):
         '''
-        mode 0: stop timer
-        mode 1: singleshot
-        mode 2: continuously
+        mode TRUE:  start loop
+        mode FALSE: stop loop
         '''
-        if mode ==0:
-            self.img_timer.stop()
+        self.exptime = float(t)
+        if mode == False:
+            self.check_finished.stop()
         else:
-            self.safe = safe_flag # same as SAFE
-            if mode == 2:
-                self.img_timer.setSingleShot(False) #default
-            self.img_timer.start(1000) # default: loop every 1 sec
-            
-    def getImg(self):
-        if self.safe:
-            # checked safe
-            raw_img = CCD.getImage() #calling pyepics_ccd_device.py 
+            self.loop_finished = True
+            self.check_finished = QTimer(self)
+            self.check_finished.setSingleShot(False) # start cycle of taking image
+            self.check_finished.timeout.connect(self.exposureLoop)
+            self.check_finished.start(1000) # default: loop every 1+t sec
+
+    def exposureLoop(self):
+        if self.loop_finished == True:
+            self.loop_finished == False
+            t1 = time.time()
+            '''
+            wait for exposure
+            '''
+            if SAFE:
+                CCD.start(1)
+                time.sleep(0.5)
+                while CCD.getStatus == 0:
+                    print("wait for exposure finish ...")
+            else:
+                #dummy wait
+                QtGui.QApplication.processEvents()
+                time.sleep(self.exptime)
+                QtGui.QApplication.processEvents()
+            '''
+            exposure finished
+            '''
+            self.getPlot()
+            dt = round(time.time() - t1, 3)
+            print('timespan in seconds=', dt)
+            self.loop_finished == True
+
+    def getPlot(self):
+        if SAFE: # checked safe
+            # check data OK
+            raw_img = CCD.getImage() #calling pyepics_ccd_device.py
             print(raw_img)
             img_list = np.asarray(raw_img) #convert raw image to 1d numpy array
             img_np = np.reshape(img_list, (1024, 2048), order='F') #reshape from 1d to 2d numpy array
@@ -1082,6 +1098,7 @@ class ImageWidget(QWidget):
             img_list = np.asarray(raw_img)
             img_np = np.reshape(img_list, (1024, 2048), order='F')   
         self.imgdata = img_np
+        self.plotImg()
         
     def plotImg(self):
         self.imv.setImage(self.imgdata)
@@ -1092,11 +1109,24 @@ class ImageWidget(QWidget):
         data = np.delete(data, 0)
         self.imgdata = np.reshape(data, (1024, 2048), order='F')
         self.plotImg()
-        
-        
         #raw_data = np.genfromtxt(name, delimiter=',') #convert raw image to 1d numpy array
         #data = raw_data[:,0:1024] # The type of data1 is <class 'numpy.ndarray'>
-        
+
+    def checkdata(self):
+        while CCD.getStatus == "0":
+            timer = QTimer(self)
+            timer.start(1000)
+            if CCD.getStatus == "1":
+                break
+
+    def rixs_sum(self, image_data):
+        rixs_tmp = np.zeros((1, 2048), float)
+
+        for i in range(renpa.shape[0]):
+            rixs_tmp = rixs_tmp + renpa[i, :]
+
+        print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
+        print(rixs_tmp)
         
 
 class SpectrumWidget(QWidget):
