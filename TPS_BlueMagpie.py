@@ -1,4 +1,4 @@
-#Last edited:20190409 5pm by Jason
+#Last edited:20190412 10am by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -13,8 +13,9 @@ from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
 import time, datetime, math, re
+import threading
 
-# Global parameters
+# Global for connection
 spectrum_widget_global = None
 status_global = None
 img_global = None
@@ -54,6 +55,16 @@ Abort
  - reset in Command(send function)
 '''
 ABORT = False
+
+'''
+Busy
+ - check flag for complicated commands
+   default : False
+ - if busy = True, command_input will be disabled.
+ - checked in Command(commandDone function)
+'''
+BUSY = False
+
 
 # Don't Set True; same as self.sim in ped and CCD
 SAFE = False
@@ -117,7 +128,6 @@ def set_param(p, v):
         if p in ped_dict:
             P = ped_dict[p]
             P.setValue(v)
-            print(X.getValue())
         #for AGM, AGS
 #        elif p in epics_dict:
 #        elif p == 'ags': #AGM don't test
@@ -129,7 +139,6 @@ def set_param(p, v):
             TSA.setValue(v)
         elif p =='Tccd': CCD.setTemp(v)
         elif p == 'gain': CCD.setGain(v)
-        print("parameter moved.")
     else:
         #dummy set
         param[p] = v
@@ -224,31 +233,34 @@ class Panel(QWidget):
     def UI_layout(self):
 
         # Left_Column
-        global cmd_global, img_global
+        global cmd_global, img_global, status_global, spectrum_widget_global
         hbox = QHBoxLayout(self)
         leftcolumn = QVBoxLayout()
         image_widget = ImageWidget(self)
-        img_global = image_widget
         leftcolumn.addWidget(image_widget, 1)
         command_widget=Command(self)
-        cmd_global = command_widget
         leftcolumn.addWidget(command_widget)
 
         # Right_Column
-        global status_global, spectrum_widget_global
         rightcolumn = QVBoxLayout()
-
         status_widget=StatusWidget(self)
-        status_global = status_widget
         rightcolumn.addWidget(status_widget)
-
         spectrum_widget = SpectrumWidget(self)
-        spectrum_widget_global = spectrum_widget
         rightcolumn.addWidget(spectrum_widget)
-
         hbox.addLayout(leftcolumn, 1)
         hbox.addLayout(rightcolumn, 1)
-
+        
+        
+        
+        # for global connection
+        cmd_global = command_widget
+        img_global = image_widget
+        spectrum_widget_global = spectrum_widget
+        status_global = status_widget
+        
+        #qtsignal/slot method
+        command_widget.takeimage.connect(image_widget.getCCDImage)
+        
         self.show()
 
 
@@ -333,14 +345,15 @@ class StatusWidget(QWidget):
     
         #Terminal
 class Command(QWidget):
+    takeimage = pyqtSignal(bool)
     popup = pyqtSignal()
     inputext = pyqtSignal(str)
-    mcrostat = pyqtSignal(str)
+    macrostat = pyqtSignal(str)
+    pause = pyqtSignal(float)
     def __init__(self, parent=None):
         super().__init__(parent)
         # message
         self.command_message = QTextEdit(self)
-
         '''
         Welcome message
         '''
@@ -349,20 +362,23 @@ class Command(QWidget):
         self.command_message.setText(welcome_message)
         self.command_message.setFont(QtGui.QFont("UbuntuMono", 10))
         self.command_message.setReadOnly(True)
-        #optional: string format:print('Hello, {:s}. You have {:d} messages.'.format('Rex', 999))
 
         # user input
         self.command_input= QLineEdit(self)
         self.command_input.setFocusPolicy(Qt.StrongFocus)
         self.command_input.setPlaceholderText("Type help to list commands ...")
-        ####
+        self.commandLock()
+        
+        # input function communications
         self.command_input.returnPressed.connect(self.send_message)
-        self.inputext.connect(self.send)
+        self.inputext.connect(self.send)    # input string as signal
+        self.pause.connect(self.inputPause)
 
         # macro related
         self.macro = None
         self.popup.connect(self.popupMacro)
-#        self.mcrostat[str].connect(self.command_input.setText)
+        self.macrostat[str].connect(self.command_input.setText)
+        self.macrotimer = QTimer(self)
 
 
         '''
@@ -410,9 +426,10 @@ class Command(QWidget):
         self.command_input.setText("")
         self.command_message.moveCursor(QtGui.QTextCursor.End)
 
-    '''
-    set global abort flag when button clicked
-    '''
+        '''
+        set global abort flag when button clicked 
+        (because scan loop is not in this class...)
+        '''
     def abortCommand(self):
         global ABORT
         ABORT = True
@@ -508,6 +525,7 @@ class Command(QWidget):
 
 
     def send(self, txt):
+        self.command_input.setDisabled(True)
         global param_index, param, cmd_global, file_no, img_global
         text = txt
         # remove whitespace spaces ("  ") in the end of command input
@@ -520,7 +538,8 @@ class Command(QWidget):
             self.kblog.append(text)
             self.kbi = len(self.kblog)
         '''
-        Valid Commands
+        Check valid commands below ...
+         - should be integrated as valid-command class
         '''
         if text == "help":
             self.sysReturn(text, "v")
@@ -593,26 +612,31 @@ class Command(QWidget):
                 self.sysReturn('incorrect format: ccd  0 or 1', 'err')
 
         elif text == 'img' or text[:4] == 'img ':
-            if SAFE:
-                # All sequence below should be organized as function(text) which returns msg & log
-                space = text.count(' ')
-                sptext = text.split(' ')
-                # check format
-                if space == 1:  # e.g. img 1234
-                    t = sptext[1]
-                    self.sysReturn(text, "v", True)
+            # All sequence below should be organized as function(text) which returns msg & log
+            space = text.count(' ')
+            sptext = text.split(' ')
+            #check format
+            if space == 1:  # e.g. img 1234
+                t = sptext[1]
+                self.sysReturn(text, "v", True)
+                if SAFE:
+                    self.sysReturn("getting ccd image ...")
                     CCD.setExposureTime(t)
                     CCD.start(1)
-                    self.sysReturn("getting ccd image ...")
-                    QtGui.QApplication.processEvents()
-                    time.sleep(int(t)+3)
-                    img_global.getCCDImage()
-                    self.sysReturn("ccd image obtained.")
                 else:
-                    self.sysReturn(text, "iv")
-                    self.sysReturn("incorrect format: mv parameter value", "err")
+                    self.sysReturn("Warning: CCD not connected", "err")
+                    self.sysReturn("generating random image by numpy...")
+                QtGui.QApplication.processEvents()
+                time.sleep(int(t)+3)
+                if SAFE:
+                    self.takeimage[bool].emit(True) #get real image
+                else:
+                    self.takeimage[bool].emit(False) #get numpy random image
+                #img_global.getCCDImage()
+                self.sysReturn("image obtained.")
             else:
-                self.sysReturn("error:CCD package not activated", "err")
+                self.sysReturn(text, "iv")
+                self.sysReturn("incorrect format: img exposure_time", "err")
 
 
         elif text == 'r':
@@ -729,7 +753,6 @@ class Command(QWidget):
                     print('file no =', file_no)
                     print('param[\'f\']', param['f'])
 # =============================================================================
-                    cmd_global.command_input.setEnabled(False)
                     param[scan_param] = x1
                     QtGui.QApplication.processEvents()
                     time.sleep(0.5)
@@ -737,7 +760,6 @@ class Command(QWidget):
                     #self.command_message.append(t0.strftime("%c"))
                     self.sysReturn('Scan '+ str(int(param['f'])) +' begins at ' + t0.strftime("%c"))
                     spectrum_widget_global.scan_loop(plot, sptext)
-                    cmd_global.command_input.setEnabled(True)
                 else:
                     self.sysReturn(text, "iv")
                     if (check_param1 !='OK'): check_param = check_param1
@@ -754,52 +776,39 @@ class Command(QWidget):
             self.sysReturn(text,"v")
             self.popup.emit()
 
-        elif text[:3] == "do ":
-            space = text.count(' ')
-            sptext = text.split(' ')
-            name = sptext[1]
-            # read macro file
-            if space is 1:
-                self.sysReturn(text,"v", True)
-                self.doMacro(name)
-            else:
-                self.sysReturn("incorrect format: do macroname","err")
 # =============================================================================
-#                 
-#         elif text[:5] == "wait ":
+#         elif text[:3] == "do ":
 #             space = text.count(' ')
 #             sptext = text.split(' ')
-#             # set delay time
-#             if space == 1:
-#                 t = sptext[1]
-#                 if self.checkFloat(t):
-#                     self.lockInput(True)
-#                     self.sysReturn(text, "v")
-#                     self.sysReturn("wait for {} seconds.".format(str(t)))
-#                     _timer = QTimer(self)
-#                     _timer.timeout.connect(self.lockInput)
-#                     _timer.start(1000*float(t))
-# #                    self.command_input.setEnabled(True)
-#                 else:
-#                     self.sysReturn("incorrect format: wait time", "err")
-# 
+#             name = sptext[1]
+#             # read macro file
+#             if space is 1:
+#                 self.doMacro(name)
+#             else:
+#                 self.sysReturn("incorrect format: do macroname","err")
 # =============================================================================
+                
+        elif text[:5] == "wait ":
+            space = text.count(' ')
+            sptext = text.split(' ')
+            # set delay time
+            if space == 1:
+                t = sptext[1]
+                if self.checkFloat(t):
+                    self.sysReturn(text, "v", True)
+                    self.sysReturn("wait for %s seconds..." %str(t))
+                    self.pause[float].emit(float(t))
+                else:
+                    self.sysReturn("incorrect format: wait time", "err")
+
         elif text != "":
            self.sysReturn(text, "iv")
            self.sysReturn("Type 'help' to list commands", "err")
 
         # refresh and scroll down to latest message
-
         self.abort_button.setEnabled(False)
-
-    def lockInput(self, lock=False):
-        if lock:
-            self.command_input.setDisabled(True)
-        else:
-            self.command_input.setEnabled(True)
-
-
-
+        
+        
     def convertSeconds(self,seconds):
         h = int(seconds//(60*60))
         m = int((seconds-h*60*60)//60)
@@ -881,7 +890,7 @@ class Command(QWidget):
         # checking if dection parameters have been correctly selected
         j=0 #check index
         for i in range(len(plot)): # i from 0 to len(plot)-1
-            if plot[i] in param_index0: j +=1.0
+            if (plot[i] in param_index0) or (plot[i]=='I0'): j +=1.0
         #
         if j== len(plot):
             check_plot='OK'
@@ -895,50 +904,74 @@ class Command(QWidget):
 
         print('scan paramter check:', check_msg)
         return check_msg
-
+    
+        '''
+        check function for Wait command
+        '''
+    def inputPause(self, t):
+        global BUSY
+        print("pause message")
+        BUSY = True
+        timer = QTimer(self)
+        timer.timeout.connect(self.cmdDone)
+        timer.start(1000*float(t)) # count for t seconds then open user input
+        
+    def cmdDone(self):
+        global BUSY
+        BUSY = False
+        
+    def commandLock(self):
+        timer = QTimer(self)
+        timer.setSingleShot(False)
+        timer.timeout.connect(self.lockInput)
+        timer.start(1000) # repeat every second
+    
+    def lockInput(self):
+        self.command_input.setDisabled(BUSY)
+    
     def doMacro(self, name):
-        #start from 0
+        #reset macro numbers
         self.macro_index = 0
         self.macro_n = 0
         macro_name = macro_dir + str(name) + ".txt"
         #check file exist
         if os.path.exists(macro_name):
-            self.lockInput(True)
-            #==============Macro start===============
-            readfile=[]
-            f = open(macro_name,"r")
-            for x in f:
-                x = x.replace('\n','')
-                readfile.append(x)
-            self.macro_n = len(readfile)
-            self.sysReturn("<b>macro begins</b>: "+macro_name)
-            #=============Macro cycle================
-            self.runLine(self.macro_n, macro_name)
-            #==============Macro End=================
-            self.sysReturn("<b>macro completed.</b>")
-            self.lockInput(False)
+            self.sysReturn(text,"v", True)
+            self.readFile(macro_name) # to get macro_n
+            self.sysReturn("macro begins: "+macro_name)
+            self.macroLoop(self.macro_n, macro_name)
         else:
+            self.sysReturn(text,"iv")
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir),"err")
-
-    def runLine(self,n,name):
+            
+    def readFile(self, name):
+        #==============Macro start===============
+        readfile=[]
+        f = open(name,"r")
+        for x in f:
+            x = x.replace('\n','')
+            readfile.append(x)
+        self.macro_n = len(readfile)
+        return (readfile)
+        
+    def macroLoop(self,n,name):
+        global BUSY
         while self.macro_index < self.macro_n:
-            QtGui.QApplication.processEvents()
-            #==========Check macro update===========
-            readfile=[]
-            f = open(name,"r")
-            for x in f:
-                x = x.replace('\n','')
-                readfile.append(x)
-            self.macro_n = len(readfile)
-            #======Execute command line by line=====
-            line = readfile[self.macro_index]
-            self.macro_index += 1
-            msg = ("<b>macro line</b> [{0}] : {1}".format(str(self.macro_index), line))
+            file = self.readFile(name)
+            line = file[self.macro_index]
+            msg = ("macro line [{0}] : {1}".format(str(self.macro_index), line))
             self.sysReturn(msg)
+            while BUSY == True:
+                timer = QTimer(self)
+                timer.start(1000)
+                # wait until not busy...
+            #self.macrostat[str].emit(msg)
             self.send(line)
-            time.sleep(1.0)
-            QtGui.QApplication.processEvents()
-
+            self.macro_index += 1
+        self.sysReturn("macro finished.")
+            
+    
+    
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
@@ -984,16 +1017,18 @@ class ImageWidget(QWidget):
         print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
         print(rixs_tmp)
 
-    def getCCDImage(self):
-        if SAFE:
+    def getCCDImage(self, safe_flag):
+        if safe_flag:
+            # checked safe
             raw_img = CCD.getImage()
             print(raw_img)
             img_list = np.asarray(raw_img) #convert raw image to 1d numpy array
             img_np = np.reshape(img_list, (1024, 2048), order='F') #reshape from 1d to 2d numpy array
         else:
-            raw_img = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+            # else 
+            raw_img = np.random.uniform(0,500+1,1024*2048)
             img_list = np.asarray(raw_img)
-            img_np = np.reshape(img_list, (2, 5), order='F')
+            img_np = np.reshape(img_list, (1024, 2048), order='F')
 
         self.imv.setImage(img_np, xvals=np.linspace(0., 2., img_np.shape[0]))
 
@@ -1023,7 +1058,8 @@ class SpectrumWidget(QWidget):
 
 
     def scan_loop(self, plot, plist):
-        global file_no, param_index, param
+        global file_no, param_index, param, BUSY
+        BUSY = True
         t1 = time.time()
         print('scan loop begins')
         print('scan no = ', file_no)
@@ -1156,6 +1192,7 @@ class SpectrumWidget(QWidget):
         data_matrix.to_csv(data_dir+filename, mode='w')
         #data_matrix.to_hdf(file_path+filename, key='df', mode='w')
         cmd_global.sysReturn('Scan data saved as ['+filename+'.csv]')
+        BUSY = False
 
 class MacroWindow(QWidget):
     macroMsg = pyqtSignal(str)
