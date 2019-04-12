@@ -654,10 +654,10 @@ class Command(QWidget):
                     if SAFE:
                         CCD.stop(1)
                         CCD.setAcqMode(2) # back to accumulation mode
-                        self.takeimage[bool].emit(False)
+                        self.takeimage.emit(False,0)
                         self.sysReturn("live image stopped.")
                     else:
-                        self.takeimage[bool].emit(False)
+                        self.takeimage.emit(False,0)
                         self.sysReturn("random live image stopped")
                 else:
                     self.sysReturn(text, "iv")
@@ -1072,11 +1072,18 @@ class ImageWidget(QWidget):
                 time.sleep(0.5)
                 while CCD.getStatus == 0:
                     print("wait for exposure finish ...")
+                    if CCD.getStatus == 1:
+                        break
             else:
-                #dummy wait
-                QtGui.QApplication.processEvents()
-                time.sleep(self.exptime)
-                QtGui.QApplication.processEvents()
+                self.fakeStatus = False
+                fakeWait = QTimer(self)
+                fakeWait.timeout.connect(self.fakExposed)
+                fakeWait.start(self.exptime) #one_shot
+                # ctrl+C to break while cycle
+                # using time.sleep will cause command_input stuck problem
+                while True:
+                    if self.fakeStatus == True:
+                        break
             '''
             exposure finished
             '''
@@ -1084,6 +1091,9 @@ class ImageWidget(QWidget):
             dt = round(time.time() - t1, 3)
             print('timespan in seconds=', dt)
             self.loop_finished == True
+
+    def fakExposed(self):
+        self.fakeStatus = True
 
     def getPlot(self):
         if SAFE: # checked safe
@@ -1111,13 +1121,6 @@ class ImageWidget(QWidget):
         self.plotImg()
         #raw_data = np.genfromtxt(name, delimiter=',') #convert raw image to 1d numpy array
         #data = raw_data[:,0:1024] # The type of data1 is <class 'numpy.ndarray'>
-
-    def checkdata(self):
-        while CCD.getStatus == "0":
-            timer = QTimer(self)
-            timer.start(1000)
-            if CCD.getStatus == "1":
-                break
 
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
