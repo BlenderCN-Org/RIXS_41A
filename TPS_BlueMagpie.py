@@ -1,4 +1,4 @@
-#Last edited:20190415 2pm by Jason
+#Last edited:20190415 4pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -63,23 +63,7 @@ ABORT = False
 Busy
  - check flag for complicated commands
    default : False
- - if busy = True, c
-# called when SAFE == True
-def get_param():
-        ##### 'imager','Tccd', 'shutter' need to be included
-        #get param values from devices
-        I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
-        real_list = [AGM.get_position(), AGS.get_position(),
-                     X.getValue(), Y.getValue(), Z.getValue(),
-                     U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
-                     TSA.getValue(), TSB.getValue(), I0_read,
-                     CCD.getTemp(), CCD.getGain()]
-        #replace current list elements in param_index0
-        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Tccd','gain'] = real_list
-        return param
-
-
-ommand_input will be disabled.
+ - if busy = True, command_input will be disabled.
  - checked in Command(commandDone function)
 '''
 BUSY = False
@@ -110,7 +94,8 @@ if SAFE:
     IPV1 = "41a:sample:phdi"
     AGM = e.Motor("41a:AGM:Energy")
     AGS = e.Motor("41a:AGS:Energy")
-    #CCDsetup
+
+    #setup_CCD
     CCD = pecd("emccd", "41a:ccd1")
     CCD.setExposureTime(2)
     CCD.setGain(10)
@@ -277,7 +262,6 @@ class Panel(QWidget):
         status_global = status_widget
 
         #qtsignal/slot method
-        command_widget.takeimage.connect(image_widget.ccdLoop)
         command_widget.loadimage.connect(image_widget.loadImg)
 
         self.show()
@@ -364,7 +348,6 @@ class StatusWidget(QWidget):
 
         #Terminal
 class Command(QWidget):
-    takeimage = pyqtSignal(bool,float)
     popup = pyqtSignal()
     inputext = pyqtSignal(str)
     macrostat = pyqtSignal(str)
@@ -643,30 +626,19 @@ class Command(QWidget):
                     self.sysReturn(text, "v", True)
                     if SAFE:
                         self.sysReturn("getting ccd image ...")
-                        CCD.setExposureTime(t)
-                        CCD.start(1)
+                        QtGui.QApplication.processEvents()
                         #get real image for t seconds
-                        # emit signal to image widget and plot data
-                        self.takeimage.emit(True,float(t))
+                        img_global.takeImage(float(t))
                     else:
                         self.sysReturn("Warning: CCD not connected", "err")
                         self.sysReturn("generating random image by numpy...")
-                        self.takeimage.emit(True,float(t)) #get one shot numpy random image
                     #img_global.getCCDImage()
                     self.sysReturn("image obtained.")
-                elif sptext[1] == "off":
-                    self.sysReturn(text, "v", True)
-                    if SAFE:
-                        CCD.stop(1)
-                        CCD.setAcqMode(2) # back to accumulation mode
-                        self.takeimage.emit(False,0)
-                        self.sysReturn("live image stopped.")
-                    else:
-                        self.takeimage.emit(False,0)
-                        self.sysReturn("random live image stopped")
+                # elif sptext[1] == "off":
+                #     img_global.stopImage() # wait for QThread
                 else:
                     self.sysReturn(text, "iv")
-                    self.sysReturn("incorrect format: img + exposure_time/off", "err")
+                    self.sysReturn("incorrect format: img + exposure_time", "err")
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("incorrect format: img + exposure_time/off", "err")
@@ -852,8 +824,6 @@ class Command(QWidget):
            self.sysReturn(text, "iv")
            self.sysReturn("Type 'help' to list commands", "err")
 
-        # refresh and scroll down to latest message
-        self.abort_button.setEnabled(False)
 
 
     def convertSeconds(self,seconds):
@@ -1056,55 +1026,55 @@ class ImageWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.imv)
 
-    def ccdLoop(self, mode, t):
-        '''
-        mode TRUE:  start loop
-        mode FALSE: stop loop
-        '''
-        self.exptime = float(t)
-        if mode == False:
-            self.check_finished.stop()
-        else:
-            self.loop_finished = True
-            self.check_finished = QTimer(self)
-            self.check_finished.setSingleShot(False) # start cycle of taking image
-            self.check_finished.timeout.connect(self.exposureLoop)
-            self.check_finished.start(1000) # default: loop every 1+t sec
+    # wait for QThread
+    # # called by "img t"
+    # def ccdLoop(self,t):
+    #     global BUSY, ABORT
+    #     BUSY = True
+    #     ABORT = False
+    #     self.image_time = t
+    #     self.finished = True
+    #     self.check_finished = QTimer(self)
+    #     self.check_finished.setSingleShot(False)
+    #     self.check_finished.timeout.connect(self.takeImage) # trigger this function every 2 sec
+    #     self.check_finished.timeout.connect(self.stopImage) # trigger this function every 2 sec
+    #     self.check_finished.start(100)
 
-    def exposureLoop(self):
-        if self.loop_finished == True:
-            self.loop_finished == False
-            t1 = time.time()
-            '''
-            wait for exposure
-            '''
+    def takeImage(self,t):
+        # get one image
+        #if self.finished: # wait for QThread
             if SAFE:
-                CCD.start(1)
-                time.sleep(0.5)
-                while CCD.getStatus == 0:
-                    print("wait for exposure finish ...")
-                    if CCD.getStatus == 1:
+                #self.finished = False # wait for QThread
+                CCD.setExposureTime(t)
+                CCD.start(1) # 1 for activate
+                j = 0
+                while e.PV("41a:ccd1:dataok").get() == 1:
+                    pass
+                    if e.PV("41a:ccd1:dataok").get() == 0:
                         break
-            else:
-                self.fakeStatus = False
-                fakeWait = QTimer(self)
-                fakeWait.timeout.connect(self.fakExposed)
-                fakeWait.start(self.exptime) #one_shot
-                # ctrl+C to break while cycle
-                # using time.sleep will cause command_input stuck problem
-                while True:
-                    if self.fakeStatus == True:
+                t1 = time.time()
+                #while CCD.getStatus == 0:
+                print("CCD status :",e.PV("41a:ccd1:dataok").get())
+                while e.PV("41a:ccd1:dataok").get() == 0:
+                    j += 1
+                    #print("wait for exposure finish ...")
+                    if e.PV("41a:ccd1:dataok").get() == 1:
                         break
-            '''
-            exposure finished
-            '''
-            self.getPlot()
-            dt = round(time.time() - t1, 3)
-            print('timespan in seconds=', dt)
-            self.loop_finished == True
+                print(j)
+                dt = round(time.time() - t1, 3)
+                print('timespan in seconds=', dt)
+                self.getPlot()
+                #self.finished = True # wait for QThread
 
-    def fakExposed(self):
-        self.fakeStatus = True
+    # wait for QThread
+    # def stopImage(self):
+    #     global BUSY, cmd_global
+    #     if ABORT:
+    #         self.check_finished.stop()
+    #         BUSY = False
+    #         cmd_global.abort_button.setEnabled(False)
+
+
 
     def getPlot(self):
         if SAFE: # checked safe
