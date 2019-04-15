@@ -1,4 +1,4 @@
-#Last edited:20190412 7pm by Jason
+#Last edited:20190415 2pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
@@ -12,8 +12,11 @@ import pyqtgraph as pg
 from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
+
 import time, datetime, math, re
 import threading
+
+#import spike
 
 # Global for connection
 spectrum_widget_global = None
@@ -66,8 +69,8 @@ def get_param():
         ##### 'imager','Tccd', 'shutter' need to be included
         #get param values from devices
         I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
-        real_list = [AGM.get_position(), AGS.get_position(), 
-                     X.getValue(), Y.getValue(), Z.getValue(), 
+        real_list = [AGM.get_position(), AGS.get_position(),
+                     X.getValue(), Y.getValue(), Z.getValue(),
                      U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
                      TSA.getValue(), TSB.getValue(), I0_read,
                      CCD.getTemp(), CCD.getGain()]
@@ -121,8 +124,8 @@ def get_param():
         ##### 'imager','Tccd', 'shutter' need to be included
         #get param values from devices
         I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
-        real_list = [AGM.get_position(), AGS.get_position(), 
-                     X.getValue(), Y.getValue(), Z.getValue(), 
+        real_list = [AGM.get_position(), AGS.get_position(),
+                     X.getValue(), Y.getValue(), Z.getValue(),
                      U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
                      TSA.getValue(), TSB.getValue(), I0_read,
                      CCD.getTemp(), CCD.getGain()]
@@ -158,8 +161,8 @@ def set_param(p, v):
         #dummy set
         param[p] = v
 
-        
-        
+
+
 '''
 Dir for datasaving and macro
  - create a project folder named after date
@@ -264,22 +267,20 @@ class Panel(QWidget):
         rightcolumn.addWidget(spectrum_widget)
         hbox.addLayout(leftcolumn, 1)
         hbox.addLayout(rightcolumn, 1)
-        
-        
-        
+
+
+
         # for global connection
         cmd_global = command_widget
         img_global = image_widget
         spectrum_widget_global = spectrum_widget
         status_global = status_widget
-        
+
         #qtsignal/slot method
         command_widget.takeimage.connect(image_widget.ccdLoop)
         command_widget.loadimage.connect(image_widget.loadImg)
-        
+
         self.show()
-
-
 
 class StatusWidget(QWidget):
     global param, parameter_text
@@ -292,12 +293,10 @@ class StatusWidget(QWidget):
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
         self.status_box.setFont(QtGui.QFont("UbuntuMono",12))
         self.status_box.setReadOnly(True)
-
         # Widget layout
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.status_box)
-
         '''
         Update
          - repeat show_text function every 1 sec.
@@ -307,6 +306,10 @@ class StatusWidget(QWidget):
         self._status_update_timer.timeout.connect(self.show_text)
         self._status_update_timer.timeout.connect(self.show_bar)
         self._status_update_timer.start(500)
+        #time.start
+        #Starts or restarts the timer with a timeout interval of msec milliseconds.
+        #If the timer is already running, it will be stopped and restarted.
+        #If singleShot is true, the timer will be activated only once.
 
     def show_bar(self):
         time = QDateTime.currentDateTime()
@@ -358,7 +361,7 @@ class StatusWidget(QWidget):
         else:
             read = value
         return str(read)
-    
+
         #Terminal
 class Command(QWidget):
     takeimage = pyqtSignal(bool,float)
@@ -367,6 +370,7 @@ class Command(QWidget):
     macrostat = pyqtSignal(str)
     pause = pyqtSignal(float)
     loadimage = pyqtSignal(str)
+    plot_rixs = pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent)
         # message
@@ -385,7 +389,7 @@ class Command(QWidget):
         self.command_input.setFocusPolicy(Qt.StrongFocus)
         self.command_input.setPlaceholderText("Type help to list commands ...")
         self.commandLock()
-        
+
         # input function communications
         self.command_input.returnPressed.connect(self.send_message)
         self.inputext.connect(self.send)    # input string as signal
@@ -435,7 +439,7 @@ class Command(QWidget):
         self.Input.addWidget(self.command_input)
         self.Input.addWidget(self.abort_button)
         self.Commandlayout.addLayout(self.Input)
-        
+
     def send_message(self):
         ABORT = False
         txt = self.command_input.text()
@@ -444,7 +448,7 @@ class Command(QWidget):
         self.command_message.moveCursor(QtGui.QTextCursor.End)
 
         '''
-        set global abort flag when button clicked 
+        set global abort flag when button clicked
         (because scan loop is not in this class...)
         '''
     def abortCommand(self):
@@ -574,9 +578,10 @@ class Command(QWidget):
                    "<br>\n"
                    "<b>s2</b>: set the opening of the exit slit.<br>\n"
                    "<b>shut</b>: open or close the BL shutter.<br>\n"
-                   "<b>ccd</b>: turn on or turn off the CCD.<br>\n")
+                   "<b>ccd</b>: turn on or turn off the CCD.<br>\n"
+                   "<b>load</b>: load an image file.<br>")
             self.sysReturn(msg)
-            
+
         elif text == "h":
             self.sysReturn(text, "v")
             i = self.history_log.size
@@ -640,7 +645,7 @@ class Command(QWidget):
                         self.sysReturn("getting ccd image ...")
                         CCD.setExposureTime(t)
                         CCD.start(1)
-                        #get real image for t seconds 
+                        #get real image for t seconds
                         # emit signal to image widget and plot data
                         self.takeimage.emit(True,float(t))
                     else:
@@ -670,10 +675,15 @@ class Command(QWidget):
             # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
-            if space == 1 and text[4]==" ":  # e.g. img 1234
+            print('text =', text)
+            print('filename =', sptext[1])
+            if space == 1 and text[4]==" ":  # e.g. load filename
                 self.sysReturn(text, "v", True)
-                file_name = sptext[1]
+                file_name = sptext[1]+'.txt'
                 self.loadimage[str].emit(file_name)
+                #self.plot_rixs[str].emit(file_name)
+                spectrum_widget_global.plotRixs(file_name)
+
                 self.sysReturn(file_name+" has been loaded.")
         elif text == 'r':
             self.sysReturn(text,"v")
@@ -686,7 +696,7 @@ class Command(QWidget):
             status_global.show_text()
             self.sysReturn(text,"v")
             self.sysReturn("Parameter values have been updated.")
-            
+
         elif "s2" in text[:3]:
             space = text.count(' ')
             sptext = text.split(' ')
@@ -796,6 +806,7 @@ class Command(QWidget):
                     #self.command_message.append(t0.strftime("%c"))
                     self.sysReturn('Scan '+ str(int(param['f'])) +' begins at ' + t0.strftime("%c"))
                     spectrum_widget_global.scan_loop(plot, sptext)
+
                 else:
                     self.sysReturn(text, "iv")
                     if (check_param1 !='OK'): check_param = check_param1
@@ -823,7 +834,7 @@ class Command(QWidget):
 #             else:
 #                 self.sysReturn("incorrect format: do macroname","err")
 # =============================================================================
-                
+
         elif text[:5] == "wait ":
             space = text.count(' ')
             sptext = text.split(' ')
@@ -843,8 +854,8 @@ class Command(QWidget):
 
         # refresh and scroll down to latest message
         self.abort_button.setEnabled(False)
-        
-        
+
+
     def convertSeconds(self,seconds):
         h = int(seconds//(60*60))
         m = int((seconds-h*60*60)//60)
@@ -940,7 +951,7 @@ class Command(QWidget):
 
         print('scan paramter check:', check_msg)
         return check_msg
-    
+
         '''
         check function for Wait command
         '''
@@ -950,22 +961,22 @@ class Command(QWidget):
         timer = QTimer(self)
         timer.timeout.connect(self.cmdDone)
         timer.start(1000*float(t)) # count for t seconds then open user input
-        
+
     def cmdDone(self):
         global BUSY
         BUSY = False
-        
+
     def commandLock(self):
         timer = QTimer(self)
         timer.setSingleShot(False)
         timer.timeout.connect(self.lockInput)
         timer.start(1000) # repeat every second
-    
+
     def lockInput(self):
         self.command_input.setDisabled(BUSY)
         if BUSY == False:
             self.command_input.setFocus()
-    
+
     def doMacro(self, name):
         #reset macro numbers
         self.macro_index = 0
@@ -980,7 +991,7 @@ class Command(QWidget):
         else:
             self.sysReturn(text,"iv")
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir),"err")
-            
+
     def readFile(self, name):
         #==============Macro start===============
         readfile=[]
@@ -990,7 +1001,7 @@ class Command(QWidget):
             readfile.append(x)
         self.macro_n = len(readfile)
         return (readfile)
-        
+
     def macroLoop(self,n,name):
         global BUSY
         while self.macro_index < self.macro_n:
@@ -1006,9 +1017,9 @@ class Command(QWidget):
             self.send(line)
             self.macro_index += 1
         self.sysReturn("macro finished.")
-            
-    
-    
+
+
+
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
@@ -1017,13 +1028,13 @@ class ImageWidget(QWidget):
         a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         npa = np.asarray(a)
         renpa = np.reshape(npa, (2, 5), order='F')
-        self.imgdata = renpa # default image when program startup 
-                             # replace by RGB pixel Magpie picture?  
-        
-        plt = pg.PlotItem(labels={'bottom':('x',''), 'left':('y','')})
-        plt.invertY(False)
+        self.imgdata = renpa # default image when program startup
+                             # replace by RGB pixel Magpie picture?
+
+        plt = pg.PlotItem(labels={'bottom':('x pixel',''), 'left':('y pixel','')})
+        plt.invertY(True)
         plt.setAspectLocked(True)
-        
+
         ## Set a custom color map
         rainbow_colors = [
             (0, 0, 255),
@@ -1034,12 +1045,12 @@ class ImageWidget(QWidget):
             (255, 0, 0)
         ]
         cmap = pg.ColorMap(pos=np.linspace(0.0, 1.0, 6), color=rainbow_colors)
-        
+
         self.imv = pg.ImageView(view=plt)
         self.imv.setColorMap(cmap)
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
-        
+
         self.plotImg()
 
         self.layoutVertical = QVBoxLayout(self)
@@ -1103,24 +1114,32 @@ class ImageWidget(QWidget):
             img_list = np.asarray(raw_img) #convert raw image to 1d numpy array
             img_np = np.reshape(img_list, (1024, 2048), order='F') #reshape from 1d to 2d numpy array
         else:
-            # else 
+            # else
             raw_img = np.random.uniform(0,500+1,1024*2048)
             img_list = np.asarray(raw_img)
-            img_np = np.reshape(img_list, (1024, 2048), order='F')   
+            img_np = np.reshape(img_list, (1024, 2048), order='F')
         self.imgdata = img_np
         self.plotImg()
-        
+
     def plotImg(self):
         self.imv.setImage(self.imgdata)
-    
-    def loadImg(self, name):
+
+    def loadImg(self, filename):
+        global rixs_img
+        '''
         raw_data = np.genfromtxt(name, delimiter=',', usecols=1)
         data = np.asarray(raw_data)
+        print('data size = ', np.size(data))
         data = np.delete(data, 0)
-        self.imgdata = np.reshape(data, (1024, 2048), order='F')
+        self.imgdata = np.reshape(data, (1024, 2061), order='F')
+        '''
+        raw_data=np.genfromtxt(filename, delimiter=',') # The type of data1 is <class 'numpy.ndarray'>
+        self.imgdata=np.transpose(raw_data[:,0:1024]) #cconvert raw image to 1d numpy array
+        rixs_img = np.copy(self.imgdata)
+
         self.plotImg()
-        #raw_data = np.genfromtxt(name, delimiter=',') #convert raw image to 1d numpy array
-        #data = raw_data[:,0:1024] # The type of data1 is <class 'numpy.ndarray'>
+
+
 
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
@@ -1130,7 +1149,7 @@ class ImageWidget(QWidget):
 
         print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
         print(rixs_tmp)
-        
+
 
 class SpectrumWidget(QWidget):
 
@@ -1164,14 +1183,14 @@ class SpectrumWidget(QWidget):
         print('scan no = ', file_no)
         if plot==[]:
             plot=['I0']
-            
+
         ## plist from split text input = [param, x1, x2, step, dwell]
         scan_param = plist[0]
         x1 = float(plist[1]) # start
         x2 = float(plist[2]) # end
         step = abs(float(plist[3]))*np.sign(x2-x1) # step is negative if x1 > x2
         dwell = float(plist[4])
-        
+
         ##
         n = int(abs((x2-x1)/abs(step))) #set the number of scanning steps
         x2_new = x1 +  step * (n+1)
@@ -1186,7 +1205,7 @@ class SpectrumWidget(QWidget):
         for i in range(plot_no):
             if i is 0: title_plot += ' ' + plot[i]
             else: title_plot += ', ' +plot[i]
-            
+
         self.plotWidget.plotItem.setTitle(title= title_plot)
         self.plotWidget.plotItem.setXRange(float(x1), float(x2_new), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', text=scan_param)
@@ -1264,7 +1283,7 @@ class SpectrumWidget(QWidget):
             for j in range(plot_no):
                 msg += str(round(param[plot[j]],3))+'     '
 
-            if i%5 == 0:  
+            if i%5 == 0:
                 cmd_global.sysReturn('')
                 cmd_global.sysReturn('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ "     plot =  "+msg)
 
@@ -1273,7 +1292,7 @@ class SpectrumWidget(QWidget):
 
         dt = round(time.time()- t1, 3)
         print('timespan in senconds=', dt)
-        
+
         if ABORT:
             cmd_global.sysReturn('Scaning loop has been terminated; timespan  = ' + cmd_global.convertSeconds(dt),'err')
         else:
@@ -1292,6 +1311,25 @@ class SpectrumWidget(QWidget):
         #data_matrix.to_hdf(file_path+filename, key='df', mode='w')
         cmd_global.sysReturn('Scan data saved as ['+filename+'.csv]')
         BUSY = False
+
+    def plotRixs(self, filename):
+        global rixs_img
+        #self.plotWidget.plotItem.setTitle(title= title_plot)
+        x1=0
+        x2=2060
+
+        ##### spike removal along s for continusly changing t (0-2060)
+        # data: 2D numpy array
+        # x1 and x2: region of interest along the x-pixel
+        # d: discrimination factor; discriminator leve = data_avegera * d
+
+        #data_sp=spike.spikeRemoval(rixs_img, 400, 600, 3)
+
+        self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
+        self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
+        self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units')
+        self.plotWidget.addLegend((50,30), offset=(450,150))
+        self.plotWidget.plotItem.clear()
 
 class MacroWindow(QWidget):
     macroMsg = pyqtSignal(str)
@@ -1320,9 +1358,6 @@ class MacroWindow(QWidget):
         file.close()
         self.macro_editor.append("file saved: "+txt_file)
         self.macro_editor.setEnabled(False)
-
-
-
 
 
 
