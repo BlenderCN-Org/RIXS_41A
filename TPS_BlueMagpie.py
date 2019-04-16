@@ -1,4 +1,4 @@
-#Last edited:20190415 4pm by Jason
+#Last edited:20190415 5pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -766,7 +766,6 @@ class Command(QWidget):
                     print('file no =', file_no)
                     print('param[\'f\']', param['f'])
 # =============================================================================
-                    param[scan_param] = x1
                     QtGui.QApplication.processEvents()
                     time.sleep(0.5)
                     t0=datetime.datetime.now()
@@ -989,7 +988,7 @@ class WaitExposure(QThread):
     getplot = pyqtSignal()
     def __init__(self):  
         super(WaitExposure,self).__init__() 
-        i = 0 
+        self.i = 0
         print("thread start")
     def run(self):
         if SAFE:
@@ -1003,19 +1002,20 @@ class WaitExposure(QThread):
         t1 = time.time()
         if SAFE:
             while e.PV("41a:ccd1:dataok").get() == 0:
-                i += 1
+                self.i += 1
                 if e.PV("41a:ccd1:dataok").get() == 1:
                     break
         else:
             time.sleep(3)
-            i = 3
-        self.msg.emit("checked %s cycles for exposure."%str(i))
+            self.i = 3
+        self.msg.emit("checked %s cycles for exposure."%str(self.i))
         self.msg.emit("Exposure Finished.")
         dt = round(time.time() - t1, 3)
         self.msg.emit('timespan in seconds= %s'%dt)
         self.getplot.emit()
         self.msg.emit('Image obtained')
         self.finished.emit()
+
     
 
 class ImageWidget(QWidget):
@@ -1142,7 +1142,10 @@ class SpectrumWidget(QWidget):
         x2_new = x1 +  step * (n+1)
         scan_x = [] # the 1st point of the list for the scanning parameter
         scan_data1 = [] # the 1st data point of measurement #1#
-        param[scan_param] = x1  # set the initial parameter value
+        if SAFE:
+            set_param(param[scan_param], x1)  # set the initial parameter value
+        else:
+            param[scan_param] = x1
         time.sleep(dwell)
         '''
         Setup for realtime plotting.
@@ -1190,12 +1193,11 @@ class SpectrumWidget(QWidget):
             data_i =[]
             # set scanning parameters --> wait --> get data
             if SAFE:
-                pass
-                #set_param(scan_param, scan_x[i])
+                set_param(scan_param, scan_x[i])
             else:
                 param[scan_param] = scan_x[i] # set scanning parameter
             time.sleep(dwell)
-            #get data
+            # get data
             scan_plotting = pd.Series(index=plot)
             counts=[]
             for j in range(plot_no):
@@ -1203,7 +1205,8 @@ class SpectrumWidget(QWidget):
                     I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
                 else:
                     param[plot[j]]=0.8**(j)*100*math.sin((10*j+1)*(scan_x[i]-(x1+x2)/2)/2) # math.cos(scan_x[i]/100) #get numeric data:  assuming  Sin function
-                if j==1: 
+                ### not called if only scan one parameter
+                if j==1:
                     if SAFE:
                         data_i.append(I0_read)
                     else:
@@ -1212,7 +1215,10 @@ class SpectrumWidget(QWidget):
                     #print('i= ', i, '  j=', j, '   ', scan_param, '=', scan_x[i], '     ', plot[j], '=', param[plot[j]])
 
             #after finishing the update of all param values
-            data_matrix.loc[len(data_matrix), :] =  param.tolist() #appending param to data_matrix
+            if SAFE:
+                data_matrix.loc[len(data_matrix), :] = get_param.tolist() #appending param to data_matrix
+            else:
+                data_matrix.loc[len(data_matrix), :] = param.tolist()
 
             # TODO: reconstruct this part
             if plot_no >= 1: self.curve0.setData(scan_x, data_matrix.loc[:,plot[0]])
