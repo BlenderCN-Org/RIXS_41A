@@ -1,22 +1,16 @@
 #Last edited:20190415 4pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtWidgets import (QApplication, QWidget, QMainWindow, QGridLayout, QAction,
-                             QGroupBox, QSpinBox, QProgressBar, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-                             QSpacerItem, QSizePolicy, QAction, QPushButton, qApp, QPlainTextEdit, QFormLayout, QAction,
-                             QScrollBar,QTableWidgetItem,QTableWidget,QComboBox,QVBoxLayout,QGridLayout,
-                             QPushButton, QMainWindow,QMessageBox,QLabel,QTextEdit,QProgressBar)
-from PyQt5.QtGui import QIcon, QFont
-from PyQt5.QtCore import QSize, Qt, QDate, QTime, QDateTime, QObject, QEvent, pyqtSignal, QTimer, pyqtSlot
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
+from PyQt5.QtCore import *
 import pyqtgraph as pg
 from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
-
 import time, datetime, math, re
 import threading
-
-#import spike
+import spike
 
 # Global for connection
 spectrum_widget_global = None
@@ -625,17 +619,18 @@ class Command(QWidget):
                     t = sptext[1]
                     self.sysReturn(text, "v", True)
                     if SAFE:
+                        CCD.setExposureTime(t)
                         self.sysReturn("getting ccd image ...")
-                        QtGui.QApplication.processEvents()
-                        #get real image for t seconds
-                        img_global.takeImage(float(t))
                     else:
                         self.sysReturn("Warning: CCD not connected", "err")
                         self.sysReturn("generating random image by numpy...")
-                    #img_global.getCCDImage()
-                    self.sysReturn("image obtained.")
-                # elif sptext[1] == "off":
-                #     img_global.stopImage() # wait for QThread
+                    thread = WaitExposure()
+                    QtGui.QApplication.processEvents()
+                    thread.start()
+                    thread.finished.connect(self.cmdDone)
+                    thread.msg.connect(self.sysReturn)
+                    thread.getplot.connect(img_global.getPlot)
+                    thread.wait()
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("incorrect format: img + exposure_time", "err")
@@ -988,7 +983,40 @@ class Command(QWidget):
             self.macro_index += 1
         self.sysReturn("macro finished.")
 
-
+class WaitExposure(QThread):
+    finished = pyqtSignal()
+    msg = pyqtSignal(str)
+    getplot = pyqtSignal()
+    def __init__(self):  
+        super(WaitExposure,self).__init__() 
+        i = 0 
+        print("thread start")
+    def run(self):
+        if SAFE:
+            CCD.start(1) # 1 for activate
+        if SAFE:
+            while e.PV("41a:ccd1:dataok").get() == 1:
+                pass
+                if e.PV("41a:ccd1:dataok").get() == 0:
+                    break
+        self.msg.emit("Exposure Start.")
+        t1 = time.time()
+        if SAFE:
+            while e.PV("41a:ccd1:dataok").get() == 0:
+                i += 1
+                if e.PV("41a:ccd1:dataok").get() == 1:
+                    break
+        else:
+            time.sleep(3)
+            i = 3
+        self.msg.emit("checked %s cycles for exposure."%str(i))
+        self.msg.emit("Exposure Finished.")
+        dt = round(time.time() - t1, 3)
+        self.msg.emit('timespan in seconds= %s'%dt)
+        self.getplot.emit()
+        self.msg.emit('Image obtained')
+        self.finished.emit()
+    
 
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
@@ -1026,55 +1054,6 @@ class ImageWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.imv)
 
-    # wait for QThread
-    # # called by "img t"
-    # def ccdLoop(self,t):
-    #     global BUSY, ABORT
-    #     BUSY = True
-    #     ABORT = False
-    #     self.image_time = t
-    #     self.finished = True
-    #     self.check_finished = QTimer(self)
-    #     self.check_finished.setSingleShot(False)
-    #     self.check_finished.timeout.connect(self.takeImage) # trigger this function every 2 sec
-    #     self.check_finished.timeout.connect(self.stopImage) # trigger this function every 2 sec
-    #     self.check_finished.start(100)
-
-    def takeImage(self,t):
-        # get one image
-        #if self.finished: # wait for QThread
-            if SAFE:
-                #self.finished = False # wait for QThread
-                CCD.setExposureTime(t)
-                CCD.start(1) # 1 for activate
-                j = 0
-                while e.PV("41a:ccd1:dataok").get() == 1:
-                    pass
-                    if e.PV("41a:ccd1:dataok").get() == 0:
-                        break
-                t1 = time.time()
-                #while CCD.getStatus == 0:
-                print("CCD status :",e.PV("41a:ccd1:dataok").get())
-                while e.PV("41a:ccd1:dataok").get() == 0:
-                    j += 1
-                    #print("wait for exposure finish ...")
-                    if e.PV("41a:ccd1:dataok").get() == 1:
-                        break
-                print(j)
-                dt = round(time.time() - t1, 3)
-                print('timespan in seconds=', dt)
-                self.getPlot()
-                #self.finished = True # wait for QThread
-
-    # wait for QThread
-    # def stopImage(self):
-    #     global BUSY, cmd_global
-    #     if ABORT:
-    #         self.check_finished.stop()
-    #         BUSY = False
-    #         cmd_global.abort_button.setEnabled(False)
-
-
 
     def getPlot(self):
         if SAFE: # checked safe
@@ -1106,9 +1085,7 @@ class ImageWidget(QWidget):
         raw_data=np.genfromtxt(filename, delimiter=',') # The type of data1 is <class 'numpy.ndarray'>
         self.imgdata=np.transpose(raw_data[:,0:1024]) #cconvert raw image to 1d numpy array
         rixs_img = np.copy(self.imgdata)
-
         self.plotImg()
-
 
 
     def rixs_sum(self, image_data):
@@ -1119,8 +1096,7 @@ class ImageWidget(QWidget):
 
         print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
         print(rixs_tmp)
-
-
+    
 class SpectrumWidget(QWidget):
 
     def __init__(self, parent=None):
@@ -1168,7 +1144,9 @@ class SpectrumWidget(QWidget):
         scan_data1 = [] # the 1st data point of measurement #1#
         param[scan_param] = x1  # set the initial parameter value
         time.sleep(dwell)
-
+        '''
+        Setup for realtime plotting.
+        '''
         plot_no = min(len(plot),5.0) # maximum number of curves to be plotted is 5.
         plot = plot[:plot_no]
         title_plot = 'Scan '+ str(int(param['f']))+': scanning '+ scan_param +',  plotting'
@@ -1183,37 +1161,25 @@ class SpectrumWidget(QWidget):
         self.plotWidget.addLegend((50,30), offset=(450,150))
         self.plotWidget.plotItem.clear()
         print(x1, x2, step, dwell)
-        #self.spectrumplot2(scan_x, scan_data1)
-        #self.curve0 = self.plotWidget.plot(scan_x, scan_data1, pen='g', linewidth=2)
-
         # create an empty dataframe for scaning; param_index = ['t', 's1', 's2', 'agm', 'ags',.....]
         data_matrix = pd.DataFrame(columns = param_index)
-        #print('initial data_matrix=', data_matrix)
-
         # create an empty series for plotting during a scan
         data_plotting = pd.DataFrame(columns =plot)
-        #print('initial scan_plotting=', scan_plotting)
         scan_data_ith = pd.Series(index = plot) #for i-th scan
-
         self.curve=[]
         color=['g', 'b', 'w','r', 'y']
-
-
         self.curve = self.curve[:plot_no]
         color = color[:plot_no]
-
-        print('plot', plot)
-        print('color', color)
-
+        print('plot: ', plot, ', color: ', color)
         # TODO: reconstruct this part
         if plot_no >= 1: self.curve0 = self.plotWidget.plot(scan_x, scan_data1, pen='g', linewidth=2, name=plot[0])
         if plot_no >= 2: self.curve1 = self.plotWidget.plot(scan_x, scan_data1, pen='r', linewidth=2, name=plot[1])
         if plot_no >= 3: self.curve2 = self.plotWidget.plot(scan_x, scan_data1, pen='w', linewidth=2, name=plot[2])
         if plot_no >= 4: self.curve3 = self.plotWidget.plot(scan_x, scan_data1, pen='y', linewidth=2, name=plot[3])
         if plot_no >= 5: self.curve4 = self.plotWidget.plot(scan_x, scan_data1, pen='b', linewidth=2, name=plot[4])
-
-
-        # scanning loop
+        '''
+        Scanning loop
+        '''
         print('for loop begins')
         for i in range(n+1):
             if ABORT:
@@ -1223,17 +1189,27 @@ class SpectrumWidget(QWidget):
             scan_x.append(x1 + i*step)
             data_i =[]
             # set scanning parameters --> wait --> get data
-            param[scan_param] = scan_x[i] # set scanning parameter
+            if SAFE:
+                pass
+                #set_param(scan_param, scan_x[i])
+            else:
+                param[scan_param] = scan_x[i] # set scanning parameter
             time.sleep(dwell)
-
             #get data
             scan_plotting = pd.Series(index=plot)
             counts=[]
             for j in range(plot_no):
-                param[plot[j]]=0.8**(j)*100*math.sin((10*j+1)*(scan_x[i]-(x1+x2)/2)/2) # math.cos(scan_x[i]/100) #get numeric data:  assuming  Sin function
-                if j==1: param[plot[j]]=i
-                data_i.append(param[plot[j]])
-                #print('i= ', i, '  j=', j, '   ', scan_param, '=', scan_x[i], '     ', plot[j], '=', param[plot[j]])
+                if SAFE:
+                    I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
+                else:
+                    param[plot[j]]=0.8**(j)*100*math.sin((10*j+1)*(scan_x[i]-(x1+x2)/2)/2) # math.cos(scan_x[i]/100) #get numeric data:  assuming  Sin function
+                if j==1: 
+                    if SAFE:
+                        data_i.append(I0_read)
+                    else:
+                        param[plot[j]]=i # what is this for?
+                        data_i.append(param[plot[j]])
+                    #print('i= ', i, '  j=', j, '   ', scan_param, '=', scan_x[i], '     ', plot[j], '=', param[plot[j]])
 
             #after finishing the update of all param values
             data_matrix.loc[len(data_matrix), :] =  param.tolist() #appending param to data_matrix
@@ -1245,18 +1221,18 @@ class SpectrumWidget(QWidget):
             if plot_no >= 4: self.curve3.setData(scan_x, data_matrix.loc[:,plot[3]])
             if plot_no >= 5: self.curve4.setData(scan_x, data_matrix.loc[:,plot[4]])
 
-            #print('data_matrix.iloc[i,:]')
-            #print(data_matrix.iloc[i,:])
             QtGui.QApplication.processEvents()
-            msg=''
             j=0
+            msg = ''
             for j in range(plot_no):
                 msg += str(round(param[plot[j]],3))+'     '
 
             if i%5 == 0:
                 cmd_global.sysReturn('')
                 cmd_global.sysReturn('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ "     plot =  "+msg)
-
+        '''
+        Loop finished
+        '''
         print('data_matrix')
         print(data_matrix)
 
@@ -1293,7 +1269,7 @@ class SpectrumWidget(QWidget):
         # x1 and x2: region of interest along the x-pixel
         # d: discrimination factor; discriminator leve = data_avegera * d
 
-        #data_sp=spike.spikeRemoval(rixs_img, 400, 600, 3)
+        data_sp=spike.spikeRemoval(rixs_img, 400, 600, 3)
 
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
