@@ -11,6 +11,7 @@ import pandas as pd
 import time, datetime, math, re
 import threading
 import spike
+#import qt_thread_rixs
 
 # Global for connection
 spectrum_widget_global = None
@@ -524,7 +525,7 @@ class Command(QWidget):
 
     def send(self, txt):
         self.command_input.setDisabled(True)
-        global param_index, param, cmd_global, file_no, img_global
+        global param_index, param, cmd_global, file_no, img_global, BUSY
         text = txt
         # remove whitespace spaces ("  ") in the end of command input
         if text[len(text)-1] ==' ' and text != "":
@@ -617,6 +618,7 @@ class Command(QWidget):
             if space == 1:  # e.g. img 1234
                 if self.checkFloat(sptext[1]):
                     t = sptext[1]
+                    BUSY=True
                     self.sysReturn(text, "v", True)
                     if SAFE:
                         CCD.setExposureTime(t)
@@ -625,12 +627,10 @@ class Command(QWidget):
                         self.sysReturn("Warning: CCD not connected", "err")
                         self.sysReturn("generating random image by numpy...")
                     thread = WaitExposure()
-                    QtGui.QApplication.processEvents()
-                    thread.start()
                     thread.finished.connect(self.cmdDone)
                     thread.msg.connect(self.sysReturn)
                     thread.getplot.connect(img_global.getPlot)
-                    thread.wait()
+                    thread.start()
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("incorrect format: img + exposure_time", "err")
@@ -813,6 +813,9 @@ class Command(QWidget):
                     self.pause[float].emit(float(t))
                 else:
                     self.sysReturn("incorrect format: wait time", "err")
+                    
+        #elif text == "test":
+        #    qt_thread_rixs.rixs_test()
 
         elif text != "":
            self.sysReturn(text, "iv")
@@ -1006,8 +1009,10 @@ class WaitExposure(QThread):
                 if e.PV("41a:ccd1:dataok").get() == 1:
                     break
         else:
-            time.sleep(3)
-            self.i = 3
+            for self.i in range(0,3):
+                self.msg.emit('i now：{}'.format(self.i))
+                self.sleep(1)
+                self.i += 1
         self.msg.emit("checked %s cycles for exposure."%str(self.i))
         self.msg.emit("Exposure Finished.")
         dt = round(time.time() - t1, 3)
