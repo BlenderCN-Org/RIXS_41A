@@ -1,4 +1,4 @@
-#Last edited:20190416 5pm by Jason
+#Last edited:20190417 3pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -100,10 +100,11 @@ if SAFE:
 
 
 # called when SAFE == True
-def get_param():
+def get_param_for_status():
         ##### 'imager','Tccd', 'shutter' need to be included
         #get param values from devices
-        I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
+        I0_read = e.caget(IPV0)
+        #I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
         real_list = [AGM.get_position(), AGS.get_position(),
                      X.getValue(), Y.getValue(), Z.getValue(),
                      U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
@@ -112,6 +113,30 @@ def get_param():
         #replace current list elements in param_index0
         param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Tccd','gain'] = real_list
         return param
+
+
+def get_param(p):
+    if SAFE:
+        ped_dict = {'x': X, 'y': Y, 'z': Z, 'u': U, 'v': V, 'w': W, 'th': TH, 'tth': TTH}
+        epics_dict = {'agm': AGM, 'ags': AGS}  # I0 read only
+        # for ped
+        if p in ped_dict:
+            P = ped_dict[p]
+            v = P.getValue()
+        #for AGM, AGS
+        elif p in epics_dict:
+            P = epics_dict[p]
+            v = e.caget(P)
+        # tb read-only
+        elif p == 'ta':
+            e.caput("41a:sample:heater", 1)
+            v = TSA.getValue()
+        elif p == 'Tccd':
+            v = CCD.getTemp()
+        elif p == 'gain':
+            v = CCD.getGain()
+
+    return v
 
 
 
@@ -298,7 +323,7 @@ class StatusWidget(QWidget):
         # Forced refresh
     def show_text(self):
         if SAFE:
-            param = get_param()
+            param = get_param_for_status()
 
         parameter_text = ( "<font color=black><b> file number: " + self.p('f','int') + "<b><br>"
                             " <br>"
@@ -334,6 +359,8 @@ class StatusWidget(QWidget):
             if value == 0: read='off'
             else: read='on'
         #if isinstance(value, int) or isinstance(value, float):
+        elif x == 'I0':
+            read = np.format_float_scientific(value, unique=False, precision=2, exp_digits=2)
         elif x != 'I0':
             if y == 'Round': read = round(value,2)
             elif y == 'int': read = int(value)
@@ -522,16 +549,28 @@ class Command(QWidget):
         else:
             self.command_message.append(x)
 
+    def preFormatting(self, text):
+        # remove whitespace spaces ("  ") in the end of command input
+        if text[len(text) - 1] == ' ' and text != "":
+            text = text[:len(text) - 1]
+        # an elegant way to remove extra whitespace,  "import re" is needed/
+        text = re.sub(' +', ' ', text)
+        # remove space before comma
+        c = text.find(',')
+        print(c)
+        if c!=-1:
+            if text[c - 1] == " ":
+                print(text[:c - 1])
+                print(text[c:])
+                text = text[:c - 1] + text[c:]
+        return text
 
     def send(self, txt):
         self.command_input.setDisabled(True)
-        global param_index, param, cmd_global, file_no, img_global, BUSY
         text = txt
-        # remove whitespace spaces ("  ") in the end of command input
-        if text[len(text)-1] ==' ' and text != "":
-            text = text[:len(text)-1]
-        # an elegant way to remove extra whitespace,  "import re" is needed/
-        text = re.sub(' +', ' ', text)
+        global param_index, param, cmd_global, file_no, img_global, BUSY
+        # pre-formatting
+        text = self.preFormatting(text)
         # keyboard log for Up and Down
         if text != "":
             self.kblog.append(text)
@@ -631,6 +670,7 @@ class Command(QWidget):
                     thread.msg.connect(self.sysReturn)
                     thread.getplot.connect(img_global.getPlot)
                     thread.start()
+                    thread.wait()
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("incorrect format: img + exposure_time", "err")
@@ -734,56 +774,60 @@ class Command(QWidget):
 
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
+                # scan function
+                # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
         elif 'scan' in text[:5]:
             # if the input command is only 'scan' but not parameters check != 'OK',
-            check = self.check_param_scan(text)   # checking input command and parameters
+            check = self.check_param_scan(text)  # checking input command and parameters
             if check == 'OK':
-                self.sysReturn(text,"v", True)     # "v": log text in history; True: mark blue
-                if text.find(',') is -1: #scan x 1 10 1 0.1
+                self.sysReturn(text, 'v', True)  # "v": log text in history; True: mark blue
+                if text.find(',') is -1:  # no "," i.e. scan x 1 10 1 0.1
                     c = 3
-                    plot=['I0'] #default detection parameter
-                else: #scan y z: x 1 10 1 0.1
-                    c = text.find(',')
-                    plot=text[5:c].split(' ') # list of detection parameters
+                    plot = ['I0']  # default detection parameter
+                else:  # scan y z, x 1 10 1 0.1
+                    c = text.find(',')  # c= the location index of "," in text
+                    print(text)
+                    plot = text[5:c].split(' ')  # extract the parameter list of plotting
 
-                print('index c of \',\' in the input command,  c=',c, ' (c=3 if there is no \',\')')
+
+                print('index c of \',\' in the input command,  c=', c, ' (c=3 if there is no \',\')')
                 print('input plot=', plot)
-                sptext = text[c+2:].split(' ') # list of scan parameters
+                sptext = text[c + 2:].split(' ')  # values of the scan parameter
                 print('sptext=', sptext)
 
                 scan_param = sptext[0]
-                x1 = float(sptext[1]) # begin
-                x2 = float(sptext[2]) # end
-                step = abs(float(sptext[3]))*np.sign(x2-x1) # step is negative if x1 > x2
-                dwell = float(sptext[4])
-                n = int(abs((x2-x1)/step)) #set the number of scanning steps
-                check_param1 =self.check_param_range(sptext[0], x1)
-                check_param2 =self.check_param_range(sptext[0], x2)
-                if (check_param1 =='OK') and (check_param2 =='OK'):
-# ==================Save file==================================================
-                    file_no +=1
-                    param['f'] =file_no
+                x1 = float(sptext[1])  # begin
+                x2 = float(sptext[2])  # end
+                step = abs(float(sptext[3])) * np.sign(x2 - x1)  # step is negative if x1 > x2
+                dwell = float(sptext[4])  # dwell time in secconds
+                n = int(abs((x2 - x1) / step))  # set the number of scanning steps
+                check_param1 = self.check_param_range(sptext[0], x1)
+                check_param2 = self.check_param_range(sptext[0], x2)
+                if (check_param1 == 'OK') and (check_param2 == 'OK'):
+                    # ==================Save file==================================================
+                    file_no += 1
+                    param['f'] = file_no
                     print('file no =', file_no)
                     print('param[\'f\']', param['f'])
-# =============================================================================
+                    # =============================================================================
+                    param[scan_param] = x1
                     QtGui.QApplication.processEvents()
                     time.sleep(0.5)
-                    t0=datetime.datetime.now()
-                    #self.command_message.append(t0.strftime("%c"))
-                    self.sysReturn('Scan '+ str(int(param['f'])) +' begins at ' + t0.strftime("%c"))
+                    t0 = datetime.datetime.now()
+                    # self.command_message.append(t0.strftime("%c"))
+                    self.sysReturn('Scan ' + str(int(param['f'])) + ' begins at ' + t0.strftime("%c"))
                     spectrum_widget_global.scan_loop(plot, sptext)
 
                 else:
                     self.sysReturn(text, "iv")
-                    if (check_param1 !='OK'): check_param = check_param1
-                    if (check_param2 !='OK'): check_param = check_param2
+                    if (check_param1 != 'OK'): check_param = check_param1
+                    if (check_param2 != 'OK'): check_param = check_param2
                     self.sysReturn(check_param, "err")
 
             else:
                 # Return error message
                 self.sysReturn(text, "iv")
                 self.sysReturn(check, "err")
-
         elif text == "macro":
             # popup window
             self.sysReturn(text,"v")
@@ -868,7 +912,7 @@ class Command(QWidget):
         else:
             c = text.find(',')
             #print('\':\' found in the input command, index c=',c)
-            space = text[c:].count(' ') # space = 5, after truncating "scan y z ...:" => e.g. : x 1 10 2 0.1
+            space = text[c:].count(' ') # space = 5, after truncating "scan y z ...:" => e.g. , x 1 10 2 0.1
             sptext = text[c+2:].split(' ') # scan_param 1 10 1 0.1
             plot=text[5:c].split(' ') # list of detection parameter
 
@@ -986,7 +1030,6 @@ class Command(QWidget):
         self.sysReturn("macro finished.")
 
 class WaitExposure(QThread):
-    finished = pyqtSignal()
     msg = pyqtSignal(str)
     getplot = pyqtSignal()
     def __init__(self):  
@@ -1019,7 +1062,7 @@ class WaitExposure(QThread):
         self.msg.emit('timespan in seconds= %s'%dt)
         self.getplot.emit()
         self.msg.emit('Image obtained')
-        self.finished.emit()
+        self.quit()
 
     
 
@@ -1037,6 +1080,7 @@ class ImageWidget(QWidget):
         plt = pg.PlotItem(labels={'bottom':('x pixel',''), 'left':('y pixel','')})
         plt.invertY(True)
         plt.setAspectLocked(True)
+        #GraphicsScene(mouseEvents.HoverEvent)
 
         ## Set a custom color map
         rainbow_colors = [
@@ -1165,7 +1209,8 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setTitle(title= title_plot)
         self.plotWidget.plotItem.setXRange(float(x1), float(x2_new), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', text=scan_param)
-        self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units')
+        self.plotWidget.plotItem.setLabel('left', text='Intensity', units='A')
+        #self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units',unitPrefix=False)
         self.plotWidget.addLegend((50,30), offset=(450,150))
         self.plotWidget.plotItem.clear()
         print(x1, x2, step, dwell)
@@ -1203,8 +1248,7 @@ class SpectrumWidget(QWidget):
                 param[scan_param] = scan_x[i] # set scanning parameter
             time.sleep(dwell)
             # get data
-            scan_plotting = pd.Series(index=plot)
-            counts=[]
+
             for j in range(plot_no):
                 if SAFE:
                     I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
@@ -1221,17 +1265,18 @@ class SpectrumWidget(QWidget):
 
             #after finishing the update of all param values
             if SAFE:
-                data_matrix.loc[len(data_matrix), :] = get_param.tolist() #appending param to data_matrix
+                current_param = get_param_for_status()
+                data_matrix.loc[len(data_matrix), :] = current_param.tolist() #appending param to data_matrix
             else:
                 data_matrix.loc[len(data_matrix), :] = param.tolist()
-
+            print('ck1, i= ', i, 'dwell =', dwell)
+            # plot from data_matrix
             # TODO: reconstruct this part
             if plot_no >= 1: self.curve0.setData(scan_x, data_matrix.loc[:,plot[0]])
             if plot_no >= 2: self.curve1.setData(scan_x, data_matrix.loc[:,plot[1]])
             if plot_no >= 3: self.curve2.setData(scan_x, data_matrix.loc[:,plot[2]])
             if plot_no >= 4: self.curve3.setData(scan_x, data_matrix.loc[:,plot[3]])
             if plot_no >= 5: self.curve4.setData(scan_x, data_matrix.loc[:,plot[4]])
-
             QtGui.QApplication.processEvents()
             j=0
             msg = ''
@@ -1263,10 +1308,14 @@ class SpectrumWidget(QWidget):
 
         TODO: check exist number, don't overwrite old ones.
         '''
-        filename = str(dir_date)+"scan_"+str(file_no)
-        data_matrix.to_csv(data_dir+filename, mode='w')
+
+        filename = str(dir_date)+"scan_"+str(file_no)+".txt" #change file_no to capital
+        if os.path.exists(filename):
+            file_no += 1
+        filename = str(dir_date) + "scan_" + str(file_no) + ".txt"
+        data_matrix.to_csv(data_dir+filename, mode='w', index_label="index")
         #data_matrix.to_hdf(file_path+filename, key='df', mode='w')
-        cmd_global.sysReturn('Scan data saved as ['+filename+'.csv]')
+        cmd_global.sysReturn('Scan data saved as ['+filename+']')
         BUSY = False
 
     def plotRixs(self, filename):

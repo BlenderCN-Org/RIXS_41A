@@ -21,7 +21,7 @@ class Devices(object):
         self.pvroot = pvroot
         
         #for sim usage
-        self.sim = True
+        self.sim = False
         self.currentValuse = 0
         
     def getValue(self):

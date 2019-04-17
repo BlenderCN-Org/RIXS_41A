@@ -23,7 +23,7 @@ class CcdDevices(object):
         self.pvroot = pvroot
         
         #for sim usage
-        self.sim = True
+        self.sim = False
         self.currentValuse = 0
         self.exposureTime = 0
       
@@ -63,7 +63,7 @@ class CcdDevices(object):
     def setExposureTime(self, value):
         if self.sim:
             self.exposureTime = value
-            print('[sim EMCCD] setExposureTime = ' + value)
+            print('[sim EMCCD] setExposureTime = ' + str(value))
         else:
             p = e.PV(self.pvroot + ":expot")
             p.put(value)
