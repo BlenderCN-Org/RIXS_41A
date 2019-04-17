@@ -1,4 +1,4 @@
-#Last edited:20190417 3pm by Jason
+#Last edited:20190417 7pm by Jason
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -63,9 +63,14 @@ Busy
 '''
 BUSY = False
 
+'''
+global flag & parameters for RIXS
+'''
+IMGDONE = False
+RIXS_STATUS_TEXT = "" #activated when RIXS command executed
 
 # Don't Set True; same as self.sim in ped and CCD
-SAFE = False
+SAFE = True
 
 # SETUP_epics
 if SAFE:
@@ -318,16 +323,14 @@ class StatusWidget(QWidget):
     def show_bar(self):
         time = QDateTime.currentDateTime()
         time_str = time.toString("yyyy-MM-dd hh:mm:ss")
-        self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C. ")
+        self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C.; file number: " + self.p('f','int'))
 
         # Forced refresh
     def show_text(self):
         if SAFE:
             param = get_param_for_status()
 
-        parameter_text = ( "<font color=black><b> file number: " + self.p('f','int') + "<b><br>"
-                            " <br>"
-                          "<u>Parameters</u></font><br>"
+        parameter_text = ( "<u>Parameters</u></font><br>"
                            " AGM: " + self.p('agm') + " eV<br>"
                            " AGS: " + self.p('ags') + " eV<br>"
                            " <br>"
@@ -344,7 +347,8 @@ class StatusWidget(QWidget):
                            " <br>"
                            " RIXS imager:  <br>"
                            " temperature = " + self.p('Tccd') +" \u2103"+ ",     CCD "+ self.p('ccd')+',   gain = ' + self.p('gain') + " <br>"
-                        )
+                           " <br><font color =red>"
+                           + RIXS_STATUS_TEXT +"</font>")
         self.status_box.setText(parameter_text)
 
     # define format of displayed numbers
@@ -406,7 +410,6 @@ class Command(QWidget):
         self.macrostat[str].connect(self.command_input.setText)
         self.macrotimer = QTimer(self)
 
-
         '''
         History
          - callable (command: h)
@@ -446,7 +449,9 @@ class Command(QWidget):
         self.Commandlayout.addLayout(self.Input)
 
     def send_message(self):
+        global ABORT
         ABORT = False
+        self.abort_button.setEnabled(True)
         txt = self.command_input.text()
         self.inputext[str].emit(txt)
         self.command_input.setText("")
@@ -459,6 +464,7 @@ class Command(QWidget):
     def abortCommand(self):
         global ABORT
         ABORT = True
+        self.abort_button.setDisabled(True)
 
         '''
         Macro Window
@@ -568,7 +574,7 @@ class Command(QWidget):
     def send(self, txt):
         self.command_input.setDisabled(True)
         text = txt
-        global param_index, param, cmd_global, file_no, img_global, BUSY
+        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, RIXS_STATUS_TEXT
         # pre-formatting
         text = self.preFormatting(text)
         # keyboard log for Up and Down
@@ -654,7 +660,7 @@ class Command(QWidget):
             # All sequence below should be organized as function(text)
             space = text.count(' ')
             sptext = text.split(' ')
-            if space == 1:  # e.g. img 1234
+            if space == 1:  # e.g. img t
                 if self.checkFloat(sptext[1]):
                     t = sptext[1]
                     BUSY=True
@@ -665,18 +671,69 @@ class Command(QWidget):
                     else:
                         self.sysReturn("Warning: CCD not connected", "err")
                         self.sysReturn("generating random image by numpy...")
-                    thread = WaitExposure()
-                    thread.finished.connect(self.cmdDone)
-                    thread.msg.connect(self.sysReturn)
-                    thread.getplot.connect(img_global.getPlot)
-                    thread.start()
-                    thread.wait()
+                    self.CCDthread = WaitExposure()
+                    self.CCDthread.finished.connect(self.cmdDone)
+                    self.CCDthread.msg.connect(self.sysReturn)
+                    self.CCDthread.start()
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("incorrect format: img + exposure_time", "err")
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("incorrect format: img + exposure_time/off", "err")
+
+        elif text == 'rixs' or text[:5] == 'rixs ':
+            # All sequence below should be organized as function(text) which returns msg & log
+            space = text.count(' ')
+            sptext = text.split(' ')
+            # check format
+            if space == 2:  # e.g. rixs t n
+                # t as exposure time ; n as number of images.
+                t = float(sptext[1])
+                n = int(sptext[2])
+                if self.checkFloat(t) and self.checkFloat(n):
+                    BUSY = True
+                    self.sysReturn(text, "v", True)
+                    if SAFE:
+                        CCD.setExposureTime(t)
+                    t0 = time.time()
+                    for i in range(n):
+                        if i ==0:
+                            RIXS_STATUS_TEXT = 'Running RIXS! ' + str(i+1) + '/' + str(n)
+                        self.sysReturn(str(i+1)+'-th image, time span= '+str(round(time.time()-t0,3))+' sec')
+                        if ABORT:
+                            break
+                        IMGDONE = False
+                        self.imageExposure()
+                            # self.CCDthread = WaitExposure()
+                            # #self.CCDthread.msg.connect(self.sysReturn)
+                            # self.CCDthread.start()
+                        t1 = time.time()
+                            # print('for loop takes: ',time.time()-t0)
+                        while (time.time() - t1) < t + 5:
+                            if i == 0:
+                                dt = n * (t+3)
+                            else:
+                                dt = ((self.t2 - t1) / i) * (n - i)  # remaining time
+                            self.t2 = time.time()
+                            dt = round(dt,3)
+                            RIXS_STATUS_TEXT = 'Running RIXS! ' + str(i+1) + '/' + str(n) + '  remaining time = ' + str(dt)
+                            if (self.t2 - t1)%1 <= 0.0001:
+                                print(self.t2-t1)
+                            if IMGDONE:
+                                print('getData() finished.')
+                                break
+                            if ABORT:
+                                break
+                        print('while loop takes :',time.time() - t1)
+                    self.cmdDone()
+                    RIXS_STATUS_TEXT = " "
+                else:
+                    self.sysReturn(text, "iv")
+                    self.sysReturn("Both t and n need to be numerical numbers.", "err")
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("incorrect format: rixs t n", "err")
 
         elif 'load' in text[:5]:
             # All sequence below should be organized as function(text) which returns msg & log
@@ -1029,23 +1086,54 @@ class Command(QWidget):
             self.macro_index += 1
         self.sysReturn("macro finished.")
 
+    def imageExposure(self):
+        if SAFE:
+            CCD.start(1) # 1 for activate
+            while e.PV("41a:ccd1:dataok").get() == 1:
+                pass
+                if e.PV("41a:ccd1:dataok").get() == 0:
+                    break
+        t1 = time.time()
+        print('t1 =', t1)
+        if SAFE:
+            j = 0 # timer
+            while e.PV("41a:ccd1:dataok").get() == 0:
+                j += 1
+                if j % 30 == 0:
+                    QApplication.processEvents()
+                if e.PV("41a:ccd1:dataok").get() == 1:
+                    break
+                if ABORT:
+                    self.sysReturn('RIXS aborted', 'err')
+                    break
+        else:
+            for self.i in range(0,3):
+                self.msg.emit('i now：{}'.format(self.i))
+                self.sleep(1)
+        dt = round(time.time() - t1, 3)
+        print('timespan in seconds= %s'%dt)
+        img_global.getData()
+        #img_global.plotImg()
+        #self.msg.emit('Image obtained')
+
 class WaitExposure(QThread):
     msg = pyqtSignal(str)
-    getplot = pyqtSignal()
     def __init__(self):  
         super(WaitExposure,self).__init__() 
         self.i = 0
         print("thread start")
     def run(self):
+        global img_global
         if SAFE:
             CCD.start(1) # 1 for activate
-        if SAFE:
             while e.PV("41a:ccd1:dataok").get() == 1:
                 pass
                 if e.PV("41a:ccd1:dataok").get() == 0:
                     break
-        self.msg.emit("Exposure Start.")
+        #self.msg.emit("Exposure Start.")
+        print("exposure start")
         t1 = time.time()
+        print('t1 =', t1)
         if SAFE:
             while e.PV("41a:ccd1:dataok").get() == 0:
                 self.i += 1
@@ -1056,13 +1144,18 @@ class WaitExposure(QThread):
                 self.msg.emit('i now：{}'.format(self.i))
                 self.sleep(1)
                 self.i += 1
-        self.msg.emit("checked %s cycles for exposure."%str(self.i))
-        self.msg.emit("Exposure Finished.")
+        #self.msg.emit("checked %s cycles for exposure."%str(self.i))
+        print('check exposure cycle :', self.i)
+        print("Exposure Finished.")
+        #self.msg.emit("Exposure Finished.")
         dt = round(time.time() - t1, 3)
-        self.msg.emit('timespan in seconds= %s'%dt)
-        self.getplot.emit()
-        self.msg.emit('Image obtained')
-        self.quit()
+        print('timespan in seconds= %s'%dt)
+        #self.msg.emit('timespan in seconds= %s'%dt)
+        img_global.getData()
+        #img_global.plotImg()
+        #self.msg.emit('Image obtained')
+        #self.quit()
+
 
     
 
@@ -1104,20 +1197,23 @@ class ImageWidget(QWidget):
         self.layoutVertical.addWidget(self.imv)
 
 
-    def getPlot(self):
+    def getData(self):
+        global IMGDONE
         if SAFE: # checked safe
             # check data OK
-            raw_img = CCD.getImage() #calling pyepics_ccd_device.py
+            #raw_img = e.PV("41a:ccd1:image").get() #calling pyepics_ccd_device.py
+            raw_img = CCD.getImage()
+            print("raw image: ")
             print(raw_img)
-            img_list = np.asarray(raw_img) #convert raw image to 1d numpy array
-            img_np = np.reshape(img_list, (1024, 2048), order='F') #reshape from 1d to 2d numpy array
+            #img_list = np.asarray(raw_img)  # convert raw image to 1d numpy array
+            #img_np = np.reshape(img_list, (1024, 2048), order='F')  # reshape from 1d to 2d numpy array
+            IMGDONE = True
         else:
             # else
             raw_img = np.random.uniform(0,500+1,1024*2048)
             img_list = np.asarray(raw_img)
             img_np = np.reshape(img_list, (1024, 2048), order='F')
-        self.imgdata = img_np
-        self.plotImg()
+        #self.imgdata = img_np
 
     def plotImg(self):
         self.imv.setImage(self.imgdata)
