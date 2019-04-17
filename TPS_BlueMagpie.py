@@ -70,7 +70,7 @@ IMGDONE = False
 RIXS_STATUS_TEXT = "" #activated when RIXS command executed
 
 # Don't Set True; same as self.sim in ped and CCD
-SAFE = True
+SAFE = False
 
 # SETUP_epics
 if SAFE:
