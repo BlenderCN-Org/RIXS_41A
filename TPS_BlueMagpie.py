@@ -1,12 +1,4 @@
-#Last edited:20190417 7pm by Jason
-#
-#  changes made on April 17, DJH
-#  def imageExposure(self):
-#  self.msg.emit('i now：{}'.format(self.i))
-#   self.sleep(1)
-#
-
-
+#Last edited:20190418 3pm by Jason
 
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -79,8 +71,8 @@ IMGDONE = False
 DATA_taking_STATUS = "" #activated when RIXS command executed
 
 # Don't Set True; same as self.sim in ped and CCD
+#SAFE = False
 SAFE = False
-
 # SETUP_epics
 if SAFE:
 # Initial values for setup communication
@@ -119,7 +111,8 @@ def get_param_for_status():
         #get param values from devices
         I0_read = e.caget(IPV0)
         #I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
-        real_list = [AGM.get_position(), AGS.get_position(),
+        real_list = [#AGM.get_position(), AGS.get_position(),
+                     e.caget("41a:AGM:Energy.RBV"), e.caget("41a:AGS:Energy.RBV"),
                      X.getValue(), Y.getValue(), Z.getValue(),
                      U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
                      TSA.getValue(), TSB.getValue(), I0_read,
@@ -165,11 +158,29 @@ def set_param(p, v):
         if p in ped_dict:
             P = ped_dict[p]
             P.setValue(v)
-        #for AGM, AGS
-#        elif p in epics_dict:
-#        elif p == 'ags': #AGM don't test
-#            P = epics_dict[p]
-#            e.caput(P, v)
+        if p == 'agm':
+            e.caput("41a:AGM:Energy", v)
+            t1 = time.time()
+            while e.caget("41a:AGM:Energy.MOVN") == 0:
+                if (time.time()-t1)%0.2 <= 0.0001:
+                    QApplication.processEvents()
+                if e.caget("41a:AGM:Energy.MOVN") == 1:
+                    break
+            print('AGM start moving: ',e.caget("41a:AGM:Energy.MOVN"))
+            i = 0 #time before enter while
+            while e.caget("41a:AGM:Energy.MOVN") == 1:
+                i += 1
+                if i%200 ==0:
+                    current_value = e.caget("41a:AGM:Energy.RBV")
+                    print("moving agm, i=",i)
+                    print("now agm is: ", current_value)
+                pass
+                if e.caget("41a:AGM:Energy.MOVN") == 0:
+                    print(p, " moved to", v)
+                    break
+        if p == 'ags':
+            e.caput("41a:AGS:Energy", v)
+            print(e.caget("41a:AGS:Energy.MOVN"))
         # tb read-only
         elif p == 'ta':
             e.caput("41a:sample:heater", 1)
@@ -179,6 +190,7 @@ def set_param(p, v):
     else:
         #dummy set
         param[p] = v
+
 
 
 
@@ -192,7 +204,6 @@ file_no = 0
 
 # Name of projectDir
 dir_date = datetime.datetime.today().strftime("%Y_%b%d")
-print(dir_date)
 dir_name = "project #0"
 
 # very stupid way for test, probably os package has solution
@@ -554,19 +565,15 @@ class Command(QWidget):
                 row.to_csv(name, mode='a', header=False, index=False)
                 #=================== history log========================
 
-            note = '<font color=blue>' + t + ' >> ' + x + '</font><font color=black> </font>'
-
-            #a blank string to seperate records of different commands
-            if  x=='':
-                note =''
-            self.command_message.append('<font color=blue>' + t + ' >> ' + note + '</font><font color=black> </font>')
+            self.command_message.append(' ')
+            self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font><font color=black> </font>')
 
         elif v == "err":
             # for error messages
             #self.command_message.append('<font color=red>Input error; ' + x + '</font><font color=black> </font>')
             self.command_message.append('<font color=red> '+ x + '</font><font color=black> </font>')
         else:
-            self.command_message.append(x)
+            self.command_message.append('<font color= black>'+x+'</font>')
 
     def preFormatting(self, text):
         # remove whitespace spaces ("  ") in the end of command input
@@ -576,7 +583,6 @@ class Command(QWidget):
         text = re.sub(' +', ' ', text)
         # remove space before comma
         c = text.find(',')
-        print(c)
         if c!=-1:
             if text[c - 1] == " ":
                 print(text[:c - 1])
@@ -587,7 +593,7 @@ class Command(QWidget):
     def send(self, txt):
         self.command_input.setDisabled(True)
         text = txt
-        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, DATA_taking_STATUS
+        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, DATA_taking_STATUS, status_global
         # pre-formatting
         text = self.preFormatting(text)
         # keyboard log for Up and Down
@@ -726,7 +732,6 @@ class Command(QWidget):
                             # #self.CCDthread.msg.connect(self.sysReturn)
                             # self.CCDthread.start()
                         t1 = time.time()
-                        print('for loop takes: ',time.time()-self.t0)
                         if i == 0:
                             dt = n * (t+3)
                         else:
@@ -734,10 +739,8 @@ class Command(QWidget):
                         dt = round(dt,2)
                         while (time.time() - t1) < t + dwell_0:
                             self.t2 = time.time()
-
                             DATA_taking_STATUS = 'Taking RIXS data ... ' + str(i+1) + '/' + str(n) + ',  remaining time = ' + str(dt)+' sec'
                             if (self.t2 - t1)%0.2 <= 0.00003:
-                                print(self.t2-t1)
                                 QApplication.processEvents()
                             if SAFE:
                                 if IMGDONE:
@@ -749,11 +752,10 @@ class Command(QWidget):
                         img_number= str(i+1)+' image'
                         if i>0:
                             img_number +='s'
-                        self.sysReturn(img_number+' taken, time span= '+str(round(time.time()-self.t0,3))+' sec')
-
-
+                        self.sysReturn(img_number+' taken, time span= '+str(round(time.time()-self.t0,2))+' sec')
                     BUSY = False  # global flag
                     DATA_taking_STATUS = " "
+                    self.sysReturn('Completed taking RIXS images, data saved in :%s')
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("Both t and n need to be numerical numbers.", "err")
@@ -863,10 +865,11 @@ class Command(QWidget):
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)  # checking input command and parameters
             if check == 'OK':
-                #self.sysReturn('', 'v', True)  # send a bank string to the log history; True: mark blue
+                QApplication.processEvents()
                 self.sysReturn(text, 'v', True)  # "v": log text in history; True: mark blue
                 DATA_taking_STATUS = 'Taking data ... '
-                QtGui.QApplication.processEvents()
+                status_global.show_text()
+
 
                 if text.find(',') is -1:  # no "," i.e. scan x 1 10 1 0.1
                     c = 3
@@ -1120,8 +1123,10 @@ class Command(QWidget):
     def imageExposure(self):
         if SAFE:
             CCD.start(1) # 1 for activate
+            t1 = time.time()
             while e.PV("41a:ccd1:dataok").get() == 1:
-                pass
+                if (time.time()-t1)%0.2 <= 0.0001:
+                    QApplication.processEvents()
                 if e.PV("41a:ccd1:dataok").get() == 0:
                     break
         t1 = time.time()
@@ -1130,7 +1135,7 @@ class Command(QWidget):
             j = 0 # a counter to mimic timer
             while e.PV("41a:ccd1:dataok").get() == 0:
                 j += 1
-                if j % 30 == 0:
+                if (time.time()-t1)%0.2 <= 0.0001:
                     QApplication.processEvents()
                 if e.PV("41a:ccd1:dataok").get() == 1:
                     break
@@ -1146,7 +1151,7 @@ class Command(QWidget):
         print('time span in seconds= %s'%dt)
         print('before get data')
         img_global.getData()
-        #img_global.plotImg()
+        img_global.plotImg()
         #self.msg.emit('Image obtained')
 
 class WaitExposure(QThread):
@@ -1204,9 +1209,9 @@ class ImageWidget(QWidget):
                              # replace by RGB pixel Magpie picture?
 
         plt = pg.PlotItem(labels={'bottom':('x pixel',''), 'left':('y pixel','')})
-        plt.invertY(True)
-        plt.setAspectLocked(True)
-        #GraphicsScene(mouseEvents.HoverEvent)
+
+        plt.getAxis('bottom').setTickSpacing(200, 2)  # This is the trick
+        plt.getAxis('left').setTickSpacing(200, 2)  # This is the trick
 
         ## Set a custom color map
         rainbow_colors = [
@@ -1221,32 +1226,70 @@ class ImageWidget(QWidget):
 
         self.imv = pg.ImageView(view=plt)
         self.imv.setColorMap(cmap)
+
+        plt.invertY(False)
+        plt.setAspectLocked(True)
+
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
 
         self.plotImg()
 
+        self.status_bar = QLabel(self)
+
+        # Widget layout
         self.layoutVertical = QVBoxLayout(self)
+        self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.imv)
+
+        def mouseMoved(pos):
+            data = self.imv.image
+            nCols, nRows = data.shape
+            print(nRows, nCols)
+            mousePoint = plt.getViewBox().mapSceneToView(pos)
+
+            print("Image position:", plt.getViewBox().mapSceneToView(pos))
+            row, col = int(mousePoint.y()), int(mousePoint.x())
+            value = 0
+
+            if (0 <= row < nRows) and (0 <= col < nCols):
+                value = data[col, row]
+                print("pos = ({:d}, {:d}), value = {!r}".format(col, row, value))
+            else:
+                print("no data at cursor")
+
+            self.status_bar.setText(
+                "Image Pixel Information: " + "pos = ({:d}, {:d}), value = {!r}".format(col, row, value))
+
+        self.imv.scene.sigMouseMoved.connect(mouseMoved)
 
 
     def getData(self):
-        global IMGDONE
+        global IMGDONE, cmd_global
         if SAFE: # checked safe
             # check data OK
             #raw_img = e.PV("41a:ccd1:image").get() #calling pyepics_ccd_device.py
             raw_img = CCD.getImage()
             print("raw image: ")
             print(raw_img)
-            #img_list = np.asarray(raw_img)  # convert raw image to 1d numpy array
-            #img_np = np.reshape(img_list, (1024, 2048), order='F')  # reshape from 1d to 2d numpy array
+            img_list = np.asarray(raw_img)  # convert raw image to 1d numpy array
+            img_np = np.reshape(img_list, (1024, 2048), order='F')  # reshape from 1d to 2d numpy array
             IMGDONE = True
         else:
             # else
             raw_img = np.random.uniform(0,500+1,1024*2048)
             img_list = np.asarray(raw_img)
             img_np = np.reshape(img_list, (1024, 2048), order='F')
-        #self.imgdata = img_np
+        self.imgdata = img_np
+        '''
+        save file as .txt
+        name format example: 2019_Apr18_142200(Hr/Min/Sec)
+        '''
+        datestamp = datetime.datetime.today().strftime("%Y_%b%d_%H%M%S") #Format : Year_MonDt
+        file_name0 =datestamp + '_img'      # short ver. for display
+        file_name = data_dir + file_name0   # for saving in correct dir
+        np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',')
+        cmd_global.sysReturn('Image data saved as: '+file_name0)
 
     def plotImg(self):
         self.imv.setImage(self.imgdata)
@@ -1368,6 +1411,7 @@ class SpectrumWidget(QWidget):
                 print("loop stopped")
                 break
             DATA_taking_STATUS = 'Taking data ... ' + str(i+1) + '/' + str(n)
+            QtGui.QApplication.processEvents()
             #print(i,'_th scanning point')
             scan_x.append(x1 + i*step)
             data_i =[]
@@ -1377,6 +1421,7 @@ class SpectrumWidget(QWidget):
             else:
                 param[scan_param] = scan_x[i] # set scanning parameter
             time.sleep(dwell)
+            QtGui.QApplication.processEvents()
             # get data
 
             for j in range(plot_no):
@@ -1407,15 +1452,16 @@ class SpectrumWidget(QWidget):
             if plot_no >= 3: self.curve2.setData(scan_x, data_matrix.loc[:,plot[2]])
             if plot_no >= 4: self.curve3.setData(scan_x, data_matrix.loc[:,plot[3]])
             if plot_no >= 5: self.curve4.setData(scan_x, data_matrix.loc[:,plot[4]])
-            QtGui.QApplication.processEvents()
-            j=0
-            msg = ''
-            for j in range(plot_no):
-                msg += str(round(param[plot[j]],3))+'     '
-
-            if i%5 == 0:
-                cmd_global.sysReturn('')
-                cmd_global.sysReturn('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ "     plot =  "+msg)
+            '''
+            message of scan loop (marked)
+            '''
+            # j=0
+            # msg = ''
+            # for j in range(plot_no):
+            #     msg += str(round(param[plot[j]],3))+'     '
+            # if i%5 == 0:
+            #     cmd_global.sysReturn('')
+            #     cmd_global.sysReturn('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ "     plot =  "+msg)
         '''
         Loop finished
         '''
