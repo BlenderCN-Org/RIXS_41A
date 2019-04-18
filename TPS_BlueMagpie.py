@@ -1,4 +1,13 @@
 #Last edited:20190417 7pm by Jason
+#
+#  changes made on April 17, DJH
+#  def imageExposure(self):
+#  self.msg.emit('i now：{}'.format(self.i))
+#   self.sleep(1)
+#
+
+
+
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -67,7 +76,7 @@ BUSY = False
 global flag & parameters for RIXS
 '''
 IMGDONE = False
-RIXS_STATUS_TEXT = "" #activated when RIXS command executed
+DATA_taking_STATUS = "" #activated when RIXS command executed
 
 # Don't Set True; same as self.sim in ped and CCD
 SAFE = False
@@ -348,7 +357,7 @@ class StatusWidget(QWidget):
                            " RIXS imager:  <br>"
                            " temperature = " + self.p('Tccd') +" \u2103"+ ",     CCD "+ self.p('ccd')+',   gain = ' + self.p('gain') + " <br>"
                            " <br><font color =red>"
-                           + RIXS_STATUS_TEXT +"</font>")
+                           + DATA_taking_STATUS +"</font>")
         self.status_box.setText(parameter_text)
 
     # define format of displayed numbers
@@ -545,8 +554,12 @@ class Command(QWidget):
                 row.to_csv(name, mode='a', header=False, index=False)
                 #=================== history log========================
 
-            self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font><font color=black> </font>')
+            note = '<font color=blue>' + t + ' >> ' + x + '</font><font color=black> </font>'
 
+            #a blank string to seperate records of different commands
+            if  x=='':
+                note =''
+            self.command_message.append('<font color=blue>' + t + ' >> ' + note + '</font><font color=black> </font>')
 
         elif v == "err":
             # for error messages
@@ -574,7 +587,7 @@ class Command(QWidget):
     def send(self, txt):
         self.command_input.setDisabled(True)
         text = txt
-        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, RIXS_STATUS_TEXT
+        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, DATA_taking_STATUS
         # pre-formatting
         text = self.preFormatting(text)
         # keyboard log for Up and Down
@@ -587,17 +600,17 @@ class Command(QWidget):
         '''
         if text == "help":
             self.sysReturn(text, "v")
-            msg = ("<b>h</b>: recall previous commands executed sucessfully.<br>\n"
-                   "<b>p</b>: list valid parameters.<br>\n"
+            msg = ("<b>p</b>: list valid parameters.<br>\n"
                    "<b>r</b>: show all parameter ranges.<br>\n"
                    "<b>macro</b>: open a macro editor.<br>\n"
                    "<b>do</b>: execute a macro by calling a text file.<br>\n"
+                   "<b>h</b>: recall previous commands executed sucessfully.<br>\n"
                    "<br>\n"
                    "<b>mv</b>: set a parameter to its absolute value.<br>\n"
                    "<b>mvr</b>: change a parameter in terms of a relative value.<br>\n"
                    "<b>scan</b>: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n"
                    "<b>xas</b>:  <br>\n"
-                   "<b>rixs</b>:  <br>\n"
+                   "<b>rixs</b>:  take RIXS images, t sec per iamge for n images <br>\n"
                    "<br>\n"
                    "<b>s2</b>: set the opening of the exit slit.<br>\n"
                    "<b>shut</b>: open or close the BL shutter.<br>\n"
@@ -636,7 +649,7 @@ class Command(QWidget):
                     self.sysReturn('shutter parameter has to be 0 ot 1 for close and open, respectively.', "err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn('incorrect format: shut  0 or 1', 'err')
+                self.sysReturn('input error. use:   shut  0 or 1', 'err')
 
         elif text == "ccd":
             space = text.count(' ')
@@ -654,7 +667,7 @@ class Command(QWidget):
                     self.sysReturn('ccd parameter has to be 0 ot 1 for off and on, respectively.', "err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn('incorrect format: ccd  0 or 1', 'err')
+                self.sysReturn('input error. use:   ccd  0 or 1', 'err')
 
         elif 'img' in text[:4]:
             # All sequence below should be organized as function(text)
@@ -677,10 +690,10 @@ class Command(QWidget):
                     self.CCDthread.start()
                 else:
                     self.sysReturn(text, "iv")
-                    self.sysReturn("incorrect format: img + exposure_time", "err")
+                    self.sysReturn("input error. use:   img + exposure_time", "err")
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("incorrect format: img + exposure_time/off", "err")
+                self.sysReturn("input error. use:   img + exposure_time/off", "err")
 
         elif text == 'rixs' or text[:5] == 'rixs ':
             # All sequence below should be organized as function(text) which returns msg & log
@@ -694,13 +707,17 @@ class Command(QWidget):
                 if self.checkFloat(t) and self.checkFloat(n):
                     BUSY = True
                     self.sysReturn(text, "v", True)
+                    tt = datetime.datetime.now()
+                    self.sysReturn('RIXS ' + str(int(param['f'])) + ' begins at ' + tt.strftime("%c"))
+                    dwell_0 = 0 # buffer time
                     if SAFE:
                         CCD.setExposureTime(t)
-                    t0 = time.time()
+                        dwell_0 = 5 #  extra time for the while loop
+                    self.t0 = time.time()
                     for i in range(n):
                         if i ==0:
-                            RIXS_STATUS_TEXT = 'Running RIXS! ' + str(i+1) + '/' + str(n)
-                        self.sysReturn(str(i+1)+'-th image, time span= '+str(round(time.time()-t0,3))+' sec')
+                            DATA_taking_STATUS = 'Taking RIXS data ... ' + str(i+1) + '/' + str(n)
+                        #print('i = ',i,'   ABORT =', ABORT)
                         if ABORT:
                             break
                         IMGDONE = False
@@ -709,31 +726,40 @@ class Command(QWidget):
                             # #self.CCDthread.msg.connect(self.sysReturn)
                             # self.CCDthread.start()
                         t1 = time.time()
-                            # print('for loop takes: ',time.time()-t0)
-                        while (time.time() - t1) < t + 5:
-                            if i == 0:
-                                dt = n * (t+3)
-                            else:
-                                dt = ((self.t2 - t1) / i) * (n - i)  # remaining time
+                        print('for loop takes: ',time.time()-self.t0)
+                        if i == 0:
+                            dt = n * (t+3)
+                        else:
+                            dt = ((time.time() - self.t0) / i) * (n - i)  # remaining time
+                        dt = round(dt,2)
+                        while (time.time() - t1) < t + dwell_0:
                             self.t2 = time.time()
-                            dt = round(dt,3)
-                            RIXS_STATUS_TEXT = 'Running RIXS! ' + str(i+1) + '/' + str(n) + '  remaining time = ' + str(dt)
-                            if (self.t2 - t1)%1 <= 0.0001:
+
+                            DATA_taking_STATUS = 'Taking RIXS data ... ' + str(i+1) + '/' + str(n) + ',  remaining time = ' + str(dt)+' sec'
+                            if (self.t2 - t1)%0.2 <= 0.00003:
                                 print(self.t2-t1)
-                            if IMGDONE:
-                                print('getData() finished.')
-                                break
+                                QApplication.processEvents()
+                            if SAFE:
+                                if IMGDONE:
+                                    print('getData() finished.')
+                                    break
                             if ABORT:
                                 break
-                        print('while loop takes :',time.time() - t1)
-                    self.cmdDone()
-                    RIXS_STATUS_TEXT = " "
+                        #print('while loop takes :',time.time() - t1)
+                        img_number= str(i+1)+' image'
+                        if i>0:
+                            img_number +='s'
+                        self.sysReturn(img_number+' taken, time span= '+str(round(time.time()-self.t0,3))+' sec')
+
+
+                    BUSY = False  # global flag
+                    DATA_taking_STATUS = " "
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("Both t and n need to be numerical numbers.", "err")
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("incorrect format: rixs t n", "err")
+                self.sysReturn("input error. use:   rixs t n", "err")
 
         elif 'load' in text[:5]:
             # All sequence below should be organized as function(text) which returns msg & log
@@ -774,7 +800,7 @@ class Command(QWidget):
                     self.sysReturn('s2 opening is discrete, 5, 10, 20, 50, 100 & 150', "err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn("incorrect format: s2 opening (5, 10, 20, 50, 100 or 150)", "err")
+                self.sysReturn("input error. use:   s2 opening (5, 10, 20, 50, 100 or 150)", "err")
 
         # mv function
         elif text == 'mv' or text[:3] == 'mv ':
@@ -802,7 +828,7 @@ class Command(QWidget):
                     self.sysReturn("parameter \'"+ p+ "\' is invalid; type \'p\' to list valid parameters","err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn("incorrect format: mv parameter value", "err")
+                self.sysReturn("input error. use:   mv parameter value", "err")
 
         # mvr function
         elif text[:4] == 'mvr ':
@@ -827,7 +853,7 @@ class Command(QWidget):
                     self.sysReturn("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters", "err")
             else:
                 self.sysReturn(text,"iv")
-                self.sysReturn("incorrect format: mvr parameter value", "err")
+                self.sysReturn("input error. use:   mvr parameter value", "err")
 
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
@@ -837,7 +863,11 @@ class Command(QWidget):
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)  # checking input command and parameters
             if check == 'OK':
+                #self.sysReturn('', 'v', True)  # send a bank string to the log history; True: mark blue
                 self.sysReturn(text, 'v', True)  # "v": log text in history; True: mark blue
+                DATA_taking_STATUS = 'Taking data ... '
+                QtGui.QApplication.processEvents()
+
                 if text.find(',') is -1:  # no "," i.e. scan x 1 10 1 0.1
                     c = 3
                     plot = ['I0']  # default detection parameter
@@ -870,6 +900,7 @@ class Command(QWidget):
                     param[scan_param] = x1
                     QtGui.QApplication.processEvents()
                     time.sleep(0.5)
+
                     t0 = datetime.datetime.now()
                     # self.command_message.append(t0.strftime("%c"))
                     self.sysReturn('Scan ' + str(int(param['f'])) + ' begins at ' + t0.strftime("%c"))
@@ -899,7 +930,7 @@ class Command(QWidget):
 #             if space is 1:
 #                 self.doMacro(name)
 #             else:
-#                 self.sysReturn("incorrect format: do macroname","err")
+#                 self.sysReturn("input error. use:   do macroname","err")
 # =============================================================================
 
         elif text[:5] == "wait ":
@@ -913,8 +944,8 @@ class Command(QWidget):
                     self.sysReturn("wait for %s seconds..." %str(t))
                     self.pause[float].emit(float(t))
                 else:
-                    self.sysReturn("incorrect format: wait time", "err")
-                    
+                    self.sysReturn("input error. use:   wait time", "err")
+
         #elif text == "test":
         #    qt_thread_rixs.rixs_test()
 
@@ -1096,7 +1127,7 @@ class Command(QWidget):
         t1 = time.time()
         print('t1 =', t1)
         if SAFE:
-            j = 0 # timer
+            j = 0 # a counter to mimic timer
             while e.PV("41a:ccd1:dataok").get() == 0:
                 j += 1
                 if j % 30 == 0:
@@ -1108,18 +1139,20 @@ class Command(QWidget):
                     break
         else:
             for self.i in range(0,3):
-                self.msg.emit('i now：{}'.format(self.i))
-                self.sleep(1)
+                #self.msg.emit('i now：{}'.format(self.i))
+                #self.sleep(1)
+                time.sleep(0.1)
         dt = round(time.time() - t1, 3)
-        print('timespan in seconds= %s'%dt)
+        print('time span in seconds= %s'%dt)
+        print('before get data')
         img_global.getData()
         #img_global.plotImg()
         #self.msg.emit('Image obtained')
 
 class WaitExposure(QThread):
     msg = pyqtSignal(str)
-    def __init__(self):  
-        super(WaitExposure,self).__init__() 
+    def __init__(self):
+        super(WaitExposure,self).__init__()
         self.i = 0
         print("thread start")
     def run(self):
@@ -1149,15 +1182,15 @@ class WaitExposure(QThread):
         print("Exposure Finished.")
         #self.msg.emit("Exposure Finished.")
         dt = round(time.time() - t1, 3)
-        print('timespan in seconds= %s'%dt)
-        #self.msg.emit('timespan in seconds= %s'%dt)
+        print('time span in seconds= %s'%dt)
+        #self.msg.emit('times pan in seconds= %s'%dt)
         img_global.getData()
         #img_global.plotImg()
         #self.msg.emit('Image obtained')
         #self.quit()
 
 
-    
+
 
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
@@ -1241,7 +1274,7 @@ class ImageWidget(QWidget):
 
         print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
         print(rixs_tmp)
-    
+
 class SpectrumWidget(QWidget):
 
     def __init__(self, parent=None):
@@ -1267,7 +1300,7 @@ class SpectrumWidget(QWidget):
 
 
     def scan_loop(self, plot, plist):
-        global file_no, param_index, param, BUSY
+        global file_no, param_index, param, BUSY, DATA_taking_STATUS
         BUSY = True
         t1 = time.time()
         print('scan loop begins')
@@ -1334,6 +1367,7 @@ class SpectrumWidget(QWidget):
             if ABORT:
                 print("loop stopped")
                 break
+            DATA_taking_STATUS = 'Taking data ... ' + str(i+1) + '/' + str(n)
             #print(i,'_th scanning point')
             scan_x.append(x1 + i*step)
             data_i =[]
@@ -1385,16 +1419,17 @@ class SpectrumWidget(QWidget):
         '''
         Loop finished
         '''
+        DATA_taking_STATUS = " "
         print('data_matrix')
         print(data_matrix)
 
         dt = round(time.time()- t1, 3)
-        print('timespan in senconds=', dt)
+        print('time span in senconds=', dt)
 
         if ABORT:
-            cmd_global.sysReturn('Scaning loop has been terminated; timespan  = ' + cmd_global.convertSeconds(dt),'err')
+            cmd_global.sysReturn('Scaning loop has been terminated; time span  = ' + cmd_global.convertSeconds(dt),'err')
         else:
-            cmd_global.sysReturn('Scan '+ str(int(param['f'])) +' is completed; timespan  = ' + cmd_global.convertSeconds(dt))
+            cmd_global.sysReturn('Scan '+ str(int(param['f'])) +' is completed; time span  = ' + cmd_global.convertSeconds(dt))
 
         '''
         Data saving
