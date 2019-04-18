@@ -1,4 +1,4 @@
-#Last edited:20190418 3pm by Jason
+#Last edited:20190418 5pm by Jason
 
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
@@ -27,13 +27,13 @@ data_matrix = None
 
 # SETUP_parameters
 #TODO: img?
-param_index = [   'f','t', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w','th', 'tth', 'ta', 'tb', 'I0','imager', 'Tccd', 'shutter', 'ccd', 'gain']
-param_value = [int(0), 0.,  2.0,  50.,  710.,  720.,  0.,  0.,  0.,  0.,  0.,  0.,   0,    90,  20.,  30.,   0.,       0,     25,         0,     0,     10]
+param_index = [   'f','t', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w','th', 'tth', 'ta', 'tb', 'I0', 'Iph', 'imager', 'Tccd', 'shutter', 'ccd', 'gain']
+param_value = [int(0), 0.,  2.0,  50.,  710.,  720.,  0.,  0.,  0.,  0.,  0.,  0.,   0,    90,  20.,  30.,   0.,    0.,        0,     25,         0,     0,     10]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
 # note: we can't use param_index0 = param_index
-non_movables =  ['t','f', 's1', 's2','imager', 'shutter', 'ccd','I0', 'tb']
+non_movables =  ['t','f', 's1', 's2','imager', 'shutter', 'ccd','I0','Iph', 'tb']
 param_index0 = list(param_index)
 for elements in non_movables:
     param_index0.remove(elements)
@@ -44,7 +44,7 @@ for elements in non_movables:
 param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
                         'ags': [480, 1200], 'x': [-10,10], 'y': [-10,10],'z': [-6.5,6.5], 'u': [-10,10],
                           'v': [-10,10], 'w': [-10,10], 'th':[-5, 185], 'tth':[-35, 0],
-                        'ta':[5,350], 'tb':[5,350], 'I0': [0,1], 'Tccd': [-100, 30], 'gain': [0, 100]})
+                        'ta':[5,350], 'tb':[5,350], 'I0': [0,1], 'Iph': [0,1], 'Tccd': [-100, 30], 'gain': [0, 100]})
 
 '''
 Abort
@@ -110,15 +110,16 @@ def get_param_for_status():
         ##### 'imager','Tccd', 'shutter' need to be included
         #get param values from devices
         I0_read = e.caget(IPV0)
+        Iph_read = e.caget(IPV1)
         #I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
         real_list = [#AGM.get_position(), AGS.get_position(),
                      e.caget("41a:AGM:Energy.RBV"), e.caget("41a:AGS:Energy.RBV"),
                      X.getValue(), Y.getValue(), Z.getValue(),
                      U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
-                     TSA.getValue(), TSB.getValue(), I0_read,
+                     TSA.getValue(), TSB.getValue(), I0_read, Iph_read,
                      CCD.getTemp(), CCD.getGain()]
         #replace current list elements in param_index0
-        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Tccd','gain'] = real_list
+        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph', 'Tccd','gain'] = real_list
         return param
 
 
@@ -221,6 +222,7 @@ project_path = str(current_path)+ sla + dir_name + sla
 macro_dir = str(project_path)+ 'macro' + sla
 log_dir = str(project_path)+ 'log' + sla
 data_dir = str(project_path)+ 'data' + sla
+img_dir = data_dir + 'img' + sla
 
 
 if not os.path.exists(dir_name):
@@ -228,6 +230,7 @@ if not os.path.exists(dir_name):
     os.makedirs(macro_dir)
     os.makedirs(log_dir)
     os.makedirs(data_dir)
+    os.makedirs(img_dir)
 
 
 
@@ -362,8 +365,8 @@ class StatusWidget(QWidget):
                            " x = " + self.p('x') + ", y = " + self.p('y') + ", z = " + self.p('z') + " <br>"
                            " u = " + self.p('u') + ", v = " + self.p('v') + ", w = " + self.p('w') + " <br>"
                            " th = "+ self.p('th') + ", tth = " + self.p('tth')+"<br>"
-                           "   temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K, "
-                           " I<sub>0</sub> = "+ self.p('I0') + " Amp <br>"
+                           "   temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
+                           " I<sub>0</sub> = "+ self.p('I0') + " Amp, I<sub>ph</sub> = "+ self.p('Iph') + " Amp <br>"
                            " <br>"
                            " RIXS imager:  <br>"
                            " temperature = " + self.p('Tccd') +" \u2103"+ ",     CCD "+ self.p('ccd')+',   gain = ' + self.p('gain') + " <br>"
@@ -383,9 +386,9 @@ class StatusWidget(QWidget):
             if value == 0: read='off'
             else: read='on'
         #if isinstance(value, int) or isinstance(value, float):
-        elif x == 'I0':
+        elif x == 'I0' or x =='Iph':
             read = np.format_float_scientific(value, unique=False, precision=2, exp_digits=2)
-        elif x != 'I0':
+        elif x != 'I0' and x != 'Iph':
             if y == 'Round': read = round(value,2)
             elif y == 'int': read = int(value)
         else:
@@ -755,7 +758,34 @@ class Command(QWidget):
                         self.sysReturn(img_number+' taken, time span= '+str(round(time.time()-self.t0,2))+' sec')
                     BUSY = False  # global flag
                     DATA_taking_STATUS = " "
-                    self.sysReturn('Completed taking RIXS images, data saved in :%s')
+                    self.sysReturn('Completed taking RIXS images.')
+                else:
+                    self.sysReturn(text, "iv")
+                    self.sysReturn("Both t and n need to be numerical numbers.", "err")
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   rixs t n", "err")
+
+        elif text == 'trixs' or text[:6] == 'trixs ': #test QThread
+            # All sequence below should be organized as function(text) which returns msg & log
+            space = text.count(' ')
+            sptext = text.split(' ')
+            # check format
+            if space == 2:  # e.g. rixs t n
+                # t as exposure time ; n as number of images.
+                t = float(sptext[1])
+                n = int(sptext[2])
+                if self.checkFloat(t) and self.checkFloat(n):
+                    BUSY = True
+                    self.sysReturn(text, "v", True)
+                    tt = datetime.datetime.now()
+                    self.sysReturn('RIXS ' + str(int(param['f'])) + ' begins at ' + tt.strftime("%c"))
+                    dwell_0 = 0  # buffer time
+                    if SAFE:
+                        CCD.setExposureTime(t)
+                        dwell_0 = 5  # extra time for the while loop
+                    self.test_rixs = testThread(t, n)
+                    self.test_rixs.start()
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("Both t and n need to be numerical numbers.", "err")
@@ -873,7 +903,7 @@ class Command(QWidget):
 
                 if text.find(',') is -1:  # no "," i.e. scan x 1 10 1 0.1
                     c = 3
-                    plot = ['I0']  # default detection parameter
+                    plot = ['Iph']  # default detection parameter
                 else:  # scan y z, x 1 10 1 0.1
                     c = text.find(',')  # c= the location index of "," in text
                     print(text)
@@ -998,7 +1028,7 @@ class Command(QWidget):
             sptext = text[5:].split(' ') # scan_param 1 10 1 0.1
             space = text.count(' ') #space =5, e.g. scan x 1 10 2 0.1
             c=5
-            plot=['I0']
+            plot=['Iph']
 
         else:
             c = text.find(',')
@@ -1039,7 +1069,7 @@ class Command(QWidget):
         # checking if dection parameters have been correctly selected
         j=0 #check index
         for i in range(len(plot)): # i from 0 to len(plot)-1
-            if (plot[i] in param_index0) or (plot[i]=='I0'): j +=1.0
+            if (plot[i] in param_index0) or (plot[i]=='Iph'): j +=1.0
         #
         if j== len(plot):
             check_plot='OK'
@@ -1190,11 +1220,93 @@ class WaitExposure(QThread):
         print('time span in seconds= %s'%dt)
         #self.msg.emit('times pan in seconds= %s'%dt)
         img_global.getData()
-        #img_global.plotImg()
+        img_global.plotImg()
         #self.msg.emit('Image obtained')
         #self.quit()
 
 
+class testThread(QThread):
+    def __init__(self, t, n):
+        super(testThread, self).__init__()
+        self.i = 0
+        self.n = n
+        self.t = t
+        print("thread start")
+
+    def run(self):
+        global BUSY, DATA_taking_STATUS, cmd_global, img_global
+        t = self.t
+        n = self.n
+        self.t0 = time.time()
+        for i in range(n):
+            if i == 0:
+                DATA_taking_STATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(n)
+            # print('i = ',i,'   ABORT =', ABORT)
+            if ABORT:
+                break
+            IMGDONE = False
+            self.imageExposure()
+            # self.CCDthread = WaitExposure()
+            # #self.CCDthread.msg.connect(self.sysReturn)
+            # self.CCDthread.start()
+            t1 = time.time()
+            if i == 0:
+                dt = n * (t + 3)
+            else:
+                dt = ((time.time() - self.t0) / i) * (n - i)  # remaining time
+            dt = round(dt, 2)
+            while (time.time() - t1) < t + dwell_0:
+                self.t2 = time.time()
+                DATA_taking_STATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(n) + ',  remaining time = ' + str(
+                    dt) + ' sec'
+                if (self.t2 - t1) % 0.2 <= 0.00003:
+                    QApplication.processEvents()
+                if SAFE:
+                    if IMGDONE:
+                        print('getData() finished.')
+                        break
+                if ABORT:
+                    break
+            # print('while loop takes :',time.time() - t1)
+            img_number = str(i + 1) + ' image'
+            if i > 0:
+                img_number += 's'
+            cmd_global.sysReturn(img_number + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
+
+    def imageExposure(self):
+        global BUSY, DATA_taking_STATUS, cmd_global, img_global
+        BUSY = True  # global flag
+        DATA_taking_STATUS = " "
+        cmd_global.sysReturn('Completed taking RIXS images.')
+        if SAFE:
+            CCD.start(1)  # 1 for activate
+            t1 = time.time()
+            while e.PV("41a:ccd1:dataok").get() == 1:
+                if (time.time() - t1) % 0.2 <= 0.0001:
+                    QApplication.processEvents()
+                if e.PV("41a:ccd1:dataok").get() == 0:
+                    break
+        t1 = time.time()
+        print('t1 =', t1)
+        if SAFE:
+            j = 0  # a counter to mimic timer
+            while e.PV("41a:ccd1:dataok").get() == 0:
+                j += 1
+                if (time.time() - t1) % 0.2 <= 0.0001:
+                    QApplication.processEvents()
+                if e.PV("41a:ccd1:dataok").get() == 1:
+                    break
+                if ABORT:
+                    cmd_global.sysReturn('RIXS aborted', 'err')
+                    break
+        else:
+            for i in range(0, 3):
+                time.sleep(0.1)
+        dt = round(time.time() - t1, 3)
+        print('time span in seconds= %s' % dt)
+        print('before get data')
+        img_global.getData()
+        img_global.plotImg()
 
 
 class ImageWidget(QWidget):
@@ -1245,21 +1357,20 @@ class ImageWidget(QWidget):
         def mouseMoved(pos):
             data = self.imv.image
             nCols, nRows = data.shape
-            print(nRows, nCols)
+            #print(nRows, nCols)
             mousePoint = plt.getViewBox().mapSceneToView(pos)
-
-            print("Image position:", plt.getViewBox().mapSceneToView(pos))
+            #print("Image position:", plt.getViewBox().mapSceneToView(pos))
             row, col = int(mousePoint.y()), int(mousePoint.x())
             value = 0
 
             if (0 <= row < nRows) and (0 <= col < nCols):
                 value = data[col, row]
-                print("pos = ({:d}, {:d}), value = {!r}".format(col, row, value))
+                #print("pos = ({:d}, {:d}), value = {!r}".format(col, row, value))
             else:
-                print("no data at cursor")
+                pass
+                #print("no data at cursor")
 
-            self.status_bar.setText(
-                "Image Pixel Information: " + "pos = ({:d}, {:d}), value = {!r}".format(col, row, value))
+            self.status_bar.setText("Image Pixel Information: " + "pos = ({:d}, {:d}), value = {!r}".format(col, row, value))
 
         self.imv.scene.sigMouseMoved.connect(mouseMoved)
 
@@ -1287,7 +1398,7 @@ class ImageWidget(QWidget):
         '''
         datestamp = datetime.datetime.today().strftime("%Y_%b%d_%H%M%S") #Format : Year_MonDt
         file_name0 =datestamp + '_img'      # short ver. for display
-        file_name = data_dir + file_name0   # for saving in correct dir
+        file_name = img_dir + file_name0   # for saving in correct dir
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',')
         cmd_global.sysReturn('Image data saved as: '+file_name0)
 
@@ -1349,7 +1460,7 @@ class SpectrumWidget(QWidget):
         print('scan loop begins')
         print('scan no = ', file_no)
         if plot==[]:
-            plot=['I0']
+            plot=['Iph']
 
         ## plist from split text input = [param, x1, x2, step, dwell]
         scan_param = plist[0]
@@ -1420,34 +1531,49 @@ class SpectrumWidget(QWidget):
                 set_param(scan_param, scan_x[i])
             else:
                 param[scan_param] = scan_x[i] # set scanning parameter
-            time.sleep(dwell)
-            QtGui.QApplication.processEvents()
-            # get data
-
-            for j in range(plot_no):
+            '''
+            Data collection time
+            '''
+            for j in range(plot_no):   #every device
+                t0 = time.time()
                 if SAFE:
-                    I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
-                else:
+                    average_index = 0
+                    data_accum = 0
+                    while (time.time()-t0) <= dwell:                 # while loop to average data within dwell time
+                        average_index += 1
+                        data_accum += e.caget("41a:sample:phdi")     # Read Iph data through epics
+                        if (time.time()-t0)%0.2 <= 0.0001:
+                            print("current value: ",data_accum/average_index,"average_index: ", average_index)
+
+                    print("loop ",i,": average_index: ", average_index, "data_accum: ", data_accum)
+                    data_accum = data_accum/average_index            # averaging collected data
+
+                    # after data collection, update all param values to data_matrix
+                    current_param = get_param_for_status()
+                    data_matrix.loc[len(data_matrix), :] = current_param.tolist()  # appending param to data_matrix
+                    data_matrix.loc[len(data_matrix),'Iph'] = data_accum           # replace param['Iph'] by averaged data
+                    print('data row=', data_matrix.loc[len(data_matrix), :])
+                    print('Iph=', data_matrix.loc[len(data_matrix),'Iph'])
+
+            else:
+                time.sleep(dwell)
+                QtGui.QApplication.processEvents()
+                for j in range(plot_no):
                     param[plot[j]]=0.8**(j)*100*math.sin((10*j+1)*(scan_x[i]-(x1+x2)/2)/2) # math.cos(scan_x[i]/100) #get numeric data:  assuming  Sin function
-                ### not called if only scan one parameter
-                if j==1:
-                    if SAFE:
-                        data_i.append(I0_read)
-                    else:
+                    ### not called if only scan one parameter
+                    if j==1:
                         param[plot[j]]=i # what is this for?
                         data_i.append(param[plot[j]])
-                    #print('i= ', i, '  j=', j, '   ', scan_param, '=', scan_x[i], '     ', plot[j], '=', param[plot[j]])
-
-            #after finishing the update of all param values
-            if SAFE:
-                current_param = get_param_for_status()
-                data_matrix.loc[len(data_matrix), :] = current_param.tolist() #appending param to data_matrix
-            else:
+                # after finishing the update of all param values
                 data_matrix.loc[len(data_matrix), :] = param.tolist()
+
+
             print('ck1, i= ', i, 'dwell =', dwell)
-            # plot from data_matrix
+            '''
+            plot from data_matrix
+            '''
             # TODO: reconstruct this part
-            if plot_no >= 1: self.curve0.setData(scan_x, data_matrix.loc[:,plot[0]])
+            if plot_no >= 1: self.curve0.setData(scan_x, data_matrix.loc[:,plot[0]]) #"Iph"
             if plot_no >= 2: self.curve1.setData(scan_x, data_matrix.loc[:,plot[1]])
             if plot_no >= 3: self.curve2.setData(scan_x, data_matrix.loc[:,plot[2]])
             if plot_no >= 4: self.curve3.setData(scan_x, data_matrix.loc[:,plot[3]])
