@@ -1,5 +1,4 @@
-#Last edited:20190422 11:25am
-
+#Last edited:20190423 5pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -10,19 +9,46 @@ from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
 import time, datetime, math, re
-import threading
-import spike
+from pyepics_device import Devices as ped
+from pyepics_tmp_device import TmpDevices as petd
+from pyepics_ccd_device import CcdDevices as pecd
+import epics as e
 
 # Global for connection
-spectrum_widget_global = None
+spectrum_global = None
 status_global = None
 img_global = None
 cmd_global = None
 scan_data = None
-xas_data = None    # XAS spectrum
-rixs_data = None # RIXS spectrum
-rixs_img = None  # RIXS image data, np.ndrray
+xas_data = None     # XAS spectrum
+rixs_data = None    # RIXS spectrum
+rixs_img = None     # RIXS image data, np.ndrray
 data_matrix = None
+
+'''
+Abort
+ - execution flag for commands.
+   default : False
+   if abort = True, breaks loop.
+ - reset in Command(send function)
+'''
+ABORT = False
+
+'''
+Busy
+ - check flag for complicated commands
+   default : False
+ - if busy = True, command_input will be disabled.
+ - checked in Command(cmdDone function)
+'''
+BUSY = False
+
+'''
+global flag & parameters for RIXS
+'''
+IMGDONE = False
+
+workingSTATUS = ""
 
 # SETUP_parameters
 #TODO: img?
@@ -43,9 +69,8 @@ pvName = pd.Series({'agm': "41a:AGM:Energy",
                     "tth": "41a:sample:tth",
                     "ta": "41a:sample:tmp1",
                     "tb": "41a:sample:tmp2",
-                    "T0": "41a:sample:i0",
+                    "I0": "41a:sample:i0",
                     "Iph": "41a:sample:phdi"})
-
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
 # note: we can't use param_index0 = param_index
@@ -54,65 +79,44 @@ param_index0 = list(param_index)
 for elements in non_movables:
     param_index0.remove(elements)
 
-#param_index0 = ['agm','ags','x','y','z','u','v','w','th','tth','ta','Tccd']
-
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
                         'ags': [480, 1200], 'x': [-10,10], 'y': [-10,10],'z': [-6.5,6.5], 'u': [-10,10],
                           'v': [-10,10], 'w': [-10,10], 'th':[-5, 185], 'tth':[-35, 0],
                         'ta':[5,350], 'tb':[5,350], 'I0': [0,1], 'Iph': [0,1], 'Tccd': [-100, 30], 'gain': [0, 100]})
 
-'''
-Abort
- - execution flag for commands.
-   default : False
-   if abort = True, breaks loop.
- - reset in Command(send function)
-'''
-ABORT = False
+# Individual safety control
+Device = pd.Series({
+        "hexapod":     0, # x, y, z, u, v, w
+        "hexapod_list": ["x","y","z","u","v","w","th","tth"],
+        "x": 1, "y": 1, "z": 1, "u": 1, "v": 1, "w": 1,"th":1,"tth":1,
+        "agm": 1, "ags": 1,
+        "ta": 1, "tb": 1,
+        "I0": 1, "Iph": 1,
+        "ccd":0,"ccd_list":["ccd","gain","Tccd"],
+        "s1" :0, "s2":0, "shutter":0
+    })
 
-'''
-Busy
- - check flag for complicated commands
-   default : False
- - if busy = True, command_input will be disabled.
- - checked in Command(commandDone function)
-'''
-BUSY = False
+def checkSafe(p):
+    if SAFE:
+        if p in Device["hexapod_list"]: # Check priority: Hexapod > others
+            if Device["hexapod"] != 0:
+                if Device[p] == 1:
+                    return True
+        elif p in Device["ccd_list"]:
+            if Device['ccd']==1:
+                return True
+        elif Device[p] == 1:
+            return True
+    else:
+        return False
 
-'''
-global flag & parameters for RIXS
-'''
-IMGDONE = False
-DATA_taking_STATUS = "" #activated when RIXS command executed
 
-# Don't Set True; same as self.sim in ped and CCD
 #SAFE = False
 SAFE = True
+
 # SETUP_epics
 if SAFE:
-# Initial values for setup communication
-    from pyepics_device import Devices as ped
-    from pyepics_tmp_device import TmpDevices as petd
-    from pyepics_ccd_device import CcdDevices as pecd
-    import epics as e
-    from epics import camonitor
- #global parameter named capital for safety (not mixed with global)
-    X = ped("hx", "41a:hexapod:x")
-    Y = ped("hy", "41a:hexapod:y")
-    Z = ped("hz", "41a:hexapod:z")
-    U = ped("hu", "41a:hexapod:u")
-    V = ped("hv", "41a:hexapod:v")
-    W = ped("hw", "41a:hexapod:w")
-    TH = ped("sm_th", "41a:sample:th")
-    TTH = ped("sm_tth", "41a:sample:tth")
-    TSA = petd("tmp1", "41a:sample:tmp1")
-    TSB = petd("tmp2", "41a:sample:tmp2")
-    IPV0 = "41a:sample:i0"
-    IPV1 = "41a:sample:phdi"
-    AGM = e.Motor("41a:AGM:Energy")
-    AGS = e.Motor("41a:AGS:Energy")
-
     #setup_CCD
     CCD = pecd("emccd", "41a:ccd1")
     CCD.setExposureTime(2)
@@ -120,161 +124,23 @@ if SAFE:
     CCD.setAcqMode(2)  #0: video; 1: single (obsolete); 2: accumulation
     CCD.setAccuType(0) #0: raw image; 2: differnece image
 
-def test123():
-    while 1:
-        status_global.show_text()
-        QApplication.processEvents()
-        time.sleep(1)
-
-# called when SAFE == True
-def get_param_for_status():
-        ##### 'imager','Tccd', 'shutter' need to be included
-        #get param values from devices
-        I0_read = e.caget(IPV0)
-        Iph_read = e.caget(IPV1)
-        #I0_read = np.format_float_scientific(e.caget(IPV0), unique=False, precision=2, exp_digits=2)
-        real_list = [e.caget("41a:AGM:Energy.RBV"), e.caget("41a:AGS:Energy.RBV"),
-                     X.getValue(), Y.getValue(), Z.getValue(),
-                     U.getValue(), V.getValue(), W.getValue(), TH.getValue(), TTH.getValue(),
-                     TSA.getValue(), TSB.getValue(), I0_read, Iph_read,
-                     CCD.getTemp(), CCD.getGain()]
-        #replace current list elements in param_index0
-        param.loc['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph', 'Tccd','gain'] = real_list
-        return param
-
-
 def get_param(p):
-    if SAFE:
-         ped_dict = {'x': X, 'y': Y, 'z': Z, 'u': U, 'v': V, 'w': W, 'th': TH, 'tth': TTH}
-         epics_dict = {'agm': AGM, 'ags': AGS}  # I0 read only
-         # for ped
-         if p in ped_dict:
-             P = ped_dict[p]
-             v = P.getValue()
-         #for AGM, AGS
-         elif p in epics_dict:
-             P = epics_dict[p]
-             v = e.caget(P)
-         # tb read-only
-         elif p == 'ta':
-             e.caput("41a:sample:heater", 1)
-             v = TSA.getValue()
-         elif p == 'Tccd':
-             v = CCD.getTemp()
-         elif p == 'gain':
-            v = CCD.getGain()
-
+    if checkSafe(p):
+        if p == 'agm' or p =='ags':
+            v = e.caget(pvName[p]+".RBV", timeout=0.1)
+        elif p == 'th' or p == 'tth':
+             v = e.caget(pvName[p]+'r', timeout=0.2)
+        elif p == 'Tccd':
+            v = e.caget('41a:ccd1:tmpr', timeout=0.1)
+        elif p == 'gain':
+            v = e.caget('41a:ccd1:gain', timeout=0.1)
+        else :
+            v = e.caget(pvName[p], timeout=0.1)  # get PV name from pvName series
+        if v == None:
+            v = 'NoneType'
+    else:
+        v = param[p]
     return v
-
-
-
-def set_param_old(p, v):
-    global status_global, cmd_global, SAFE
-    # p : index(name) of parameter, should be a string
-    # v : ***should only be range-checked value
-    #pname already checked in param_index0 by check format
-    print('set param SAFE = ', SAFE )
-    print('p = ', p, '  ', type(p), '  v = ', v, ' ',  type(v))
-    if SAFE: # send parameter value to devices
-        sample_parameters = {'x':X,'y':Y,'z':Z,'u':U,'v':V,'w':W,'th':TH,'tth':TTH}
-        #for ped
-        if p in sample_parameters:
-            p_epicsname = sample_parameters[p]
-            p_epicsname.setValue(v)
-        if p == 'agm':
-            # check the difference between the current AGM value and the value to be set
-            if abs(e.caget("41a:AGM:Energy.RBV")-v)>=0.005:
-                e.caput("41a:AGM:Energy", v)
-
-                #check moving status
-                t1 = time.time()
-                while e.caget("41a:AGM:Energy.MOVN") == 0: #= 0 not moving; = 1 moving
-                    if (time.time()-t1)%0.2 <= 0.0001:
-                        status_global.show_text()
-                        QApplication.processEvents()
-                    if (time.time()-t1) >= 1:
-                        msg = str(p)+ "not moving, value: "+str(e.caget("41a:AGM:Energy.RBV"))
-                        cmd_global.sysReturn(msg,"err")
-                        break
-                    if e.caget("41a:AGM:Energy.MOVN") == 1:
-                        break
-
-                t2 = time.time()
-                while e.caget("41a:AGM:Energy.MOVN") == 1:
-                    if (time.time()-t2)%0.2 <= 0.0001:
-                        status_global.show_text()
-                        QApplication.processEvents()
-                    if e.caget("41a:AGM:Energy.MOVN") == 0:
-                        break
-                status_global.show_text()
-                QApplication.processEvents()
-
-        if p == 'ags':
-            e.caput("41a:AGS:Energy", v)
-            print(e.caget("41a:AGS:Energy.MOVN"))
-        # tb read-only
-        elif p == 'ta':
-            e.caput("41a:sample:heater", 1)
-            TSA.setValue(v)
-        elif p =='Tccd': CCD.setTemp(v)
-        elif p == 'gain': CCD.setGain(v)
-    else:
-        param[p] = v
-
-
-
-def set_param(p, v):
-    global status_global, cmd_global, SAFE, pvName
-    # p : index(name) of parameter, should be a string
-    # v : ***should only be range-checked value
-    #pname already checked in param_index0 by check format
-    v = float(v)
-
-    if SAFE: # send parameter value to devices
-        sample_parameters = {'x':X,'y':Y,'z':Z,'u':U,'v':V,'w':W,'th':TH,'tth':TTH}
-        #pv_name = pd.Series({'agm': "41a:AGM:Energy", 'ags': "41a:AGS:Energy"})
-        #for ped
-        if p in sample_parameters:
-            p_epicsname = sample_parameters[p]
-            p_epicsname.setValue(v)
-        if p == 'agm' or p == 'ags' :
-            # check the difference between the current AGM value and the value to be set
-            if abs(e.caget(pvName[p] + '.RBV')-v)>=0.005:
-                e.caput(pvName[p], v)
-
-                #check moving status
-                t1 = time.time()
-                while e.caget(pvName[p] +".MOVN")== 0: #  = 0 not moving; = 1 moving
-                    if (time.time()-t1)%0.2 <= 0.0001:
-                        status_global.show_text()
-                        QApplication.processEvents()
-                    if e.caget(pvName[p]+".MOVN") ==1 or (time.time()-t1) >= 1:
-                        break
-
-                t2 = time.time()
-                while e.caget(pvName[p] +".MOVN") == 1:
-                    if (time.time()-t2)%0.2 <= 0.0001:
-                        status_global.show_text()
-                        QApplication.processEvents()
-                    if e.caget(pvName[p] +".MOVN") == 0:
-                        break
-                time.sleep(0.2)
-                if abs(e.caget(pvName[p] + '.RBV') - v) >= 0.02:
-                    msg = str(p) + " not moving correctly, value: " + str(e.caget(pvName[p] + ".RBV"))
-                    cmd_global.sysReturn(msg, "err")
-
-                status_global.show_text()
-                QApplication.processEvents()
-
-        if p == 'ta':
-            e.caput("41a:sample:heater", 1)
-            TSA.setValue(v)
-        elif p =='Tccd': CCD.setTemp(v)
-        elif p == 'gain': CCD.setGain(v)
-    else:
-        param[p] = v
-
-
 
 def convertSeconds(seconds):
     m = str(int(seconds//60)) + ' mins '
@@ -289,13 +155,10 @@ Dir for datasaving and macro
  - sub folders including log, macro, and data
  - TODO: build class?
 '''
-file_no = 0
+file_no = 0                 #
 
-# Name of projectDir
 dir_date = datetime.datetime.today().strftime("%Y_%b%d")
 dir_name = "project #0"
-
-# very stupid way for test, probably os package has solution
 current_path=os.getcwd()
 
 if '\\' in current_path:
@@ -305,13 +168,11 @@ else:
     # for linux
     sla = '/'
 
-
 project_path = str(current_path)+ sla + dir_name + sla
 macro_dir = str(project_path)+ 'macro' + sla
 log_dir = str(project_path)+ 'log' + sla
 data_dir = str(project_path)+ 'data' + sla
 img_dir = data_dir + 'img' + sla
-
 
 if not os.path.exists(dir_name):
     os.makedirs(project_path)
@@ -320,8 +181,9 @@ if not os.path.exists(dir_name):
     os.makedirs(data_dir)
     os.makedirs(img_dir)
 
-
-
+'''
+Start GUI construction
+'''
 class RIXS(QMainWindow):
 
     def __init__(self):
@@ -346,34 +208,21 @@ class RIXS(QMainWindow):
         emccdMenu = menubar.addMenu("EMCCD")
         emccdMenu.addAction("cooling on")
         emccdMenu.addAction("cooling off")
-# =============================================================================
-#
-#         #TODO: To be continued
-#         sddMenu = menubar.addMenu('SDD')
-#         slitMenu = menubar.addMenu('Slits')
-#         helpMenu = menubar.addMenu('Help')
-#
-# =============================================================================
 
         # Import panel
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
         self.show()
 
-
-
-
 class Panel(QWidget):
-
     def __init__(self, parent):
         super(QWidget, self).__init__(parent)
         # Import designed UI
         self.UI_layout()
 
     def UI_layout(self):
-
         # Left_Column
-        global cmd_global, img_global, status_global, spectrum_widget_global
+        global cmd_global, img_global, status_global, spectrum_global
         hbox = QHBoxLayout(self)
         leftcolumn = QVBoxLayout()
         image_widget = ImageWidget(self)
@@ -393,7 +242,7 @@ class Panel(QWidget):
         # for global connection
         cmd_global = command_widget
         img_global = image_widget
-        spectrum_widget_global = spectrum_widget
+        spectrum_global = spectrum_widget
         status_global = status_widget
 
         #qtsignal/slot method
@@ -415,109 +264,62 @@ class StatusWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.status_box)
-        # '''
-        # Update
-        #  - repeat show_text function every 1 sec.
-        # '''
-        # self._status_update_timer = QTimer(self)
-        # self._status_update_timer.setSingleShot(False)
-        # self._status_update_timer.timeout.connect(self.show_text)
-        # self._status_update_timer.timeout.connect(self.show_bar)
-        # self._status_update_timer.start(500)
-
-        '''
-        Starts or restarts the timer with a timeout interval of msec milliseconds.
-        If the timer is already running, it will be stopped and restarted.
-        If singleShot is true, the timer will be activated only once.
-        '''
-
-###########################QThread test##############################
-        self.show_status_thread() # defined below
-###########################QThread test###############################
 
     def show_bar(self):
         q_time = QDateTime.currentDateTime()
         time_str = q_time.toString("yyyy-MM-dd hh:mm:ss")
         x = str(time.time()%10)
-        self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C.; file number: " + self.p('f','int')+", "+x)
+        self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C.;"
+                                +" file number: "+ str(int(param['f']))+", "+x)
 
-
-        # Forced refresh
-    def show_text(self, x=" "):
-        if SAFE:
-            param = get_param_for_status()
-
+    def show_text(self):
         parameter_text = ( "<u>Parameters</u></font><br>"
-                           " AGM: " + self.p('agm') + " eV<br>"
-                           " AGS: " + self.p('ags') + " eV<br>"
-                           " <br>"
-                           " entrance slit   s1= " + self.p('s1') + " &micro;m ; "
-                           " exit slit   s2= " + self.p('s2') + " &micro;m<br>"
-                           " shutter: " + self.p('shutter')+ "<br>"
-                           " <br>"
+                           " AGM: " + self.f('agm') + " eV<br>"
+                           " AGS: " + self.f('ags') + " eV<br>"
+                           " -<br>"
+                           " entrance slit   s1= " + self.f('s1','int') + " &micro;m ; "
+                           " exit slit   s2= " + self.f('s2','int') + " &micro;m<br>"
+                           " shutter: " + self.f('shutter','switch')+ "<br>"
+                           " -<br>"
                            " Sample:  <br>"
-                           " x = " + self.p('x') + ", y = " + self.p('y') + ", z = " + self.p('z') + " <br>"
-                           " u = " + self.p('u') + ", v = " + self.p('v') + ", w = " + self.p('w') + " <br>"
-                           " th = "+ self.p('th') + ", tth = " + self.p('tth')+"<br>"
-                           "   temperatures:  T<sub>a</sub> = " + self.p('ta') + " K, T<sub>b</sub> = " + self.p('tb') + " K<br>"
-                           " I<sub>0</sub> = "+ self.p('I0') + " Amp, I<sub>ph</sub> = "+ self.p('Iph') + " Amp <br>"
-                           " <br>"
+                           " x = " + self.f('x') + ", y = " + self.f('y') + ", z = " + self.f('z') + " <br>"
+                           " u = " + self.f('u') + ", v = " + self.f('v') + ", w = " + self.f('w') + " <br>"
+                           " th = "+ self.f('th') + ", tth = " + self.f('tth')+"<br>"
+                           "   temperatures:  T<sub>a</sub> = " + self.f('ta','int') + " K,"+
+                           " T<sub>b</sub> = " + self.f('tb','int') + " K<br>"
+                           " I<sub>0</sub> = "+ self.f('I0','current') + " Amp,"+
+                           " I<sub>ph</sub> = "+ self.f('Iph','current') + " Amp <br>"
+                           " -<br>"
                            " RIXS imager:  <br>"
-                           " temperature = " + self.p('Tccd') +" \u2103"+ ',   gain = ' + self.p('gain') + " <br>"
+                           " temperature = " + self.f('Tccd',1) +" \u2103"+ ',   gain = ' + self.f('gain',0) + " <br>"
                            " <br><font color =red>"
-                           + DATA_taking_STATUS +"</font>")
+                           + workingSTATUS +"</font>")
         self.status_box.setText(parameter_text)
 
     # define format of displayed numbers
-    # - default: round, 2
-    def p(self, x, y='Round'):
-        #get value by param_list index
-        value =  param[x]
-        if value != None:
-            if x=='shutter':
-                if value == 0: read='close'
-                else: read='open'
-            #if isinstance(value, int) or isinstance(value, float):
-            elif x == 'I0' or x =='Iph':
-                read = np.format_float_scientific(value, unique=False, precision=2, exp_digits=2)
-            elif x != 'I0' and x != 'Iph':
-                if y == 'Round': read = format(value,'.3f')
-                elif y == 'int': read = int(value)
-            else:
-                read = value
-            return str(read)
+    def f(self, p, form=3):
+        # get value by param_list index
+        if checkSafe(p):
+            value = get_param(p)
+            real = 1
+            if isinstance(value, str): #  got None from device
+                string = "<font color= red>none</font><font color = black> </font>"
+        else:
+            value = param[p]
+            real = 0
 
-#####################QThread test###################
-    def show_status_thread(self):
-        # 创建线程
-        self.backend = BackendThread()
-        # 连接信号
-        self.backend.updateStatus.connect(self.show_text)
-        self.backend.updateStatus.connect(self.show_bar)
-        self.thread = QThread()
-        self.backend.moveToThread(self.thread)
-        # 开始线程
-        self.thread.started.connect(self.backend.run)
-        self.thread.start()
+        #format
+        if form == 'current': string = np.format_float_scientific(value, unique=False, precision=2, exp_digits=2)
+        elif form == 'int': string = str(int(value))
+        elif form == 'switch':
+            if value == 0: string = 'close'
+            else: string = 'open'
+        else: string = str(format(value, '.3f'))
 
+        # real marked blue
+        if real == 0: string = '<font color=gray>'+ string +'</font>'
 
-
-class BackendThread(QObject):
-    # 通过类成员对象定义信号
-    updateStatus = pyqtSignal(str)
-
-    # 处理业务逻辑
-    def run(self):
-        while True:
-            #data = QDateTime.currentDateTime()
-            #currTime = data.toString("yyyy-MM-dd hh:mm:ss")
-            #self.updateStatus.emit( str(currTime) )
-            self.updateStatus.emit( "$$$$   "+ str(time.time()) )
-            time.sleep(0.1)
-######################QThread test############################
-
-
-
+        return string
 
         #Terminal
 class Command(QWidget):
@@ -556,7 +358,6 @@ class Command(QWidget):
         self.popup.connect(self.popupMacro)
         self.macrostat[str].connect(self.command_input.setText)
         self.macrotimer = QTimer(self)
-
         '''
         History
          - callable (command: h)
@@ -567,7 +368,6 @@ class Command(QWidget):
         # modify counting mechanism => get index directly => check pandas document
         self.history_loc = 0
         self.logname = str(dir_date)+"_commandlog"
-
         '''
         Keyboard log (for KeyPressEvent function)
          - empty list
@@ -575,7 +375,6 @@ class Command(QWidget):
         '''
         self.kblog = []
         self.kbi = 0
-
         '''
         Abort Button
         default: closed
@@ -600,25 +399,22 @@ class Command(QWidget):
         ABORT = False
         self.abort_button.setEnabled(True)
         txt = self.command_input.text()
-        self.inputext[str].emit(txt)
         self.command_input.setText("")
         self.command_message.moveCursor(QtGui.QTextCursor.End)
-
+        self.inputext[str].emit(txt)
         '''
-        set global abort flag when button clicked
+        Set global abort flag when button clicked
         (because scan loop is not in this class...)
         '''
     def abortCommand(self):
         global ABORT
         ABORT = True
         self.abort_button.setDisabled(True)
-
         '''
         Macro Window
          - under construction
          - pop up TextEdit
         '''
-
     def popupMacro(self):
         print ("Opening a new popup window...")
         self.macro = MacroWindow()
@@ -628,8 +424,6 @@ class Command(QWidget):
         self.macro.setWindowFlags(self.macro.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.show()
-
-
         '''
         Up and Down
          - redefine function of QLineEdit(originally support return only)
@@ -696,8 +490,6 @@ class Command(QWidget):
             self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font><font color=black> </font>')
 
         elif v == "err":
-            # for error messages
-            #self.command_message.append('<font color=red>Input error; ' + x + '</font><font color=black> </font>')
             self.command_message.append('<font color=red> '+ x + '</font><font color=black> </font>')
         else:
             self.command_message.append('<font color= black>'+x+'</font>')
@@ -720,7 +512,7 @@ class Command(QWidget):
     def send(self, txt):
         self.command_input.setDisabled(True)
         text = txt
-        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, DATA_taking_STATUS, status_global
+        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, workingSTATUS
         # pre-formatting
         if len(text) != 0:
             text = self.preFormatting(text)
@@ -729,9 +521,6 @@ class Command(QWidget):
             self.kblog.append(text)
             self.kbi = len(self.kblog)
 
-
-        status_global.show_text()
-        QApplication.processEvents()
         '''
         Check valid commands below ...
          - should be integrated as valid-command class
@@ -740,12 +529,12 @@ class Command(QWidget):
             self.sysReturn(text, "v")
             msg = ("<b>p</b>: list valid parameters.<br>\n"
                    "<b>r</b>: show all parameter ranges.<br>\n"
-                   "<b>macro</b>: open a macro editor.<br>\n"
-                   "<b>do</b>: execute a macro by calling a text file.<br>\n"
+                   #"<b>macro</b>: open a macro editor.<br>\n"
+                   #"<b>do</b>: execute a macro by calling a text file.<br>\n"
                    "<b>h</b>: recall previous commands executed sucessfully.<br>\n"
                    "<br>\n"
                    "<b>mv</b>: set a parameter to its absolute value.<br>\n"
-                   "<b>mvr</b>: change a parameter in terms of a relative value.<br>\n"
+                   #"<b>mvr</b>: change a parameter in terms of a relative value.<br>\n"
                    "<b>scan</b>: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n"
                    "<b>xas</b>:  <br>\n"
                    "<b>rixs</b>:  take RIXS images, t sec per iamge for n images <br>\n"
@@ -816,9 +605,7 @@ class Command(QWidget):
                     t = sptext[1]
                     BUSY=True
                     self.sysReturn(text, "v", True)
-                    DATA_taking_STATUS = "Taking image... ; Exposure time ="+str(t)
-                    status_global.show_text()
-                    QApplication.processEvents()
+                    workingSTATUS = "Taking image... ; Exposure time ="+str(t)
                     if SAFE:
                         CCD.setExposureTime(t)
                         self.sysReturn("getting ccd image ...")
@@ -827,7 +614,7 @@ class Command(QWidget):
                         self.sysReturn("generating random image by numpy...")
                     self.imageExposure()
                     BUSY = False  # global flag
-                    DATA_taking_STATUS = " "
+                    workingSTATUS = " "
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("input error. use:   img + exposure_time", "err")
@@ -856,7 +643,7 @@ class Command(QWidget):
                     self.t0 = time.time()
                     for i in range(n):
                         if i ==0:
-                            DATA_taking_STATUS = 'Taking RIXS data ... ' + str(i+1) + '/' + str(n)
+                            workingSTATUS = 'Taking RIXS data ... ' + str(i+1) + '/' + str(n)
                         #print('i = ',i,'   ABORT =', ABORT)
                         if ABORT:
                             break
@@ -871,9 +658,10 @@ class Command(QWidget):
                         dt = round(dt,2)
                         while (time.time() - t1) < t + dwell_0:
                             self.t2 = time.time()
-                            DATA_taking_STATUS = ('Taking RIXS data ... ' + str(i+1) + '/' + str(n)+',  remaining time = ' + str(dt)+' sec')
+                            workingSTATUS = ('Taking RIXS data ... ' + str(i+1) + '/' + str(n)+',  remaining time = ' + str(dt)+' sec')
                             if (self.t2 - t1)%0.2 <= 0.00003:
-                                QApplication.processEvents()
+                                #QApplication.processEvents()
+                                pass
                             if SAFE:
                                 if IMGDONE:
                                     print('getData() finished.')
@@ -886,35 +674,8 @@ class Command(QWidget):
                             img_number +='s'
                         self.sysReturn(img_number+' taken, time span= '+str(round(time.time()-self.t0,2))+' sec')
                     BUSY = False  # global flag
-                    DATA_taking_STATUS = " "
+                    workingSTATUS = " "
                     self.sysReturn('Completed taking RIXS images.')
-                else:
-                    self.sysReturn(text, "iv")
-                    self.sysReturn("Both t and n need to be numerical numbers.", "err")
-            else:
-                self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   rixs t n", "err")
-
-        elif text == 'trixs' or text[:6] == 'trixs ': # QThread testing
-            # All sequence below should be organized as function(text) which returns msg & log
-            space = text.count(' ')
-            sptext = text.split(' ')
-            # check format
-            if space == 2:  # e.g. rixs t n
-                # t as exposure time ; n as number of images.
-                t = float(sptext[1])
-                n = int(sptext[2])
-                if self.checkFloat(t) and self.checkFloat(n):
-                    BUSY = True
-                    self.sysReturn(text, "v", True)
-                    tt = datetime.datetime.now()
-                    self.sysReturn('RIXS ' + str(int(param['f'])) + ' begins at ' + tt.strftime("%c"))
-                    dwell_0 = 0  # buffer time
-                    if SAFE:
-                        CCD.setExposureTime(t)
-                        dwell_0 = 5  # extra time for the while loop
-                    self.test_rixs = testThread(t, n)
-                    self.test_rixs.start()
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("Both t and n need to be numerical numbers.", "err")
@@ -933,7 +694,7 @@ class Command(QWidget):
                 file_name = sptext[1]+'.txt'
                 self.loadimage[str].emit(file_name)
                 #self.plot_rixs[str].emit(file_name)
-                spectrum_widget_global.plotRixs(file_name)
+                spectrum_global.plotRixs(file_name)
 
                 self.sysReturn(file_name+" has been loaded.")
         elif text == 'r':
@@ -944,7 +705,7 @@ class Command(QWidget):
             self.sysReturn(msg)
 
         elif text == 'u':
-            status_global.show_text()
+            #status_global.show_text()
             self.sysReturn(text,"v")
             self.sysReturn("Parameter values have been updated.")
 
@@ -975,12 +736,12 @@ class Command(QWidget):
                 v = sptext[2]
                 if p in param_index0:
                     check_param =self.check_param_range(p, v)
-                    #print(check_param)
-                    if check_param == 'OK':
+                    if check_param == 'OK' and self.checkFloat(v):
                         self.sysReturn(text,"v", True)
-                        set_param(p, v)
-#                        param[sptext[1]] = float(sptext[2]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
-                        self.sysReturn(p + " has been moved to " + v)
+                        self.WorkeThread = Move(p, float(v))
+                        self.WorkeThread.finished.connect(self.finish_message)  # check if finished or not
+                        self.WorkeThread.msg.connect(self.sysReturn)
+                        self.WorkeThread.start()
                     else:
                         self.sysReturn(text,"iv")
                         self.sysReturn(check_param, "err")
@@ -991,31 +752,6 @@ class Command(QWidget):
                 self.sysReturn(text,"iv")
                 self.sysReturn("input error. use:   mv parameter value", "err")
 
-        # mvr function
-        elif text[:4] == 'mvr ':
-        # All sequence below should be organized as function(text) which returns msg & log
-            space = text.count(' ')
-            sptext = text.split(' ')
-            # check format
-            if space == 2:
-                if sptext[1] in param_index0:
-                    value= float(param[sptext[1]])+float(sptext[2])
-                    check_param =self.check_param_range(sptext[1], value)
-                    if check_param == 'OK':
-                        self.sysReturn(text,"v", True)
-                        param[sptext[1]] = float(param[sptext[1]])+float(sptext[2])
-                        output = str(param[sptext[1]])
-                        self.sysReturn(sptext[1] + " has been moved to " + output)
-                    else:
-                        self.sysReturn(text,"iv")
-                        self.sysReturn(check_param, "err")
-                else:
-                    self.sysReturn(text,"iv")
-                    self.sysReturn("parameter \'"+ sptext[1]+ "\' is invalid; type \'p\' to list valid parameters", "err")
-            else:
-                self.sysReturn(text,"iv")
-                self.sysReturn("input error. use:   mvr parameter value", "err")
-
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
                 # scan function
@@ -1025,7 +761,7 @@ class Command(QWidget):
             check = self.check_param_scan(text)  # checking input command and parameters
             if check == 'OK':
                 self.sysReturn(text, 'v', True)  # "v": log text in history; True: mark blue
-                QApplication.processEvents()
+                #QApplication.processEvents()
                 if text.find(',') is -1:  # no "," i.e. scan x 1 10 1 0.1
                     c = 3
                     plot = ['Iph']  # default detection parameter
@@ -1049,26 +785,16 @@ class Command(QWidget):
                 check_param1 = self.check_param_range(sptext[0], x1)
                 check_param2 = self.check_param_range(sptext[0], x2)
                 if (check_param1 == 'OK') and (check_param2 == 'OK'):
-                    # ==================Save file==================================================
                     file_no += 1
-                    param['f'] = file_no
-                    print('file no =', file_no)
-                    print('param[\'f\']', param['f'])
-                    # =============================================================================
-
-                    t0 = datetime.datetime.now()
-                    self.sysReturn('Scan ' + str(int(param['f'])) + ' begins at ' + t0.strftime("%c"))
-                    QtGui.QApplication.processEvents()
-
-                    # call the "scan_loop" function
-                    spectrum_widget_global.scan_loop(plot, sptext)
-
+                    param['f'] = file_no  # print('file no =', file_no, 'param[\'f\']', param['f'])
+                    start_time = datetime.datetime.now()
+                    self.sysReturn('Scan ' + str(int(param['f'])) + ' begins at ' + start_time.strftime("%c"))
+                    spectrum_global.scan_loop(plot, sptext)
                 else:
                     self.sysReturn(text, "iv")
                     if (check_param1 != 'OK'): check_param = check_param1
                     if (check_param2 != 'OK'): check_param = check_param2
                     self.sysReturn(check_param, "err")
-
             else:
                 # Return error message
                 self.sysReturn(text, "iv")
@@ -1089,29 +815,27 @@ class Command(QWidget):
 #             else:
 #                 self.sysReturn("input error. use:   do macroname","err")
 # =============================================================================
-
-        elif text[:5] == "wait ":
-            space = text.count(' ')
-            sptext = text.split(' ')
-            # set delay time
-            if space == 1:
-                t = sptext[1]
-                if self.checkFloat(t):
-                    self.sysReturn(text, "v", True)
-                    self.sysReturn("wait for %s seconds..." %str(t))
-                    self.pause[float].emit(float(t))
-                else:
-                    self.sysReturn("input error. use:   wait time", "err")
-
-        #elif text == "test":
-        #    qt_thread_rixs.rixs_test()
+        #TODO: wait command test after Thread
+        # elif text[:5] == "wait ":
+        #     space = text.count(' ')
+        #     sptext = text.split(' ')
+        #     # set delay time
+        #     if space == 1:
+        #         t = sptext[1]
+        #         if self.checkFloat(t):
+        #             self.sysReturn(text, "v", True)
+        #             self.sysReturn("wait for %s seconds..." %str(t))
+        #             self.pause[float].emit(float(t))
+        #         else:
+        #             self.sysReturn("input error. use:   wait time", "err")
 
         elif text != "":
            self.sysReturn(text, "iv")
            self.sysReturn("Type 'help' to list commands", "err")
 
-        status_global.show_text()
-        QApplication.processEvents()
+
+    def finish_message(self):
+        print("thread finished")
 
     def checkFloat(self, x):
         try:
@@ -1131,8 +855,6 @@ class Command(QWidget):
                 check_msg = ('Oops! '+ param_name+ ' value was out of range; type \'r\' to show parameter ranges.')
         else:
             check_msg = (param_name + " value must be number or float", "err")
-#        print('checking on the range of ', param_name, ':')
-#        print(check_msg)
         return check_msg
 
 
@@ -1150,17 +872,10 @@ class Command(QWidget):
 
         else:
             c = text.find(',')
-            #print('\':\' found in the input command, index c=',c)
             space = text[c:].count(' ') # space = 5, after truncating "scan y z ...:" => e.g. , x 1 10 2 0.1
             sptext = text[c+2:].split(' ') # scan_param 1 10 1 0.1
             plot=text[5:c].split(' ') # list of detection parameter
 
-        #print('plot=', plot)
-        # if the input command is correct, sptext should be a list of scan_param
-        # and 4 numbers, e.g. sptext = ['x', '1', '10', '2', '0.1']
-        #print('input text=', text)
-        #print('sptext=', sptext)
-        #print('legn', len(sptext))
 
         if text[c+1:].find(',') == -1 and space == 5:
             if (sptext[0] != '') and (len(sptext) == 5):
@@ -1215,7 +930,6 @@ class Command(QWidget):
     def cmdDone(self):
         global BUSY, status_global
         BUSY = False
-        status_global.show_text()
 
     def commandLock(self):
         timer = QTimer(self)
@@ -1243,31 +957,31 @@ class Command(QWidget):
             self.sysReturn(text,"iv")
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir),"err")
 
-    def readFile(self, name):
-        #==============Macro start===============
-        readfile=[]
-        f = open(name,"r")
-        for x in f:
-            x = x.replace('\n','')
-            readfile.append(x)
-        self.macro_n = len(readfile)
-        return (readfile)
-
-    def macroLoop(self,n,name):
-        global BUSY
-        while self.macro_index < self.macro_n:
-            file = self.readFile(name)
-            line = file[self.macro_index]
-            msg = ("macro line [{0}] : {1}".format(str(self.macro_index), line))
-            self.sysReturn(msg)
-            while BUSY == True:
-                timer = QTimer(self)
-                timer.start(1000)
-                # wait until not busy...
-            #self.macrostat[str].emit(msg)
-            self.send(line)
-            self.macro_index += 1
-        self.sysReturn("macro finished.")
+    # def readFile(self, name):
+    #     #==============Macro start===============
+    #     readfile=[]
+    #     f = open(name,"r")
+    #     for x in f:
+    #         x = x.replace('\n','')
+    #         readfile.append(x)
+    #     self.macro_n = len(readfile)
+    #     return (readfile)
+    #
+    # def macroLoop(self,n,name):
+    #     global BUSY
+    #     while self.macro_index < self.macro_n:
+    #         file = self.readFile(name)
+    #         line = file[self.macro_index]
+    #         msg = ("macro line [{0}] : {1}".format(str(self.macro_index), line))
+    #         self.sysReturn(msg)
+    #         while BUSY == True:
+    #             timer = QTimer(self)
+    #             timer.start(1000)
+    #             # wait until not busy...
+    #         #self.macrostat[str].emit(msg)
+    #         self.send(line)
+    #         self.macro_index += 1
+    #     self.sysReturn("macro finished.")
 
     def imageExposure(self):
         if SAFE:
@@ -1275,7 +989,8 @@ class Command(QWidget):
             t1 = time.time()
             while e.PV("41a:ccd1:dataok").get() == 1:
                 if (time.time()-t1)%0.2 <= 0.0001:
-                    QApplication.processEvents()
+                    #QApplication.processEvents()
+                    pass
                 if e.PV("41a:ccd1:dataok").get() == 0:
                     break
         t1 = time.time()
@@ -1285,7 +1000,8 @@ class Command(QWidget):
             while e.PV("41a:ccd1:dataok").get() == 0:
                 j += 1
                 if (time.time()-t1)%0.2 <= 0.0001:
-                    QApplication.processEvents()
+                    #QApplication.processEvents()
+                    pass
                 if e.PV("41a:ccd1:dataok").get() == 1:
                     break
                 if ABORT:
@@ -1301,137 +1017,10 @@ class Command(QWidget):
         print('before get data')
         img_global.getData()
         img_global.plotImg()
-        #self.msg.emit('Image obtained')
-
-class WaitExposure(QThread):
-    msg = pyqtSignal(str)
-    def __init__(self):
-        super(WaitExposure,self).__init__()
-        self.i = 0
-        print("thread start")
-    def run(self):
-        global img_global
-        if SAFE:
-            CCD.start(1) # 1 for activate
-            while e.PV("41a:ccd1:dataok").get() == 1:
-                pass
-                if e.PV("41a:ccd1:dataok").get() == 0:
-                    break
-        #self.msg.emit("Exposure Start.")
-        print("exposure start")
-        t1 = time.time()
-        print('t1 =', t1)
-        if SAFE:
-            while e.PV("41a:ccd1:dataok").get() == 0:
-                self.i += 1
-                if e.PV("41a:ccd1:dataok").get() == 1:
-                    break
-        else:
-            for self.i in range(0,3):
-                self.msg.emit('i now：{}'.format(self.i))
-                self.sleep(1)
-                self.i += 1
-        #self.msg.emit("checked %s cycles for exposure."%str(self.i))
-        print('check exposure cycle :', self.i)
-        print("Exposure Finished.")
-        #self.msg.emit("Exposure Finished.")
-        dt = round(time.time() - t1, 3)
-        print('time span in seconds= %s'%dt)
-        #self.msg.emit('times pan in seconds= %s'%dt)
-        img_global.getData()
-        img_global.plotImg()
-        #self.msg.emit('Image obtained')
-        #self.quit()
-
-
-class testThread(QThread):
-    def __init__(self, t, n):
-        super(testThread, self).__init__()
-        self.i = 0
-        self.n = n
-        self.t = t
-        print("thread start")
-
-    def run(self):
-        global BUSY, DATA_taking_STATUS, cmd_global, img_global
-        t = self.t
-        n = self.n
-        self.t0 = time.time()
-        for i in range(n):
-            if i == 0:
-                DATA_taking_STATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(n)
-            # print('i = ',i,'   ABORT =', ABORT)
-            if ABORT:
-                break
-            IMGDONE = False
-            self.imageExposure()
-            # self.CCDthread = WaitExposure()
-            # #self.CCDthread.msg.connect(self.sysReturn)
-            # self.CCDthread.start()
-            t1 = time.time()
-            if i == 0:
-                dt = n * (t + 3)
-            else:
-                dt = ((time.time() - self.t0) / i) * (n - i)  # remaining time
-            dt = round(dt, 2)
-            while (time.time() - t1) < t + dwell_0:
-                self.t2 = time.time()
-                DATA_taking_STATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(n) + ',  remaining time = ' + str(
-                    dt) + ' sec'
-                if (self.t2 - t1) % 0.2 <= 0.00003:
-                    QApplication.processEvents()
-                if SAFE:
-                    if IMGDONE:
-                        print('getData() finished.')
-                        break
-                if ABORT:
-                    break
-            # print('while loop takes :',time.time() - t1)
-            img_number = str(i + 1) + ' image'
-            if i > 0:
-                img_number += 's'
-            cmd_global.sysReturn(img_number + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
-
-    def imageExposure(self):
-        global BUSY, DATA_taking_STATUS, cmd_global, img_global
-        BUSY = True  # global flag
-        DATA_taking_STATUS = " "
-        cmd_global.sysReturn('Completed taking RIXS images.')
-        if SAFE:
-            CCD.start(1)  # 1 for activate
-            t1 = time.time()
-            while e.PV("41a:ccd1:dataok").get() == 1:
-                if (time.time() - t1) % 0.2 <= 0.0001:
-                    QApplication.processEvents()
-                if e.PV("41a:ccd1:dataok").get() == 0:
-                    break
-        t1 = time.time()
-        print('t1 =', t1)
-        if SAFE:
-            j = 0  # a counter to mimic timer
-            while e.PV("41a:ccd1:dataok").get() == 0:
-                j += 1
-                if (time.time() - t1) % 0.2 <= 0.0001:
-                    QApplication.processEvents()
-                if e.PV("41a:ccd1:dataok").get() == 1:
-                    break
-                if ABORT:
-                    cmd_global.sysReturn('RIXS aborted', 'err')
-                    break
-        else:
-            for i in range(0, 3):
-                time.sleep(0.1)
-        dt = round(time.time() - t1, 3)
-        print('time span in seconds= %s' % dt)
-        print('before get data')
-        img_global.getData()
-        img_global.plotImg()
-
 
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
-
         # Default Image
         a = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         npa = np.asarray(a)
@@ -1440,7 +1029,6 @@ class ImageWidget(QWidget):
                              # replace by RGB pixel Magpie picture?
 
         plt = pg.PlotItem(labels={'bottom':('x pixel',''), 'left':('y pixel','')})
-
         plt.getAxis('bottom').setTickSpacing(200, 2)  # This is the trick
         plt.getAxis('left').setTickSpacing(200, 2)  # This is the trick
 
@@ -1457,42 +1045,39 @@ class ImageWidget(QWidget):
 
         self.imv = pg.ImageView(view=plt)
         self.imv.setColorMap(cmap)
-
         plt.invertY(False)
         plt.setAspectLocked(True)
-
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
 
         self.plotImg()
-
-        self.status_bar = QLabel(self)
-
         # Widget layout
+        self.status_bar = QLabel(self)
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.imv)
+        #cross hair
+        vLine = pg.InfiniteLine(angle=90, movable=False)
+        hLine = pg.InfiniteLine(angle=0, movable=False)
+        plt.addItem(vLine, ignoreBounds=True)
+        plt.addItem(hLine, ignoreBounds=True)
 
         def mouseMoved(pos):
             data = self.imv.image
             nCols, nRows = data.shape
-            #print(nRows, nCols)
             mousePoint = plt.getViewBox().mapSceneToView(pos)
-            #print("Image position:", plt.getViewBox().mapSceneToView(pos))
             row, col = int(mousePoint.y()), int(mousePoint.x())
             value = 0
+            #update cross hair
+            vLine.setPos(mousePoint.x())
+            hLine.setPos(mousePoint.y())
 
             if (0 <= row < nRows) and (0 <= col < nCols):
                 value = data[col, row]
-                #print("pos = ({:d}, {:d}), value = {!r}".format(col, row, value))
             else:
                 pass
-                #print("no data at cursor")
-
             self.status_bar.setText("Image Pixel Information: " + "pos = ({:d}, {:d}), value = {!r}".format(col, row, value))
-
         self.imv.scene.sigMouseMoved.connect(mouseMoved)
-
 
     def getData(self):
         global IMGDONE, cmd_global
@@ -1540,7 +1125,6 @@ class ImageWidget(QWidget):
         rixs_img = np.copy(self.imgdata)
         self.plotImg()
 
-
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
 
@@ -1566,29 +1150,10 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.clear()
         self.plotWidget.plot(x)
 
-    def spectrumplot2(self, x, y):
-        #clear previous plot
-        self.plotWidget.plotItem.clear()
-        self.plotWidget.plot(x, y, pen='r')
-        #c1 = plt.plot(x, y, pen='b', symbol='x', symbolPen='b', symbolBrush=0.2, name='red')
-        #c2 = plt.plot(x, y2, pen='r', symbol='o', symbolPen='r', symbolBrush=0.2, name='blue')
-
-
     def scan_loop(self, plot, plist):
         # plot= parameter list of data plotting; plist = parameter list
-        global file_no, param_index, param, BUSY, DATA_taking_STATUS, status_global, pvName
+        global file_no, param_index, param, BUSY, workingSTATUS, status_global, pvName
         BUSY = True
-
-        # '''
-        # Update
-        #  - repeat show_text function every 0.2 sec.
-        # '''
-        # self._status_update_timer = QTimer(self)
-        # self._status_update_timer.setSingleShot(False)
-        # self._status_update_timer.timeout.connect(status_global.show_text)
-        # self._status_update_timer.timeout.connect(status_global.show_bar)
-        # self._status_update_timer.start(200)
-
         t1 = time.time()
         if plot==[]:    plot=['Iph']
         # plist = [param x1 x2 step dwell]
@@ -1603,7 +1168,7 @@ class SpectrumWidget(QWidget):
         scan_x = [] # the empty list for the scanning parameter
         scan_data1 = [] # the empty list of measurement data
 
-        DATA_taking_STATUS = "moving "+scan_param+" ..."
+        workingSTATUS = "moving "+scan_param+" ..."
         set_param(scan_param, x1)  # set the initial parameter value
         time.sleep(dwell)
         '''
@@ -1661,24 +1226,20 @@ class SpectrumWidget(QWidget):
             else:
                 remaining_time = (loop_time / i) * (n+1 - i)
 
-            DATA_taking_STATUS = ('scanning '+ scan_param +'... ' + str(i+1) + '/' + str(n+1)+
+            workingSTATUS = ('scanning '+ scan_param +'... ' + str(i+1) + '/' + str(n+1)+
                                   ', remaining time = '+ convertSeconds(remaining_time))
 
             status_global.show_text()
-            QtGui.QApplication.processEvents()
+            #QtGui.QApplication.processEvents()
 
             #print(i,'_th scanning point')
             scan_x.append(x1 + i*step)
             data_i =[]
             # set scanning parameters --> wait --> get data
-
-
             set_param(scan_param, scan_x[i])
-
             '''
             Data collection time
             '''
-
             t0 = time.time()
             if SAFE:
                 phdi_array = np.array([])
@@ -1687,20 +1248,24 @@ class SpectrumWidget(QWidget):
                     phdi_array = np.append(phdi_array,e.caget("41a:sample:phdi"))     # Read Iph data through epics
                     #else:
                     if (time.time() - t0) % 0.2 <= 0.0001:
-                        status_global.show_text()
-                        QApplication.processEvents()
-
+                        #status_global.show_text()
+                        #QApplication.processEvents()
+                        pass
                     # Iph average
                 phdi_array = np.unique(phdi_array) # remove the overlap
                 phdi_ave = np.mean(phdi_array)
 
-                    # after data collection, update all param values to data_matrix
-                current_param = get_param_for_status()
+                # after data collection, update all param values to data_matrix
+                saving_parameters = ['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph',
+                                     'Tccd', 'gain']
+                current_param = pd.Series(param) #generate series
+                for p in saving_parameters:
+                    current_param.loc[p] = get_param(p)
                 current_param['Iph'] = float(phdi_ave)                         # replace param['Iph'] by averaged data
                 current_param['t'] = round(loop_time,2)
                 data_matrix.loc[len(data_matrix), :] = current_param.tolist()  # appending param to data_matrix
-                status_global.show_text()
-                QApplication.processEvents()
+                #status_global.show_text()
+                #QApplication.processEvents()
 
             else:
                 time.sleep(dwell)
@@ -1717,29 +1282,17 @@ class SpectrumWidget(QWidget):
             '''
             plot from data_matrix
             '''
-
             #for j in range(plot_no):   # j for different epics PV name
-
             # TODO: reconstruct this part
             if plot_no >= 1: self.curve0.setData(scan_x, data_matrix.loc[:,plot[0]])
             if plot_no >= 2: self.curve1.setData(scan_x, data_matrix.loc[:,plot[1]])
             if plot_no >= 3: self.curve2.setData(scan_x, data_matrix.loc[:,plot[2]])
             if plot_no >= 4: self.curve3.setData(scan_x, data_matrix.loc[:,plot[3]])
             if plot_no >= 5: self.curve4.setData(scan_x, data_matrix.loc[:,plot[4]])
-            '''
-            message of scan loop (marked)
-            '''
-            # j=0
-            # msg = ''
-            # for j in range(plot_no):
-            #     msg += str(round(param[plot[j]],3))+'     '
-            # if i%5 == 0:
-            #     cmd_global.sysReturn('')
-            #     cmd_global.sysReturn('i = ' +str(i)+'   '+scan_param+' = '+ str(scan_x[i])+ "     plot =  "+msg)
         '''
         Loop finished
         '''
-        DATA_taking_STATUS = " "
+        workingSTATUS = " "
         print('data_matrix')
         print(data_matrix)
 
@@ -1767,7 +1320,6 @@ class SpectrumWidget(QWidget):
         data_matrix.to_csv(data_dir+filename, mode='w', index_label="index")
         #data_matrix.to_hdf(file_path+filename, key='df', mode='w')
         cmd_global.sysReturn('Scan data saved in ['+filename+']')
-        #self._status_update_timer.stop()
         BUSY = False
 
     def plotRixs(self, filename):
@@ -1781,13 +1333,14 @@ class SpectrumWidget(QWidget):
         # x1 and x2: region of interest along the x-pixel
         # d: discrimination factor; discriminator leve = data_avegera * d
 
-        data_sp=spike.spikeRemoval(rixs_img, 400, 600, 3)
+        #data_sp=spike.spikeRemoval(rixs_img, 400, 600, 3)
 
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
         self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units')
         self.plotWidget.addLegend((50,30), offset=(450,150))
         self.plotWidget.plotItem.clear()
+
 
 class MacroWindow(QWidget):
     macroMsg = pyqtSignal(str)
@@ -1817,13 +1370,86 @@ class MacroWindow(QWidget):
         self.macro_editor.append("file saved: "+txt_file)
         self.macro_editor.setEnabled(False)
 
+class BarUpdate(QThread):
+    refresh = pyqtSignal()
+    def __init__(self):
+        super(BarUpdate, self).__init__()
+    def run(self):
+        while True:
+            self.refresh.emit()
+            time.sleep(0.5)
+
+class StatextUpdate(QThread):
+    refresh = pyqtSignal()
+    def __init__(self):
+        super(StatextUpdate, self).__init__()
+    def run(self):
+        while True:
+            self.refresh.emit()
+            time.sleep(0.2)
+
+class Move(QThread):
+    msg = pyqtSignal(str)
+    def __init__(self , p, v):
+        super(Move, self).__init__()
+        self.p = p
+        self.v = v
+
+    def run(self):
+        global cmd_global, workingSTATUS, BUSY
+        # p : index(name) of parameter, should be a string; v : range-checked value
+        p, v, BUSY= self.p, self.v, True
+        self.msg.emit('Moving %s ...' %p) # for move function
+        if checkSafe(p):  # check device safety
+            if p in Device["hexapod_list"]:
+                if 'th' in p:
+                    e.caput(pvName[p] + 'w', v)
+                else:
+                    e.caput(pvName[p], v)
+            elif p in ['agm', 'ags']:
+                if abs(e.caget(pvName[p] + '.RBV') - v) >= 0.005:
+                    e.caput(pvName[p], v)
+                    # check moving status
+                    t1 = time.time()
+                    while e.caget(pvName[p] + ".MOVN") == 0:  # = 0 not moving; = 1 moving
+                        if e.caget(pvName[p] + ".MOVN") == 1 or (time.time() - t1) >= 1:
+                            break
+                    # wait moving complete
+                    while e.caget(pvName[p] + ".MOVN") == 1:
+                        pass # hold here for BUSY flag
+                        if e.caget(pvName[p] + ".MOVN") == 0:
+                            break
+                    if abs(e.caget(pvName[p] + '.RBV') - v) >= 0.02:
+                        error_message = p + " not moving correctly, value: " + str(e.caget(pvName[p] + ".RBV"))
+                        print(error_message)
+            if p == 'ta':
+                e.caput("41a:sample:heater", 1)
+                TSA.setValue(v)
+            elif p == 'Tccd':
+                CCD.setTemp(v)
+            elif p == 'gain':
+                CCD.setGain(v)
+        else:
+            param[p] = v
+        self.msg.emit('Move finished.') # for move function
+        BUSY = False
+        self.quit()
 
 
 def main():
+    global status_global
     app = QApplication(sys.argv)
-    ex = RIXS()
-    sys.exit(app.exec_())
+    display_gui = RIXS()
 
+    bar_update = BarUpdate()  # bar 0.2 sec
+    bar_update.refresh.connect(status_global.show_bar)
+    bar_update.start()
+
+    text_update = StatextUpdate() # status 0.5 sec
+    text_update.refresh.connect(status_global.show_text)
+    text_update.start()
+
+    sys.exit(app.exec_())
 
 if __name__ == '__main__':
     main()
