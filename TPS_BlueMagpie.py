@@ -1,4 +1,4 @@
-#Last edited:20190423 5pm
+#Last edited:20190424 6pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -23,7 +23,6 @@ scan_data = None
 xas_data = None     # XAS spectrum
 rixs_data = None    # RIXS spectrum
 rixs_img = None     # RIXS image data, np.ndrray
-data_matrix = None
 
 '''
 Abort
@@ -42,6 +41,7 @@ Busy
  - checked in Command(cmdDone function)
 '''
 BUSY = False
+SCAN = False
 
 '''
 global flag & parameters for RIXS
@@ -78,6 +78,7 @@ non_movables =  ['t','f', 's1', 's2','imager', 'shutter', 'ccd','I0','Iph', 'tb'
 param_index0 = list(param_index)
 for elements in non_movables:
     param_index0.remove(elements)
+# movables: ['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1200],
@@ -85,25 +86,22 @@ param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1
                           'v': [-10,10], 'w': [-10,10], 'th':[-5, 185], 'tth':[-35, 0],
                         'ta':[5,350], 'tb':[5,350], 'I0': [0,1], 'Iph': [0,1], 'Tccd': [-100, 30], 'gain': [0, 100]})
 
-# Individual safety control
+# Individual device control
 Device = pd.Series({
-        "hexapod":     0, # x, y, z, u, v, w
-        "hexapod_list": ["x","y","z","u","v","w","th","tth"],
-        "x": 1, "y": 1, "z": 1, "u": 1, "v": 1, "w": 1,"th":1,"tth":1,
+        "hexapod":0,"ccd":0,
+        "th":1, "tth":1,
         "agm": 1, "ags": 1,
         "ta": 1, "tb": 1,
         "I0": 1, "Iph": 1,
-        "ccd":0,"ccd_list":["ccd","gain","Tccd"],
         "s1" :0, "s2":0, "shutter":0
     })
 
-def checkSafe(p):
+def checkSafe(p): # Individual device safe check
     if SAFE:
-        if p in Device["hexapod_list"]: # Check priority: Hexapod > others
+        if p in ['x','y','z','u','v','w']:
             if Device["hexapod"] != 0:
-                if Device[p] == 1:
-                    return True
-        elif p in Device["ccd_list"]:
+                return True
+        elif p in ["ccd","gain","Tccd"]:
             if Device['ccd']==1:
                 return True
         elif Device[p] == 1:
@@ -111,6 +109,15 @@ def checkSafe(p):
     else:
         return False
 
+def checkMoving(p): #check moving status
+    if p in ['x','y','z','u','v','w','th','tth']:
+        if e.caget(pvName[p]+'m') == 1: # 1: moving, 0: stop
+            return True
+    elif p in ['agm','ags']:
+        if e.caget(pvName[p] + ".MOVN") ==1:
+            return True
+    else: #including gain
+        return False
 
 #SAFE = False
 SAFE = True
@@ -129,7 +136,7 @@ def get_param(p):
         if p == 'agm' or p =='ags':
             v = e.caget(pvName[p]+".RBV", timeout=0.1)
         elif p == 'th' or p == 'tth':
-             v = e.caget(pvName[p]+'r', timeout=0.2)
+            v = e.caget(pvName[p]+'r', timeout=0.2)
         elif p == 'Tccd':
             v = e.caget('41a:ccd1:tmpr', timeout=0.1)
         elif p == 'gain':
@@ -138,8 +145,11 @@ def get_param(p):
             v = e.caget(pvName[p], timeout=0.1)  # get PV name from pvName series
         if v == None:
             v = 'NoneType'
+        param[p] = v
+
     else:
         v = param[p]
+
     return v
 
 def convertSeconds(seconds):
@@ -180,6 +190,31 @@ if not os.path.exists(dir_name):
     os.makedirs(log_dir)
     os.makedirs(data_dir)
     os.makedirs(img_dir)
+
+
+def Read(p, form=3):
+    # get value by param_list index
+    if checkSafe(p):
+        value = get_param(p)
+        real = 1
+    else:
+        value = param[p]
+        real = 0
+
+    if isinstance(value, str):  # got None from device
+        string = "<font color= red>none</font><font color = black> </font>"
+    else:
+        if form == 'current': string = np.format_float_scientific(value, unique=False, precision=2, exp_digits=2)
+        elif form == 'int': string = str(int(value))
+        elif form == 'switch':
+            if value == 0: string = 'close'
+            else: string = 'open'
+        else: string = str(format(value, '.3f'))
+
+        # real marked blue
+        if real == 0: string = '<font color=gray>'+ string +'</font>'
+        if checkMoving(p): string = '<font color=blue>' + string + '</font>'
+    return string
 
 '''
 Start GUI construction
@@ -254,9 +289,7 @@ class StatusWidget(QWidget):
     def __init__(self, parent=None):
         super(StatusWidget, self).__init__(parent=parent)
         self.status_bar = QLabel(self)
-        self.show_bar()
         self.status_box = QTextEdit(self)
-        self.show_text()
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
         self.status_box.setFont(QtGui.QFont("UbuntuMono",12))
         self.status_box.setReadOnly(True)
@@ -269,57 +302,32 @@ class StatusWidget(QWidget):
         q_time = QDateTime.currentDateTime()
         time_str = q_time.toString("yyyy-MM-dd hh:mm:ss")
         x = str(time.time()%10)
-        self.status_bar.setText(time_str+"  Experiment No.  1234;   PI: A. B. C.;"
+        self.status_bar.setText(time_str+"  Project #0;   PI: Testing;"
                                 +" file number: "+ str(int(param['f']))+", "+x)
 
     def show_text(self):
         parameter_text = ( "<u>Parameters</u></font><br>"
-                           " AGM: " + self.f('agm') + " eV<br>"
-                           " AGS: " + self.f('ags') + " eV<br>"
-                           " -<br>"
-                           " entrance slit   s1= " + self.f('s1','int') + " &micro;m ; "
-                           " exit slit   s2= " + self.f('s2','int') + " &micro;m<br>"
-                           " shutter: " + self.f('shutter','switch')+ "<br>"
-                           " -<br>"
+                           " AGM: " + Read('agm') + " eV<br>"
+                           " AGS: " + Read('ags') + " eV<br>"
+                           " <br>"
+                           " entrance slit   s1= " + Read('s1','int') + " &micro;m ; "
+                           " exit slit   s2= " + Read('s2','int') + " &micro;m<br>"
+                           " shutter: " + Read('shutter','switch')+ "<br>"
+                           " <br>"
                            " Sample:  <br>"
-                           " x = " + self.f('x') + ", y = " + self.f('y') + ", z = " + self.f('z') + " <br>"
-                           " u = " + self.f('u') + ", v = " + self.f('v') + ", w = " + self.f('w') + " <br>"
-                           " th = "+ self.f('th') + ", tth = " + self.f('tth')+"<br>"
-                           "   temperatures:  T<sub>a</sub> = " + self.f('ta','int') + " K,"+
-                           " T<sub>b</sub> = " + self.f('tb','int') + " K<br>"
-                           " I<sub>0</sub> = "+ self.f('I0','current') + " Amp,"+
-                           " I<sub>ph</sub> = "+ self.f('Iph','current') + " Amp <br>"
-                           " -<br>"
+                           " x = " + Read('x') + ", y = " + Read('y') + ", z = " + Read('z') + " <br>"
+                           " u = " + Read('u') + ", v = " + Read('v') + ", w = " + Read('w') + " <br>"
+                           " th = "+ Read('th') + ", tth = " + Read('tth')+"<br>"
+                           "   temperatures:  T<sub>a</sub> = " + Read('ta','int') + " K,"+
+                           " T<sub>b</sub> = " + Read('tb','int') + " K<br>"
+                           " I<sub>0</sub> = "+ Read('I0','current') + " Amp,"+
+                           " I<sub>ph</sub> = "+ Read('Iph','current') + " Amp <br>"
+                           " <br>"
                            " RIXS imager:  <br>"
-                           " temperature = " + self.f('Tccd',1) +" \u2103"+ ',   gain = ' + self.f('gain',0) + " <br>"
+                           " temperature = " + Read('Tccd',1) +" \u2103"+ ',   gain = ' + Read('gain',0) + " <br>"
                            " <br><font color =red>"
                            + workingSTATUS +"</font>")
         self.status_box.setText(parameter_text)
-
-    # define format of displayed numbers
-    def f(self, p, form=3):
-        # get value by param_list index
-        if checkSafe(p):
-            value = get_param(p)
-            real = 1
-            if isinstance(value, str): #  got None from device
-                string = "<font color= red>none</font><font color = black> </font>"
-        else:
-            value = param[p]
-            real = 0
-
-        #format
-        if form == 'current': string = np.format_float_scientific(value, unique=False, precision=2, exp_digits=2)
-        elif form == 'int': string = str(int(value))
-        elif form == 'switch':
-            if value == 0: string = 'close'
-            else: string = 'open'
-        else: string = str(format(value, '.3f'))
-
-        # real marked blue
-        if real == 0: string = '<font color=gray>'+ string +'</font>'
-
-        return string
 
         #Terminal
 class Command(QWidget):
@@ -512,7 +520,7 @@ class Command(QWidget):
     def send(self, txt):
         self.command_input.setDisabled(True)
         text = txt
-        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, workingSTATUS
+        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, workingSTATUS, spectrum_global
         # pre-formatting
         if len(text) != 0:
             text = self.preFormatting(text)
@@ -770,9 +778,8 @@ class Command(QWidget):
                     print(text)
                     plot = text[5:c].split(' ')  # extract the parameter list of data plotting
 
-
-                print('index c of \',\' in the input command,  c=', c, ' (c=3 if there is no \',\')')
                 print('input plot=', plot)
+                if plot == []: plot = ['Iph']
                 sptext = text[c + 2:].split(' ')  # values of the scan parameter
                 print('sptext=', sptext)
 
@@ -784,12 +791,18 @@ class Command(QWidget):
                 n = int(abs((x2 - x1) / step))  # set the number of scanning steps
                 check_param1 = self.check_param_range(sptext[0], x1)
                 check_param2 = self.check_param_range(sptext[0], x2)
+
                 if (check_param1 == 'OK') and (check_param2 == 'OK'):
                     file_no += 1
                     param['f'] = file_no  # print('file no =', file_no, 'param[\'f\']', param['f'])
                     start_time = datetime.datetime.now()
                     self.sysReturn('Scan ' + str(int(param['f'])) + ' begins at ' + start_time.strftime("%c"))
-                    spectrum_global.scan_loop(plot, sptext)
+                    #spectrum_global.scan_loop(plot, scan_param, x1, x2, step, dwell, n)
+                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n)
+                    self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
+                    self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
+                    self.scanthread.set_data.connect(spectrum_global.setScandata)
+                    self.scanthread.start()
                 else:
                     self.sysReturn(text, "iv")
                     if (check_param1 != 'OK'): check_param = check_param1
@@ -833,9 +846,8 @@ class Command(QWidget):
            self.sysReturn(text, "iv")
            self.sysReturn("Type 'help' to list commands", "err")
 
-
     def finish_message(self):
-        print("thread finished")
+        print("Move thread finished")
 
     def checkFloat(self, x):
         try:
@@ -869,13 +881,11 @@ class Command(QWidget):
             space = text.count(' ') #space =5, e.g. scan x 1 10 2 0.1
             c=5
             plot=['Iph']
-
         else:
             c = text.find(',')
             space = text[c:].count(' ') # space = 5, after truncating "scan y z ...:" => e.g. , x 1 10 2 0.1
             sptext = text[c+2:].split(' ') # scan_param 1 10 1 0.1
             plot=text[5:c].split(' ') # list of detection parameter
-
 
         if text[c+1:].find(',') == -1 and space == 5:
             if (sptext[0] != '') and (len(sptext) == 5):
@@ -904,7 +914,7 @@ class Command(QWidget):
         for i in range(len(plot)): # i from 0 to len(plot)-1
             if (plot[i] in param_index0) or (plot[i]=='Iph'): j +=1.0
         #
-        if j== len(plot):
+        if j== len(plot) and j <= 5: # max plot no. = 5
             check_plot='OK'
         else:
             check_plot='not OK'
@@ -938,9 +948,12 @@ class Command(QWidget):
         timer.start(1000) # repeat every second
 
     def lockInput(self):
-        self.command_input.setDisabled(BUSY)
-        if BUSY == False:
-            self.command_input.setFocus()
+        if SCAN:
+            self.command_input.setDisabled(SCAN)
+        else:
+            self.command_input.setDisabled(BUSY)
+            if BUSY == False:
+                self.command_input.setFocus()
 
     def doMacro(self, name):
         #reset macro numbers
@@ -1138,189 +1151,41 @@ class SpectrumWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.data = [random.random() for i in range(250)]
+        self.data = [random.random() for i in range(2000)]
         self.plotWidget = PlotWidget(self)
-        self.spectrumplot(self.data)
+        self.spectrumPlot(self.data)
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.plotWidget)
         self.w = None
 
-    def spectrumplot(self, x):
+    def spectrumPlot(self, x):
         #clear previous plot
         self.plotWidget.plotItem.clear()
         self.plotWidget.plot(x)
 
-    def scan_loop(self, plot, plist):
-        # plot= parameter list of data plotting; plist = parameter list
-        global file_no, param_index, param, BUSY, workingSTATUS, status_global, pvName
-        BUSY = True
-        t1 = time.time()
-        if plot==[]:    plot=['Iph']
-        # plist = [param x1 x2 step dwell]
-        scan_param = str(plist[0])
-        x1 = float(plist[1]) # start
-        x2 = float(plist[2]) # end
-        step = abs(float(plist[3]))*np.sign(x2-x1) # step is negative if x1 > x2
-        dwell = float(plist[4])
-        ##
-        n = int(abs((x2-x1)/abs(step)))+1 #set the number of scanning points
-        x2_new = x1 +  step * n
-        scan_x = [] # the empty list for the scanning parameter
-        scan_data1 = [] # the empty list of measurement data
+    def scanPlot(self, plot, scan_param, x1, x2_new):
+        title_plot = 'Scan ' + str(int(param['f'])) + ': scanning ' + scan_param + ',  plotting '+ plot[0]
+        for i in range(0, len(plot)):
+            if i>0: title_plot += ', ' + plot[i]
 
-        workingSTATUS = "moving "+scan_param+" ..."
-        set_param(scan_param, x1)  # set the initial parameter value
-        time.sleep(dwell)
-        '''
-        Setup for realtime plotting.
-        '''
-        plot_no = min(len(plot), 5.0) # maximum number of curves to be plotted is 5.
-        plot = plot[:plot_no]  # trancating the list of data polotting
-        title_plot = 'Scan '+ str(int(param['f']))+': scanning '+ scan_param +',  plotting'
-        for i in range(plot_no):
-            if i is 0: title_plot += ' ' + plot[i]
-            else: title_plot += ', ' +plot[i]
-
-        self.plotWidget.plotItem.setTitle(title= title_plot)
+        self.plotWidget.plotItem.clear()
+        self.plotWidget.plotItem.setTitle(title=title_plot)
         self.plotWidget.plotItem.setXRange(float(x1), float(x2_new), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', text=scan_param)
         self.plotWidget.plotItem.setLabel('left', text='Intensity', units='A')
-        #self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units',unitPrefix=False)
-        self.plotWidget.addLegend((50,30), offset=(450,150))
-        self.plotWidget.plotItem.clear()
-        print(x1, x2, step, dwell)
-        # create an empty dataframe for scaning; param_index = ['t', 's1', 's2', 'agm', 'ags',.....]
-        data_matrix = pd.DataFrame(columns = param_index)
-        # create an empty series for plotting during a scan
-        data_plotting = pd.DataFrame(columns =plot)
-        scan_data_ith = pd.Series(index = plot) #for i-th scan
-        self.curve=[]
-        color=['g', 'b', 'w','r', 'y']
-        self.curve = self.curve[:plot_no]
-        color = color[:plot_no]
+        self.legend = self.plotWidget.addLegend((50, 30), offset=(450, 150))
+        self.legend.setParentItem(self.plotWidget.plotItem)
+        self.curve = [None, None, None, None, None]
+        color = ['g', 'b', 'w', 'r', 'y']
         print('plot: ', plot, ', color: ', color)
-        # TODO: reconstruct this part
-        if plot_no >= 1: self.curve0 = self.plotWidget.plot(scan_x, scan_data1, pen='g', linewidth=2, name=plot[0])
-        if plot_no >= 2: self.curve1 = self.plotWidget.plot(scan_x, scan_data1, pen='r', linewidth=2, name=plot[1])
-        if plot_no >= 3: self.curve2 = self.plotWidget.plot(scan_x, scan_data1, pen='w', linewidth=2, name=plot[2])
-        if plot_no >= 4: self.curve3 = self.plotWidget.plot(scan_x, scan_data1, pen='y', linewidth=2, name=plot[3])
-        if plot_no >= 5: self.curve4 = self.plotWidget.plot(scan_x, scan_data1, pen='b', linewidth=2, name=plot[4])
-        '''
-        Scanning loop
-        '''
-        print('Loop begin')
-        for i in range(n+1):
-            if ABORT:
-                print("loop stopped")
-                break
 
-            # time recording
-            if i == 0:
-                scan_loop_start_time = time.time()
-                loop_time = 0
-            else:
-                loop_time = time.time() - scan_loop_start_time
+        scan_x = []  # the empty list for the scanning parameter
+        for i in range(0, len(plot)):
+            self.curve[i] = self.plotWidget.plot(scan_x, [], pen=color[i], linewidth=2, name=plot[i])
 
-            if i<=10:
-                remaining_time = (float(dwell)+3.5)*int(n+1-i)
-            else:
-                remaining_time = (loop_time / i) * (n+1 - i)
+    def setScandata(self, i, list_x, series_y):
+        self.curve[i].setData(list_x, series_y)
 
-            workingSTATUS = ('scanning '+ scan_param +'... ' + str(i+1) + '/' + str(n+1)+
-                                  ', remaining time = '+ convertSeconds(remaining_time))
-
-            status_global.show_text()
-            #QtGui.QApplication.processEvents()
-
-            #print(i,'_th scanning point')
-            scan_x.append(x1 + i*step)
-            data_i =[]
-            # set scanning parameters --> wait --> get data
-            set_param(scan_param, scan_x[i])
-            '''
-            Data collection time
-            '''
-            t0 = time.time()
-            if SAFE:
-                phdi_array = np.array([])
-                while (time.time()-t0) <= dwell: # while loop to get the data within dwell time
-                    #if SAFE:
-                    phdi_array = np.append(phdi_array,e.caget("41a:sample:phdi"))     # Read Iph data through epics
-                    #else:
-                    if (time.time() - t0) % 0.2 <= 0.0001:
-                        #status_global.show_text()
-                        #QApplication.processEvents()
-                        pass
-                    # Iph average
-                phdi_array = np.unique(phdi_array) # remove the overlap
-                phdi_ave = np.mean(phdi_array)
-
-                # after data collection, update all param values to data_matrix
-                saving_parameters = ['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph',
-                                     'Tccd', 'gain']
-                current_param = pd.Series(param) #generate series
-                for p in saving_parameters:
-                    current_param.loc[p] = get_param(p)
-                current_param['Iph'] = float(phdi_ave)                         # replace param['Iph'] by averaged data
-                current_param['t'] = round(loop_time,2)
-                data_matrix.loc[len(data_matrix), :] = current_param.tolist()  # appending param to data_matrix
-                #status_global.show_text()
-                #QApplication.processEvents()
-
-            else:
-                time.sleep(dwell)
-                QtGui.QApplication.processEvents()
-                for j in range(plot_no):
-                    param[plot[j]]=0.8**(j)*100*math.sin((10*j+1)*(scan_x[i]-(x1+x2)/2)/2) # math.cos(scan_x[i]/100) #get numeric data:  assuming  Sin function
-                    ### not called if only scan one parameter
-                    if j==1:
-                        param[plot[j]]=i # what is this for?
-                        data_i.append(param[plot[j]])
-                    # after finishing the update of all param values
-                data_matrix.loc[len(data_matrix), :] = param.tolist()
-
-            '''
-            plot from data_matrix
-            '''
-            #for j in range(plot_no):   # j for different epics PV name
-            # TODO: reconstruct this part
-            if plot_no >= 1: self.curve0.setData(scan_x, data_matrix.loc[:,plot[0]])
-            if plot_no >= 2: self.curve1.setData(scan_x, data_matrix.loc[:,plot[1]])
-            if plot_no >= 3: self.curve2.setData(scan_x, data_matrix.loc[:,plot[2]])
-            if plot_no >= 4: self.curve3.setData(scan_x, data_matrix.loc[:,plot[3]])
-            if plot_no >= 5: self.curve4.setData(scan_x, data_matrix.loc[:,plot[4]])
-        '''
-        Loop finished
-        '''
-        workingSTATUS = " "
-        print('data_matrix')
-        print(data_matrix)
-
-        dt = round(time.time()- t1, 3)
-        print('time span in senconds=', dt)
-
-        if ABORT:
-            cmd_global.sysReturn('Scaning loop has been terminated; time span  = ' + convertSeconds(dt),'err')
-        else:
-            cmd_global.sysReturn('Scan '+ str(int(param['f'])) +' is completed; time span  = ' + convertSeconds(dt))
-
-        '''
-        Data saving
-        - File name from global, including directory and number
-        - Can be saved as .csv or .hdf, but hdf format requires development.
-        - Save terminated data?
-
-        TODO: check exist number, don't overwrite old ones.
-        '''
-
-        filename = str(dir_date)+"scan_"+str(file_no)+".txt" #change file_no to capital
-        if os.path.exists(filename):
-            file_no += 1
-        filename = str(dir_date) + "scan_" + str(file_no) + ".txt"
-        data_matrix.to_csv(data_dir+filename, mode='w', index_label="index")
-        #data_matrix.to_hdf(file_path+filename, key='df', mode='w')
-        cmd_global.sysReturn('Scan data saved in ['+filename+']')
-        BUSY = False
 
     def plotRixs(self, filename):
         global rixs_img
@@ -1386,7 +1251,7 @@ class StatextUpdate(QThread):
     def run(self):
         while True:
             self.refresh.emit()
-            time.sleep(0.2)
+            time.sleep(0.5)
 
 class Move(QThread):
     msg = pyqtSignal(str)
@@ -1399,29 +1264,59 @@ class Move(QThread):
         global cmd_global, workingSTATUS, BUSY
         # p : index(name) of parameter, should be a string; v : range-checked value
         p, v, BUSY= self.p, self.v, True
-        self.msg.emit('Moving %s ...' %p) # for move function
         if checkSafe(p):  # check device safety
-            if p in Device["hexapod_list"]:
-                if 'th' in p:
-                    e.caput(pvName[p] + 'w', v)
-                else:
-                    e.caput(pvName[p], v)
+            if p in ['x','y','z','u','v','w','th','tth']:
+                e.caput(pvName[p]+'w', v)
+                # check moving status
+                t1 = time.time()
+                while e.caget(pvName[p] + 'm') == 0:  # = 0 not moving; = 1 moving
+                    time.sleep(0.2)
+                    if e.caget(pvName[p] + 'm') == 1 or (time.time() - t1) >= 1:
+                        break
+
+                # wait moving complete
+                while e.caget(pvName[p] + 'm') == 1:
+                    time.sleep(0.2)  # hold here for BUSY flag
+                    if ABORT:
+                        e.caput(pvName[p]+'s')
+                        self.msg.emit("Move aborted.")
+                        break
+                    if e.caget(pvName[p] + 'm') == 0:
+                        self.msg.emit('Move finished.')
+                        if abs(e.caget(pvName[p] + 'r') - v) >= 0.02:
+                            error_message = ("<font color=red>" + p + " not moving correctly, value: "
+                                             + str(e.caget(pvName[p] + "r")) + "</font>")
+                            self.msg.emit(error_message)
+                        break
+
             elif p in ['agm', 'ags']:
-                if abs(e.caget(pvName[p] + '.RBV') - v) >= 0.005:
+                rbv = e.caget(pvName[p] + '.RBV') #avoid getting None
+                while rbv == None:
+                    rbv = e.caget(pvName[p] + '.RBV')
+                if abs(rbv - v) >= 0.005:
                     e.caput(pvName[p], v)
                     # check moving status
                     t1 = time.time()
                     while e.caget(pvName[p] + ".MOVN") == 0:  # = 0 not moving; = 1 moving
+                        time.sleep(0.1)
                         if e.caget(pvName[p] + ".MOVN") == 1 or (time.time() - t1) >= 1:
                             break
+
                     # wait moving complete
                     while e.caget(pvName[p] + ".MOVN") == 1:
-                        pass # hold here for BUSY flag
-                        if e.caget(pvName[p] + ".MOVN") == 0:
+                        time.sleep(0.1) # hold here for BUSY flag
+                        if ABORT:
+                            #e.caput(pvName[p] + 's')
+                            self.msg.emit("Move aborted.")
                             break
-                    if abs(e.caget(pvName[p] + '.RBV') - v) >= 0.02:
-                        error_message = p + " not moving correctly, value: " + str(e.caget(pvName[p] + ".RBV"))
-                        print(error_message)
+                        if e.caget(pvName[p] + ".MOVN") == 0:
+                            self.msg.emit('Move finished.')
+                            if abs(e.caget(pvName[p] + '.RBV') - v) >= 0.02:
+                                error_message = ("<font color=red>" + p + " not moving correctly, value: "
+                                + str(e.caget(pvName[p] + ".RBV")) + "</font>")
+                                self.msg.emit(error_message)
+                            break
+
             if p == 'ta':
                 e.caput("41a:sample:heater", 1)
                 TSA.setValue(v)
@@ -1431,8 +1326,135 @@ class Move(QThread):
                 CCD.setGain(v)
         else:
             param[p] = v
-        self.msg.emit('Move finished.') # for move function
         BUSY = False
+        self.quit()
+
+class Scan(QThread):
+    scan_plot = pyqtSignal(list, str, float, float)
+    set_data = pyqtSignal(int, list, pd.Series)
+    cmd_msg = pyqtSignal(str)
+    def __init__(self, plot, scan_param, x1, x2, step, dwell, n):
+        super(Scan, self).__init__()
+        self.plot, self.scan_param, self.step = plot, scan_param, step
+        self.x1, self.x2, self.dwell, self.n = x1, x2, dwell, n
+        self.start_point = Move(scan_param, x1)
+        self.data_matrix = pd.DataFrame(columns=param_index)
+
+    def run(self):
+        global file_no, param, BUSY, workingSTATUS
+        SCAN = True
+        t1 = time.time()
+        plot, scan_param, x1, x2= self.plot, self.scan_param, self.x1, self.x2
+        step, dwell, n = self.step, self.dwell, self.n
+
+        x2_new = x1 + step * n
+        scan_x = []  # the empty list for the scanning parameter
+        workingSTATUS = "moving " + scan_param + " ..."
+
+        # set_param(scan_param, x1)  # set the initial parameter value
+        self.start_point.start()
+        self.start_point.wait()
+
+
+        self.scan_plot.emit(plot, scan_param, x1, x2_new)
+        '''
+        Scanning loop
+        - start time
+        set scanning parameters = > Data collection (averaging)  => plot data
+        '''
+        print('Loop begin')
+        for i in range(n + 1):
+            if ABORT:
+                print("loop stopped")
+                break
+            '''
+            start time
+            '''
+            # time recording
+            if i == 0:
+                scan_loop_start_time = time.time()
+                loop_time = 0
+            else:
+                loop_time = time.time() - scan_loop_start_time
+
+            if i <= 10:
+                remaining_time = (float(dwell) + 3.5) * int(n + 1 - i)
+            else:
+                remaining_time = (loop_time / i) * (n + 1 - i)
+
+            workingSTATUS = ('scanning ' + scan_param + '... ' + str(i + 1) + '/' + str(n + 1) +
+                             ', remaining time = ' + convertSeconds(remaining_time))
+            '''
+            Set scanning parameters
+            '''
+            scan_x.append(x1 + i * step)
+            print("set ", scan_param, " to ", x1+i*step)
+            self.WorkerThread = Move(scan_param, scan_x[i])
+            self.WorkerThread.start()
+            self.WorkerThread.wait() #wait move finish
+            '''
+            Data collection time
+            '''
+            t0 = time.time()
+            raw_array = np.array([])
+            while (time.time() - t0) <= dwell:  # while loop to get the data within dwell time
+                if (time.time() - t0) % 0.2 <= 0.0001:
+                #raw_array = np.append(raw_array, param['Iph'])  # Read Iph data through epics
+                    for i in range(len(plot)):
+                        raw_array = np.append(raw_array, get_param(plot[i]))
+
+            current_param = pd.Series(param)  # generate series
+
+            plot_list = [[], [], [], [], []] # prepare five empty list
+            for i in range(raw_array.size):
+                plot_list[int(i%len(plot))].append(raw_array[i])
+
+            # average
+            for i in range(len(plot)):
+                data_array = np.array(plot_list[i])
+                data_array = np.unique(data_array)  # remove the overlap
+                data_ave = np.mean(data_array)
+                current_param[plot[i]] = float(data_ave)  # replace param['Iph'] by averaged data
+
+            current_param['t'] = round(loop_time, 2)
+            self.data_matrix.loc[len(self.data_matrix), :] = current_param.tolist()  # appending param to data_matrix
+            '''
+            plot from data_matrix
+            '''
+            for i in range(0, len(plot)):
+                self.set_data.emit(i, scan_x, self.data_matrix.loc[:, plot[i]] )
+
+        '''
+        Loop finished
+        '''
+        workingSTATUS = " "
+        print('[data_matrix]')
+        print(self.data_matrix)
+
+        dt = round(time.time() - t1, 3)
+        print('time span in senconds=', dt)
+
+        if ABORT:
+            self.cmd_msg.emit('Scaning loop has been terminated; time span  = ' + convertSeconds(dt), 'err')
+        else:
+            self.cmd_msg.emit('Scan ' + str(int(param['f'])) + ' is completed; time span  = ' + convertSeconds(dt))
+
+        '''
+        Data saving
+        - File name from global, including directory and number
+        - Can be saved as .csv or .hdf, but hdf format requires development.
+        - Save terminated data?
+
+        TODO: check exist number, don't overwrite old ones.
+        '''
+
+        filename = str(dir_date) + "scan_" + str(file_no) + ".txt"  # change file_no to capital
+        if os.path.exists(filename):
+            file_no += 1
+        filename = str(dir_date) + "scan_" + str(file_no) + ".txt"
+        self.data_matrix.to_csv(data_dir + filename, mode='w', index_label="index")
+        self.cmd_msg.emit('Scan data saved in [' + filename + ']')
+        SCAN = False
         self.quit()
 
 
