@@ -1,4 +1,4 @@
-#Last edited:20190424 6pm
+#Last edited:20190425 4pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -301,9 +301,9 @@ class StatusWidget(QWidget):
     def show_bar(self):
         q_time = QDateTime.currentDateTime()
         time_str = q_time.toString("yyyy-MM-dd hh:mm:ss")
-        x = str(time.time()%10)
-        self.status_bar.setText(time_str+"  Project #0;   PI: Testing;"
-                                +" file number: "+ str(int(param['f']))+", "+x)
+        x = str(format(time.time()%1,'.3f'))
+        self.status_bar.setText(time_str+x[1:]+"  Project #0;   PI: Testing;"
+                                +" file number: "+ str(int(param['f'])))
 
     def show_text(self):
         parameter_text = ( "<u>Parameters</u></font><br>"
@@ -1341,7 +1341,7 @@ class Scan(QThread):
         self.data_matrix = pd.DataFrame(columns=param_index)
 
     def run(self):
-        global file_no, param, BUSY, workingSTATUS
+        global file_no, param, BUSY, workingSTATUS, SCAN
         SCAN = True
         t1 = time.time()
         plot, scan_param, x1, x2= self.plot, self.scan_param, self.x1, self.x2
@@ -1399,22 +1399,27 @@ class Scan(QThread):
             raw_array = np.array([])
             while (time.time() - t0) <= dwell:  # while loop to get the data within dwell time
                 if (time.time() - t0) % 0.2 <= 0.0001:
-                #raw_array = np.append(raw_array, param['Iph'])  # Read Iph data through epics
-                    for i in range(len(plot)):
-                        raw_array = np.append(raw_array, get_param(plot[i]))
+                    raw_array = np.append(raw_array, param['Iph'])  # Read Iph data through epics
+                    # for i in range(len(plot)):
+                    #     raw_array = np.append(raw_array, get_param(plot[i]))
 
             current_param = pd.Series(param)  # generate series
 
-            plot_list = [[], [], [], [], []] # prepare five empty list
-            for i in range(raw_array.size):
-                plot_list[int(i%len(plot))].append(raw_array[i])
+            # plot_list = [[], [], [], [], []] # prepare five empty list
+            # for i in range(raw_array.size):
+            #     plot_list[int(i%len(plot))].append(raw_array[i])
 
             # average
-            for i in range(len(plot)):
-                data_array = np.array(plot_list[i])
-                data_array = np.unique(data_array)  # remove the overlap
-                data_ave = np.mean(data_array)
-                current_param[plot[i]] = float(data_ave)  # replace param['Iph'] by averaged data
+            # for i in range(len(plot)):
+            #     data_array = np.array(plot_list[i])
+            #     data_array = np.unique(data_array)  # remove the overlap
+            #     data_ave = np.mean(data_array)
+            #     current_param[plot[i]] = float(data_ave)  # replace param['Iph'] by averaged data
+
+            data_array = np.array(raw_array)
+            data_array = np.unique(data_array)  # remove the overlap
+            data_ave = np.mean(data_array)
+            current_param['Iph'] = float(data_ave)  # replace param['Iph'] by averaged data
 
             current_param['t'] = round(loop_time, 2)
             self.data_matrix.loc[len(self.data_matrix), :] = current_param.tolist()  # appending param to data_matrix
