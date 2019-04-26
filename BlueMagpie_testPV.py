@@ -68,6 +68,7 @@ pvName = {'agm': "41a:AGM:Energy",
              "w": "41a:hexapod:w",
             "th": "41a:sample:th",
           "tth": "41a:sample:tth",
+     "heater":"41a:sample:heater",
           "ta": "41a:sample:tmp1",
           "tb": "41a:sample:tmp2",
             "I0": "41a:sample:i0",
@@ -1278,60 +1279,57 @@ class Move(QThread):
         p, v, BUSY= self.p, self.v, True
         if checkSafe(p):  # check device safety
             if p in ['x','y','z','u','v','w','th','tth']:
-                e.caput(pvName[p]+'w', v)
+                PV(pvName[p]+'w').put(v) #test put(v,wait=True)
                 # check moving status
                 t1 = time.time()
-                while e.caget(pvName[p] + 'm') == 0:  # = 0 not moving; = 1 moving
+                while PV(pvName[p] + 'm').get() == 0:  # = 0 not moving; = 1 moving
                     time.sleep(0.2)
-                    if e.caget(pvName[p] + 'm') == 1 or (time.time() - t1) >= 1:
+                    if PV(pvName[p] + 'm').get() == 1 or (time.time() - t1) >= 1:
                         break
 
                 # wait moving complete
-                while e.caget(pvName[p] + 'm') == 1:
+                while PV(pvName[p] + 'm').get() == 1:
                     time.sleep(0.2)  # hold here for BUSY flag
                     if ABORT:
-                        e.caput(pvName[p]+'s')
+                        #PV(pvName[p]+'s').put()
                         self.msg.emit("Move aborted.")
                         break
-                    if e.caget(pvName[p] + 'm') == 0:
+                    if PV(pvName[p] + 'm').get() == 0:
                         self.msg.emit('Move finished.')
-                        if abs(e.caget(pvName[p] + 'r') - v) >= 0.02:
+                        if abs(PV(pvName[p] + 'r').get() - v) >= 0.02:
                             error_message = ("<font color=red>" + p + " not moving correctly, value: "
-                                             + str(e.caget(pvName[p] + "r")) + "</font>")
+                                             + PV(pvName[p] + "r").get(as_string = True) + "</font>")
                             self.msg.emit(error_message)
                         break
 
-            elif p in ['agm', 'ags']:
-                rbv = e.caget(pvName[p] + '.RBV') #avoid getting None
-                while rbv == None:
-                    rbv = e.caget(pvName[p] + '.RBV')
-                if abs(rbv - v) >= 0.005:
-                    e.caput(pvName[p], v)
+            elif p in ['agm', 'ags']: 
+                if abs(PV(pvName[p] + '.RBV').get() - v) >= 0.005:
+                    PV(pvName[p]).put(v)
                     # check moving status
                     t1 = time.time()
-                    while e.caget(pvName[p] + ".MOVN") == 0:  # = 0 not moving; = 1 moving
+                    while PV(pvName[p] + ".MOVN").get() == 0:  # = 0 not moving; = 1 moving
                         time.sleep(0.1)
-                        if e.caget(pvName[p] + ".MOVN") == 1 or (time.time() - t1) >= 1:
+                        if PV(pvName[p] + ".MOVN").get() == 1 or (time.time() - t1) >= 1:
                             break
 
                     # wait moving complete
-                    while e.caget(pvName[p] + ".MOVN") == 1:
+                    while PV(pvName[p] + ".MOVN").get() == 1:
                         time.sleep(0.1) # hold here for BUSY flag
                         if ABORT:
                             #e.caput(pvName[p] + 's')
                             self.msg.emit("Move aborted.")
                             break
-                        if e.caget(pvName[p] + ".MOVN") == 0:
+                        if PV(pvName[p] + ".MOVN").get() == 0:
                             self.msg.emit('Move finished.')
-                            if abs(e.caget(pvName[p] + '.RBV') - v) >= 0.02:
+                            if abs(PV(pvName[p] + ".RBV").get() - v) >= 0.02:
                                 error_message = ("<font color=red>" + p + " not moving correctly, value: "
-                                + str(e.caget(pvName[p] + ".RBV")) + "</font>")
+                                + PV(pvName[p] + ".RBV").get(as_string =True) + "</font>")
                                 self.msg.emit(error_message)
                             break
 
             if p == 'ta':
-                e.caput("41a:sample:heater", 1)
-                TSA.setValue(v)
+                PV(pvName['heater']).put(1)
+                PV(pvName[p]).put(v)
             elif p == 'Tccd':
                 CCD.setTemp(v)
             elif p == 'gain':
