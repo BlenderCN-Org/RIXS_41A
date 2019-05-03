@@ -92,10 +92,10 @@ param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1
 # Individual device control
 Device = pd.Series({
         "hexapod":0,"ccd":0,
-        "th":1, "tth":1,
-        "agm": 1, "ags": 1,
-        "ta": 1, "tb": 1,
-        "I0": 1, "Iph": 1,
+        "th":0, "tth":0,
+        "agm": 0, "ags": 0,
+        "ta": 0, "tb": 0,
+        "I0": 0, "Iph": 0,
         "s1" :0, "s2":0, "shutter":0
     })
 
@@ -1148,6 +1148,32 @@ class SpectrumWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.plotWidget)
         self.w = None
+        
+        #cross hair
+        self.status_bar = QLabel(self)
+        self.layoutVertical.addWidget(self.status_bar)
+        
+        self.vLine = pg.InfiniteLine(angle=90, pen=pg.mkPen('w', width=0.5), movable=False)
+        self.hLine = pg.InfiniteLine(angle=0, pen=pg.mkPen('w', width=0.5), movable=False)
+        self.plotWidget.addItem(self.vLine, ignoreBounds=True)
+        self.plotWidget.addItem(self.hLine, ignoreBounds=True)
+        
+    def mouseMoved(pos):
+        mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
+        self.vLine.setPos(mousePoint.x())
+        self.hLine.setPos(mousePoint.y())
+        self.status_bar.setText("pos = ({:.2f}, {:.2f})".format(mousePoint.x(), mousePoint.y()))
+        self.plotWidget.scene().sigMouseMoved.connect(mouseMoved)
+        
+    def enterEvent(self, event):
+        self.status_bar.show()
+        self.vLine.show()
+        self.hLine.show()
+
+    def leaveEvent(self, event):
+        self.status_bar.clear()
+        self.vLine.hide()
+        self.hLine.hide()
 
     def spectrumPlot(self, x):
         #clear previous plot
