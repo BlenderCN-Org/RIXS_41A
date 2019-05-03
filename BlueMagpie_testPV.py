@@ -1,4 +1,4 @@
-#Last edited:20190503 4.30pm
+#Last edited:20190503 5.30pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -199,7 +199,7 @@ def Read(p, form=3):
 '''
 Start GUI construction
 '''
-class RIXS(QMainWindow):
+class BlueMagpie(QMainWindow):
 
     def __init__(self):
         global status_global
@@ -528,7 +528,7 @@ class Command(QWidget):
                    "<b>rixs</b>:  take RIXS images, t sec per iamge for n images <br>\n"
                    "<br>\n"
                    "<b>s2</b>: set the opening of the exit slit.<br>\n"
-                   "<b>shut</b>: open or close the BL shutter.<br>\n"
+                   #"<b>shut</b>: open or close the BL shutter.<br>\n"
                    #"<b>ccd</b>: turn on or turn off the CCD.<br>\n"
                    "<b>load</b>: load an image file.<br>")
             self.sysReturn(msg)
@@ -549,22 +549,22 @@ class Command(QWidget):
             p = ', '.join(param_index0)
             self.sysReturn(p)
 
-        elif "shut" in text[:5]:
-            space = text.count(' ')
-            sptext = text.split(' ')
-            if space == 1: # e.g. shut 0
-                if sptext[1] in ['0', '1']:
-                    self.sysReturn(text,"v", True)
-                    param['shutter'] = float(sptext[1]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
-                    if sptext[1]=='0': shutt ='close'
-                    if sptext[1]=='1': shutt ='open'
-                    self.sysReturn("The shutter is " + shutt)
-                else:
-                    self.sysReturn(text,"iv")
-                    self.sysReturn('shutter parameter has to be 0 ot 1 for close and open, respectively.', "err")
-            else:
-                self.sysReturn(text,"iv")
-                self.sysReturn('input error. use:   shut  0 or 1', 'err')
+        # elif "shut" in text[:5]:
+        #     space = text.count(' ')
+        #     sptext = text.split(' ')
+        #     if space == 1: # e.g. shut 0
+        #         if sptext[1] in ['0', '1']:
+        #             self.sysReturn(text,"v", True)
+        #             param['shutter'] = float(sptext[1]) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
+        #             if sptext[1]=='0': shutt ='close'
+        #             if sptext[1]=='1': shutt ='open'
+        #             self.sysReturn("The shutter is " + shutt)
+        #         else:
+        #             self.sysReturn(text,"iv")
+        #             self.sysReturn('shutter parameter has to be 0 ot 1 for close and open, respectively.', "err")
+        #     else:
+        #         self.sysReturn(text,"iv")
+        #         self.sysReturn('input error. use:   shut  0 or 1', 'err')
 
         # elif text == "ccd":
         #     space = text.count(' ')
@@ -616,54 +616,17 @@ class Command(QWidget):
             sptext = text.split(' ')
             # check format
             if space == 2:  # e.g. rixs t n
-                # t as exposure time ; n as number of images.
-                t = float(sptext[1])
-                n = int(sptext[2])
-                if self.checkFloat(t) and self.checkFloat(n):
-                    BUSY = True
+                if self.checkFloat(sptext[1]) and self.checkFloat(sptext[2]):
+                    # t as exposure time ; n as number of images.
+                    t = float(sptext[1])
+                    n = int(sptext[2])
                     self.sysReturn(text, "v", True)
                     tt = datetime.datetime.now()
                     self.sysReturn('RIXS ' + str(int(param['f'])) + ' begins at ' + tt.strftime("%c"))
-                    dwell_0 = 0 # buffer time
-                    if SAFE:
-                        pvl.ccd('exposure',t)
-                        dwell_0 = 5 #  extra time for the while loop
-                    self.t0 = time.time()
-                    for i in range(n):
-                        if i ==0:
-                            workingSTATUS = 'Taking RIXS data ... ' + str(i+1) + '/' + str(n)
-                        #print('i = ',i,'   ABORT =', ABORT)
-                        if ABORT:
-                            break
-                        IMGDONE = False
-                        self.imageExposure() # QThread replaced
-                        img_global.saveImg()
-                        t1 = time.time()
-                        if i == 0:
-                            dt = n * (t+3)
-                        else:
-                            dt = ((time.time() - self.t0) / i) * (n - i)  # remaining time
-                        dt = round(dt,2)
-                        while (time.time() - t1) < t + dwell_0:
-                            self.t2 = time.time()
-                            workingSTATUS = ('Taking RIXS data ... ' + str(i+1) + '/' + str(n)+',  remaining time = ' + str(dt)+' sec')
-                            if (self.t2 - t1)%0.2 <= 0.00003:
-                                #QApplication.processEvents()
-                                pass
-                            if SAFE:
-                                if IMGDONE:
-                                    print('getData() finished.')
-                                    break
-                            if ABORT:
-                                break
-                        #print('while loop takes :',time.time() - t1)
-                        img_number= str(i+1)+' image'
-                        if i>0:
-                            img_number +='s'
-                        self.sysReturn(img_number+' taken, time span= '+str(round(time.time()-self.t0,2))+' sec')
-                    BUSY = False  # global flag
-                    workingSTATUS = " "
-                    self.sysReturn('Completed taking RIXS images.')
+                    self.rixsthread = Rixs(t, n)
+                    self.rixsthread.save_img.connect(img_global.saveImg)
+                    self.rixsthread.cmd_msg.connect(cmd_global.sysReturn)
+                    self.rixsthread.start()
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("Both t and n need to be numerical numbers.", "err")
@@ -950,6 +913,34 @@ class Command(QWidget):
             self.sysReturn(text,"iv")
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir),"err")
 
+    def imageExposure(self):
+        pvl.ccd('start',1) # 1 for activate
+        t1 = time.time()
+        while pvl.ccd("dataok") == 1: #check moving
+            if (time.time()-t1)%0.2 <= 0.0001:
+                pass
+                if pvl.ccd("dataok") == 0:
+                    break
+        t1 = time.time()
+        print('t1 =', t1)
+        if SAFE:
+            j = 0 # a counter to mimic timer
+            while pvl.ccd("dataok") == 0:
+                j += 1
+                if (time.time()-t1)%0.2 <= 0.0001:
+                    #QApplication.processEvents()
+                    pass
+                if pvl.ccd("dataok") == 1:
+                    break
+                if ABORT:
+                    self.sysReturn('RIXS aborted', 'err')
+                    break
+        dt = round(time.time() - t1, 3)
+        print('time span in seconds= %s'%dt)
+        print('before get data')
+        img_global.getData()
+        img_global.plotImg()
+
     # def readFile(self, name):
     #     #==============Macro start===============
     #     readfile=[]
@@ -976,40 +967,7 @@ class Command(QWidget):
     #         self.macro_index += 1
     #     self.sysReturn("macro finished.")
 
-    def imageExposure(self):
-        if SAFE:
-            pvl.ccd('start',1) # 1 for activate
-            t1 = time.time()
-            while pvl.ccd("dataok") == 1:
-                if (time.time()-t1)%0.2 <= 0.0001:
-                    #QApplication.processEvents()
-                    pass
-                if pvl.ccd("dataok") == 0:
-                    break
-        t1 = time.time()
-        print('t1 =', t1)
-        if SAFE:
-            j = 0 # a counter to mimic timer
-            while pvl.ccd("dataok") == 0:
-                j += 1
-                if (time.time()-t1)%0.2 <= 0.0001:
-                    #QApplication.processEvents()
-                    pass
-                if pvl.ccd("dataok") == 1:
-                    break
-                if ABORT:
-                    self.sysReturn('RIXS aborted', 'err')
-                    break
-        else:
-            for self.i in range(0,3):
-                #self.msg.emit('i now：{}'.format(self.i))
-                #self.sleep(1)
-                time.sleep(0.1)
-        dt = round(time.time() - t1, 3)
-        print('time span in seconds= %s'%dt)
-        print('before get data')
-        img_global.getData()
-        img_global.plotImg()
+
 
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
@@ -1090,12 +1048,15 @@ class ImageWidget(QWidget):
         self.imgdata = img_np
 
     def saveImg(self):
+        global file_no
         '''
         save file as .txt
         name format example: 2019_Apr18_142200(Hr/Min/Sec)
+        optional serial timestamp: %H%M%S 
         '''
-        datestamp = datetime.datetime.today().strftime("%Y_%b%d_%H%M%S") #Format : Year_MonDt
-        file_name0 =datestamp + '_img'      # short ver. for display
+        datestamp = datetime.datetime.today().strftime("%Y_%b%d") #Format : Year_MonDt
+        file_no += 1
+        file_name0 = datestamp + '_img_' + str(file_no)     # short ver. for display
         file_name = img_dir + file_name0   # for saving in correct dir
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',')
         cmd_global.sysReturn('Image data saved as: '+file_name0)
@@ -1506,11 +1467,107 @@ class Scan(QThread):
         SCAN = False
         self.quit()
 
+class Rixs(QThread): #no dummy now
+    cmd_msg = pyqtSignal(str)
+    save_img = pyqtSignal()
+
+    def __init__(self, t, n):
+        super(Rixs, self).__init__()
+        self.t = t
+        self.n = n
+
+    def run(self):
+        global file_no, param, BUSY, workingSTATUS, cmd_global, img_global
+        BUSY = True
+        pvl.ccd('exposure', self.t)
+        dwell_0 = 5  # extra time for the while loop
+        self.t0 = time.time()
+        for i in range(self.n):
+            if i == 0:
+                workingSTATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n)
+            # print('i = ',i,'   ABORT =', ABORT)
+            if ABORT:
+                break
+            IMGDONE = False
+
+            self.exposethread= Expose()
+            self.exposethread.cmd_msg.connect(cmd_global.sysReturn)
+            self.exposethread.get.connect(img_global.getData)
+            self.exposethread.plot.connect(img_global.plotImg)
+            self.exposethread.start()
+            self.exposethread.wait()
+
+            self.save_img.emit()
+            t1 = time.time()
+            if i == 0:
+                dt = self.n * (self.t + 3)
+            else:
+                dt = ((time.time() - self.t0) / i) * (self.n - i)  # remaining time
+            dt = round(dt, 2)
+            while ((time.time() - t1) < (self.t + dwell_0)):
+                self.t2 = time.time()
+                workingSTATUS = ('Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n) +
+                                 ',  remaining time = ' + str(dt) + ' sec')
+                if (self.t2 - t1) % 0.2 <= 0.00003:
+                    # QApplication.processEvents()
+                    pass
+                if SAFE:
+                    if IMGDONE:
+                        print('getData() finished.')
+                        break
+                if ABORT:
+                    break
+            # print('while loop takes :',time.time() - t1)
+            img_number = str(i + 1) + ' image'
+            if i > 0:
+                img_number += 's'
+            self.cmd_msg.emit(img_number + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
+        workingSTATUS = " "
+        self.cmd_msg.emit('Completed taking RIXS images.')
+        BUSY = False  # global flag
+
+
+class Expose(QThread):
+    get = pyqtSignal()
+    plot = pyqtSignal()
+    cmd_msg = pyqtSignal(str)
+
+    def __init__(self):
+        super(Expose, self).__init__()
+
+    def run(self):
+        global file_no, workingSTATUS
+        pvl.ccd('start', 1)  # 1 for activate
+        t1 = time.time()
+        while pvl.ccd("dataok") == 1:  # check moving
+            if (time.time() - t1) % 0.2 <= 0.0001:
+                pass
+                if pvl.ccd("dataok") == 0:
+                    break
+        t1 = time.time()
+        print('t1 =', t1)
+        if SAFE:
+            j = 0  # a counter to mimic timer
+            while pvl.ccd("dataok") == 0:
+                j += 1
+                if (time.time() - t1) % 0.2 <= 0.0001:
+                    # QApplication.processEvents()
+                    pass
+                if pvl.ccd("dataok") == 1:
+                    break
+                if ABORT:
+                    self.cmd_msg.emit('RIXS aborted')
+                    break
+        dt = round(time.time() - t1, 3)
+        print('time span in seconds= %s' % dt)
+        self.get.emit()
+        self.plot.emit()
+
 
 def main():
     global status_global
     app = QApplication(sys.argv)
-    display_gui = RIXS()
+    display_gui = BlueMagpie()
 
     bar_update = BarUpdate()  # bar 0.2 sec
     bar_update.refresh.connect(status_global.show_bar)
