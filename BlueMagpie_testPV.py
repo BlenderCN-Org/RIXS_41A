@@ -1,4 +1,4 @@
-#Last edited:20190503 11am
+#Last edited:20190503 4.30pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -91,11 +91,11 @@ param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1
 
 # Individual device control
 Device = pd.Series({
-        "hexapod":0,"ccd":0,
+        "hexapod":0,"ccd":1,
         "th":0, "tth":0,
-        "agm": 0, "ags": 0,
+        "agm": 1, "ags": 1,
         "ta": 0, "tb": 0,
-        "I0": 0, "Iph": 0,
+        "I0": 1, "Iph": 1,
         "s1" :0, "s2":0, "shutter":0
     })
 
@@ -114,7 +114,7 @@ def checkSafe(p): # Individual device safe check
 
 def checkMoving(p): # for StatusWidget display only
     if p in ['x','y','z','u','v','w','th','tth','agm','ags']:
-        if pvl.getMovn(p) == 1: # 1: moving, 0: stop
+        if pvl.movStat(p) == 1: # 1: moving, 0: stop
             return True
     else: #including gain
         return False
@@ -125,11 +125,10 @@ SAFE = True
 # SETUP_epics
 if SAFE:
     #setup_CCD
-    CCD = pecd("emccd", "41a:ccd1")
-    CCD.setExposureTime(2)
-    CCD.setGain(10)
-    CCD.setAcqMode(2)  #0: video; 1: single (obsolete); 2: accumulation
-    CCD.setAccuType(0) #0: raw image; 2: differnece image
+    pvl.ccd("exposure", 2)
+    pvl.ccd("gain", 10)
+    pvl.ccd("acqmode", 2) #0: video; 1: single (obsolete); 2: accumulation
+    pvl.ccd("accutype", 2) #0: raw image; 2: differnece image
 
 def get_param(p):
     if checkSafe(p):
@@ -530,7 +529,7 @@ class Command(QWidget):
                    "<br>\n"
                    "<b>s2</b>: set the opening of the exit slit.<br>\n"
                    "<b>shut</b>: open or close the BL shutter.<br>\n"
-                   "<b>ccd</b>: turn on or turn off the CCD.<br>\n"
+                   #"<b>ccd</b>: turn on or turn off the CCD.<br>\n"
                    "<b>load</b>: load an image file.<br>")
             self.sysReturn(msg)
 
@@ -567,23 +566,23 @@ class Command(QWidget):
                 self.sysReturn(text,"iv")
                 self.sysReturn('input error. use:   shut  0 or 1', 'err')
 
-        elif text == "ccd":
-            space = text.count(' ')
-            sptext = text.split(' ')
-            set_ccd = sptext[1]
-            if space == 1: # e.g. ccd 1
-                if set_ccd in ['0', '1']:
-                    self.sysReturn(text,"v", True)
-                    param['ccd'] = float(set_ccd) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
-                    if set_ccd=='0': shutt ='off'
-                    if set_ccd=='1': shutt ='on'
-                    self.sysReturn("The CCD is " + shutt)
-                else:
-                    self.sysReturn(text,"iv")
-                    self.sysReturn('ccd parameter has to be 0 ot 1 for off and on, respectively.', "err")
-            else:
-                self.sysReturn(text,"iv")
-                self.sysReturn('input error. use:   ccd  0 or 1', 'err')
+        # elif text == "ccd":
+        #     space = text.count(' ')
+        #     sptext = text.split(' ')
+        #     set_ccd = sptext[1]
+        #     if space == 1: # e.g. ccd 1
+        #         if set_ccd in ['0', '1']:
+        #             self.sysReturn(text,"v", True)
+        #             param['ccd'] = float(set_ccd) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
+        #             if set_ccd=='0': shutt ='off'
+        #             if set_ccd=='1': shutt ='on'
+        #             self.sysReturn("The CCD is " + shutt)
+        #         else:
+        #             self.sysReturn(text,"iv")
+        #             self.sysReturn('ccd parameter has to be 0 ot 1 for off and on, respectively.', "err")
+        #     else:
+        #         self.sysReturn(text,"iv")
+        #         self.sysReturn('input error. use:   ccd  0 or 1', 'err')
 
         elif 'img' in text[:4]:
             # All sequence below should be organized as function(text)
@@ -596,7 +595,7 @@ class Command(QWidget):
                     self.sysReturn(text, "v", True)
                     workingSTATUS = "Taking image... ; Exposure time ="+str(t)
                     if SAFE:
-                        CCD.setExposureTime(t)
+                        pvl.ccd("exposure",t)
                         self.sysReturn("getting ccd image ...")
                     else:
                         self.sysReturn("Warning: CCD not connected", "err")
@@ -627,7 +626,7 @@ class Command(QWidget):
                     self.sysReturn('RIXS ' + str(int(param['f'])) + ' begins at ' + tt.strftime("%c"))
                     dwell_0 = 0 # buffer time
                     if SAFE:
-                        CCD.setExposureTime(t)
+                        pvl.ccd('exposure',t)
                         dwell_0 = 5 #  extra time for the while loop
                     self.t0 = time.time()
                     for i in range(n):
@@ -979,24 +978,24 @@ class Command(QWidget):
 
     def imageExposure(self):
         if SAFE:
-            CCD.start(1) # 1 for activate
+            pvl.ccd('start',1) # 1 for activate
             t1 = time.time()
-            while e.PV("41a:ccd1:dataok").get() == 1:
+            while pvl.ccd("dataok") == 1:
                 if (time.time()-t1)%0.2 <= 0.0001:
                     #QApplication.processEvents()
                     pass
-                if e.PV("41a:ccd1:dataok").get() == 0:
+                if pvl.ccd("dataok") == 0:
                     break
         t1 = time.time()
         print('t1 =', t1)
         if SAFE:
             j = 0 # a counter to mimic timer
-            while e.PV("41a:ccd1:dataok").get() == 0:
+            while pvl.ccd("dataok") == 0:
                 j += 1
                 if (time.time()-t1)%0.2 <= 0.0001:
                     #QApplication.processEvents()
                     pass
-                if e.PV("41a:ccd1:dataok").get() == 1:
+                if pvl.ccd("dataok") == 1:
                     break
                 if ABORT:
                     self.sysReturn('RIXS aborted', 'err')
@@ -1078,8 +1077,7 @@ class ImageWidget(QWidget):
         if SAFE: # checked safe
             # check data OK
             #raw_img = e.PV("41a:ccd1:image").get() #calling pyepics_ccd_device.py
-            raw_img = CCD.getImage()
-            print("raw image: ")
+            raw_img = pvl.ccd("image")
             print(raw_img)
             img_list = np.asarray(raw_img)  # convert raw image to 1d numpy array
             img_np = np.reshape(img_list, (1024, 2048), order='F')  # reshape from 1d to 2d numpy array
@@ -1357,13 +1355,11 @@ class Move(QThread):
                                 self.msg.emit(error_message)
                             break
 
-            if p == 'ta':
+            elif p == 'ta':
                 PV(pvName['heater']).put(1)
                 PV(pvName[p]).put(v)
-            elif p == 'Tccd':
-                CCD.setTemp(v)
-            elif p == 'gain':
-                CCD.setGain(v)
+            elif p in ['Tccd','gain']:
+                pvl.ccd(p,v)
         else:
             param[p] = v
         BUSY = False

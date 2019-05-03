@@ -14,24 +14,27 @@ moving = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:hexap
               z="41a:hexapod:zm", u="41a:hexapod:um", v="41a:hexapod:vm", w="41a:hexapod:wm", th="41a:sample:thm",
               tth="41a:sample:tthm")
 
-#Get/Set Value
-ccd = dict(exposure="41a:ccd1:expot", start="41a:ccd1:start", stop="41a:ccd1:stop", dataok="41a:ccd1:dataok",
-           mode="41a:ccd1:acqmode", gain="41a:ccd1:gain", cooler="41a:ccd1:tmpw")
+#Get/Put Value
+ccdict = dict(exposure="41a:ccd1:expot", start="41a:ccd1:start", stop="41a:ccd1:stop", dataok="41a:ccd1:dataok",
+              acqmode="41a:ccd1:acqmode", cooler="41a:ccd1:tmpw", accutype="41a:ccd1:imgtype", Tccd="41a:ccd1:tmpw",
+              image="41a:ccd1:image")
 
 
-pvname_list = list(reading.values()) + list(moving.values()) + list()
+pvname_list = list(reading.values()) + list(moving.values()) + list(ccdict.values())
 
 pv_list = [PV(name) for name in pvname_list] # generate PVs
 
-def getVal(parameter_index):
-    i = pvname_list.index(reading[parameter_index]) # from reading get pvname to check index in pvname_list
+def getVal(p):
+    i = pvname_list.index(reading[p]) # from key(param_index) find pvname
     return (pv_list[i].get()) # get PV value
 
-def getMovn(parameter_index):
-    i = pvname_list.index(moving[parameter_index])
+def movStat(p):
+    i = pvname_list.index(moving[p])
     return (pv_list[i].get())
 
-#def ccd(command, value=None):
-    #if command in []
-    #i = ppvname_list.index(ccd[command])
-    #return 
+def ccd(p, value=None):
+    keyvalue = ccdict[p] if p != "gain" else reading[p]
+    if (p not in ["dataok", "image"]) and (value != None):
+        pv_list[pvname_list.index(keyvalue)].put(value)
+    else:
+        return pv_list[pvname_list.index(keyvalue)].get()
