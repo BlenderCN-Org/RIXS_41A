@@ -1,4 +1,4 @@
-#Last edited:20190423 5pm
+#Last edited:20190503 11am
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -14,6 +14,7 @@ from pyepics_tmp_device import TmpDevices as petd
 from pyepics_ccd_device import CcdDevices as pecd
 import epics as e
 from epics import PV
+import pvlist as pvl
 
 # Global for connection
 spectrum_global = None
@@ -112,11 +113,8 @@ def checkSafe(p): # Individual device safe check
         return False
 
 def checkMoving(p): # for StatusWidget display only
-    if p in ['x','y','z','u','v','w','th','tth']:
-        if PV(pvName[p]+'m').get() == 1: # 1: moving, 0: stop
-            return True
-    elif p in ['agm','ags']:
-        if PV(pvName[p]+".MOVN").get() ==1:
+    if p in ['x','y','z','u','v','w','th','tth','agm','ags']:
+        if pvl.getMovn(p) == 1: # 1: moving, 0: stop
             return True
     else: #including gain
         return False
@@ -135,23 +133,11 @@ if SAFE:
 
 def get_param(p):
     if checkSafe(p):
-        if p == 'agm' or p =='ags':
-            v = PV(pvName[p]+".RBV").get()
-        elif p == 'th' or p == 'tth':
-            v = PV(pvName[p]+"r").get()
-        elif p == 'Tccd':
-            v = PV('41a:ccd1:tmpr').get()
-        elif p == 'gain':
-            v = PV('41a:ccd1:gain').get()
-        else :
-            v = PV(pvName[p]).get()  # get PV name from pvName series
+        v = pvl.getVal(p)
         if v == None:
             v = 'NoneType'
-        param[p] = v
-
     else:
         v = param[p]
-
     return v
 
 def convertSeconds(seconds):
@@ -173,12 +159,7 @@ dir_date = datetime.datetime.today().strftime("%Y_%b%d")
 dir_name = "project #0"
 current_path=os.getcwd()
 
-if '\\' in current_path:
-    # for windows
-    sla = '\\'
-else:
-    # for linux
-    sla = '/'
+sla = '\\' if ('\\' in current_path) else '/'
 
 project_path = str(current_path)+ sla + dir_name + sla
 macro_dir = str(project_path)+ 'macro' + sla
@@ -196,12 +177,8 @@ if not os.path.exists(dir_name):
 
 def Read(p, form=3):
     # get value by param_list index
-    if checkSafe(p):
-        value = get_param(p)
-        real = 1
-    else:
-        value = param[p]
-        real = 0
+    value = get_param(p)
+    real = 1 if checkSafe(p) else 0
 
     if isinstance(value, str):  # got None from device
         string = "<font color= red>none</font><font color = black> </font>"
@@ -209,13 +186,14 @@ def Read(p, form=3):
         if form == 'current': string = np.format_float_scientific(value, unique=False, precision=2, exp_digits=2)
         elif form == 'int': string = str(int(value))
         elif form == 'switch':
-            if value == 0: string = 'close'
-            else: string = 'open'
+            string = 'close' if value == 0 else 'open'
         else: string = str(format(value, '.3f'))
 
         # real marked blue
         if real == 0: string = '<font color=gray>'+ string +'</font>'
-        if checkMoving(p): string = '<font color=blue>' + string + '</font>'
+        if real ==1:
+            if checkMoving(p):
+                string = '<font color=blue>' + string + '</font>'
 
     return string
 
@@ -1272,6 +1250,7 @@ class Move(QThread):
         super(Move, self).__init__()
         self.p = p
         self.v = v
+        # list all write PVs and call later
 
     def run(self):
         global cmd_global, workingSTATUS, BUSY
@@ -1282,48 +1261,73 @@ class Move(QThread):
                 PV(pvName[p]+'w').put(v) #test put(v,wait=True)
                 # check moving status
                 t1 = time.time()
-                while PV(pvName[p] + 'm').get() == 0:  # = 0 not moving; = 1 moving
+                while PV(pvName[p] + 'm').get(timeout = 3) == 0:  # = 0 not moving; = 1 moving
                     time.sleep(0.2)
-                    if PV(pvName[p] + 'm').get() == 1 or (time.time() - t1) >= 1:
+                    if PV(pvName[p] + 'm').get(timeout = 3) == 1 or (time.time() - t1) >= 1:
                         break
 
                 # wait moving complete
-                while PV(pvName[p] + 'm').get() == 1:
+                while PV(pvName[p] + 'm').get(timeout = 3) == 1:
                     time.sleep(0.2)  # hold here for BUSY flag
                     if ABORT:
                         #PV(pvName[p]+'s').put()
                         self.msg.emit("Move aborted.")
                         break
-                    if PV(pvName[p] + 'm').get() == 0:
+                    if PV(pvName[p] + 'm').get(timeout = 3) == 0:
                         self.msg.emit('Move finished.')
-                        if abs(PV(pvName[p] + 'r').get() - v) >= 0.02:
+                        if abs(PV(pvName[p] + 'r').get(timeout = 3) - v) >= 0.02:
                             error_message = ("<font color=red>" + p + " not moving correctly, value: "
                                              + PV(pvName[p] + "r").get(as_string = True) + "</font>")
                             self.msg.emit(error_message)
                         break
 
-            elif p in ['agm', 'ags']: 
-                if abs(PV(pvName[p] + '.RBV').get() - v) >= 0.005:
+            elif p in ['agm', 'ags']:
+                if abs(PV(pvName[p] + '.RBV').get(timeout = 3) - v) >= 0.005:
                     PV(pvName[p]).put(v)
                     # check moving status
                     t1 = time.time()
-                    while PV(pvName[p] + ".MOVN").get() == 0:  # = 0 not moving; = 1 moving
+                    while PV(pvName[p] + ".MOVN").get(timeout = 3) == 0:  # = 0 not moving; = 1 moving
                         time.sleep(0.1)
-                        if PV(pvName[p] + ".MOVN").get() == 1 or (time.time() - t1) >= 1:
+                        if PV(pvName[p] + ".MOVN").get(timeout = 3) == 1 or (time.time() - t1) >= 1:
                             break
 
                     # wait moving complete
-                    while PV(pvName[p] + ".MOVN").get() == 1:
+                    while PV(pvName[p] + ".MOVN").get(timeout = 3) == 1:
                         time.sleep(0.1) # hold here for BUSY flag
                         if ABORT:
                             #e.caput(pvName[p] + 's')
                             self.msg.emit("Move aborted.")
                             break
-                        if PV(pvName[p] + ".MOVN").get() == 0:
+                        if PV(pvName[p] + ".MOVN").get(timeout = 3) == 0:
                             self.msg.emit('Move finished.')
-                            if abs(PV(pvName[p] + ".RBV").get() - v) >= 0.02:
+                            if abs(PV(pvName[p] + ".RBV").get(timeout = 3) - v) >= 0.02:
                                 error_message = ("<font color=red>" + p + " not moving correctly, value: "
-                                + PV(pvName[p] + ".RBV").get(as_string =True) + "</font>")
+                                + PV(pvName[p] + ".RBV").get(timeout = 3, as_string =True) + "</font>")
+                                self.msg.emit(error_message)
+                            break
+
+            elif p in ['agm', 'ags']:
+                if abs(PV("41a:AGM:Energy.RBV").get(timeout = 3) - v) >= 0.005:
+                    PV(pvName[p]).put(v)
+                    # check moving status
+                    t1 = time.time()
+                    while PV("41a:AGM:Energy.MOVN").get(timeout = 3) == 0:  # = 0 not moving; = 1 moving
+                        time.sleep(0.1)
+                        if PV("41a:AGM:Energy.MOVN").get(timeout = 3) == 1 or (time.time() - t1) >= 1:
+                            break
+
+                    # wait moving complete
+                    while PV("41a:AGM:Energy.MOVN").get(timeout = 3) == 1:
+                        time.sleep(0.1) # hold here for BUSY flag
+                        if ABORT:
+                            #e.caput(pvName[p] + 's')
+                            self.msg.emit("Move aborted.")
+                            break
+                        if PV("41a:AGM:Energy.MOVN").get(timeout = 3) == 0:
+                            self.msg.emit('Move finished.')
+                            if abs(PV("41a:AGM:Energy.RBV").get(timeout = 3) - v) >= 0.02:
+                                error_message = ("<font color=red>" + p + " not moving correctly, value: "
+                                + PV("41a:AGM:Energy.RBV").get(timeout = 3, as_string =True) + "</font>")
                                 self.msg.emit(error_message)
                             break
 
@@ -1407,12 +1411,20 @@ class Scan(QThread):
             '''
             t0 = time.time()
             raw_array = np.array([])
+            record_i = 0
+            error_i = 0
             while (time.time() - t0) <= dwell:  # while loop to get the data within dwell time
                 if (time.time() - t0) % 0.2 <= 0.0001:
-                    raw_array = np.append(raw_array, param['Iph'])  # Read Iph data through epics
+                    record_i += 1
+                    value = param['Iph']
+                    if value == None:
+                        error_i += 1
+                    else:
+                        raw_array = np.append(raw_array, param['Iph'])  # Read Iph data through epics
                     # for i in range(len(plot)):
                     #     raw_array = np.append(raw_array, get_param(plot[i]))
 
+            print("Record i = ", record_i, "Error i = ", error_i)
             current_param = pd.Series(param)  # generate series
 
             # plot_list = [[], [], [], [], []] # prepare five empty list
