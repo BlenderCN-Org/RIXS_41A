@@ -638,14 +638,11 @@ class Command(QWidget):
             # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
-            print('text =', text)
-            print('filename =', sptext[1])
             if space == 1 and text[4]==" ":  # e.g. load filename
                 self.sysReturn(text, "v", True)
-                file_name = sptext[1]+'.txt'
+                file_name = img_dir + sptext[1]#+'.txt'
                 self.loadimage[str].emit(file_name)
-                #self.plot_rixs[str].emit(file_name)
-                spectrum_global.plotRixs(file_name)
+                #spectrum_global.plotRixs(file_name)
 
                 self.sysReturn(file_name+" has been loaded.")
         elif text == 'r':
@@ -888,7 +885,7 @@ class Command(QWidget):
         timer = QTimer(self)
         timer.setSingleShot(False)
         timer.timeout.connect(self.lockInput)
-        timer.start(1000) # repeat every second
+        timer.start(100) # repeat every 0.1 second
 
     def lockInput(self):
         if SCAN:
@@ -1031,10 +1028,8 @@ class ImageWidget(QWidget):
         self.imv.scene.sigMouseMoved.connect(mouseMoved)
 
     def getData(self):
-        global IMGDONE, cmd_global
-        if SAFE: # checked safe
-            # check data OK
-            #raw_img = e.PV("41a:ccd1:image").get() #calling pyepics_ccd_device.py
+        global IMGDONE
+        if SAFE:
             raw_img = pvl.ccd("image")
             print(raw_img)
             img_list = np.asarray(raw_img)  # convert raw image to 1d numpy array
@@ -1063,20 +1058,27 @@ class ImageWidget(QWidget):
 
     def plotImg(self):
         self.imv.setImage(self.imgdata)
+        # self.imgthread=ImagePlot(self.imgdata)
+        # self.imgthread.datasignal.connect(self.imv.setImage)
+        # self.imgthread.start()
 
     def loadImg(self, filename):
         global rixs_img
-        '''
-        raw_data = np.genfromtxt(name, delimiter=',', usecols=1)
+
+        raw_data = np.genfromtxt(filename, delimiter=',')
         data = np.asarray(raw_data)
+        #print('data size = ', np.size(data))
+        #data = np.delete(data, 0)
+        self.imgdata = np.reshape(data, (1024, 2048), order='F')
+        self.plotImg()
+
+        '''
+        raw_data=np.genfromtxt(filename, delimiter=',', usecols=1) # The type of data1 is <class 'numpy.ndarray'>
+        self.imgdata=np.transpose(raw_data[:,0:1024]) #convert raw image to 1d numpy array
         print('data size = ', np.size(data))
         data = np.delete(data, 0)
-        self.imgdata = np.reshape(data, (1024, 2061), order='F')
-        '''
-        raw_data=np.genfromtxt(filename, delimiter=',') # The type of data1 is <class 'numpy.ndarray'>
-        self.imgdata=np.transpose(raw_data[:,0:1024]) #cconvert raw image to 1d numpy array
         rixs_img = np.copy(self.imgdata)
-        self.plotImg()
+        '''
 
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
@@ -1326,6 +1328,15 @@ class Move(QThread):
         BUSY = False
         self.quit()
 
+# class ImagePlot(QThread):
+#     datasignal = pyqtSignal(np.ndarray)
+#     def __init__(self, data):
+#         super(ImagePlot, self).__init__()
+#         self.data = data
+#     def run(self):
+#         self.datasignal.emit(self.data)
+
+
 class Scan(QThread):
     scan_plot = pyqtSignal(list, str, float, float)
     set_data = pyqtSignal(int, list, pd.Series)
@@ -1490,7 +1501,18 @@ class Rixs(QThread): #no dummy now
                 break
             IMGDONE = False
 
-            self.exposethread= Expose()
+
+            t1 = time.time()
+            if i == 0:
+                dt = self.n * (self.t + 3)
+            else:
+                dt = ((time.time() - self.t0) / i) * (self.n - i)  # remaining time
+            dt = round(dt, 2)
+
+            workingSTATUS = ('Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n) +
+                                 ',  remaining time = ' + str(dt) + ' sec')
+
+            self.exposethread = Expose()
             self.exposethread.cmd_msg.connect(cmd_global.sysReturn)
             self.exposethread.get.connect(img_global.getData)
             self.exposethread.plot.connect(img_global.plotImg)
@@ -1498,26 +1520,7 @@ class Rixs(QThread): #no dummy now
             self.exposethread.wait()
 
             self.save_img.emit()
-            t1 = time.time()
-            if i == 0:
-                dt = self.n * (self.t + 3)
-            else:
-                dt = ((time.time() - self.t0) / i) * (self.n - i)  # remaining time
-            dt = round(dt, 2)
-            while ((time.time() - t1) < (self.t + dwell_0)):
-                self.t2 = time.time()
-                workingSTATUS = ('Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n) +
-                                 ',  remaining time = ' + str(dt) + ' sec')
-                if (self.t2 - t1) % 0.2 <= 0.00003:
-                    # QApplication.processEvents()
-                    pass
-                if SAFE:
-                    if IMGDONE:
-                        print('getData() finished.')
-                        break
-                if ABORT:
-                    break
-            # print('while loop takes :',time.time() - t1)
+
             img_number = str(i + 1) + ' image'
             if i > 0:
                 img_number += 's'
@@ -1525,6 +1528,8 @@ class Rixs(QThread): #no dummy now
         workingSTATUS = " "
         self.cmd_msg.emit('Completed taking RIXS images.')
         BUSY = False  # global flag
+
+
 
 
 class Expose(QThread):
@@ -1540,24 +1545,16 @@ class Expose(QThread):
         pvl.ccd('start', 1)  # 1 for activate
         t1 = time.time()
         while pvl.ccd("dataok") == 1:  # check moving
-            if (time.time() - t1) % 0.2 <= 0.0001:
-                pass
-                if pvl.ccd("dataok") == 0:
-                    break
-        t1 = time.time()
-        print('t1 =', t1)
-        if SAFE:
-            j = 0  # a counter to mimic timer
-            while pvl.ccd("dataok") == 0:
-                j += 1
-                if (time.time() - t1) % 0.2 <= 0.0001:
-                    # QApplication.processEvents()
-                    pass
-                if pvl.ccd("dataok") == 1:
-                    break
-                if ABORT:
-                    self.cmd_msg.emit('RIXS aborted')
-                    break
+            pass
+            if pvl.ccd("dataok") == 0:
+                break
+        while pvl.ccd("dataok") == 0:
+            pass
+            if pvl.ccd("dataok") == 1:
+                break
+            if ABORT:
+                self.cmd_msg.emit('RIXS aborted')
+                break
         dt = round(time.time() - t1, 3)
         print('time span in seconds= %s' % dt)
         self.get.emit()
