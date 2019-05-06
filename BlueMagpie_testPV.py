@@ -1,4 +1,4 @@
-#Last edited:20190503 5.30pm
+#Last edited:20190506 5pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -50,7 +50,8 @@ global flag & parameters for RIXS
 '''
 IMGDONE = False
 
-workingSTATUS = ""
+WorkingSTATUS = ""
+CountDOWN = 0
 
 # SETUP_parameters
 #TODO: img?
@@ -141,7 +142,7 @@ def get_param(p):
 
 def convertSeconds(seconds):
     m = str(int(seconds//60)) + ' mins '
-    s = str(round(seconds%60, 2)) + ' secs'
+    s = str(int(seconds%60)) + ' secs'
     if int(seconds // 60) == 0: m = ""
     time_stg = m + s
     return time_stg
@@ -277,17 +278,32 @@ class StatusWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.status_bar)
         self.layoutVertical.addWidget(self.status_box)
+        self.t0 = 0 # for remaining time reference
 
     def show_bar(self):
         q_time = QDateTime.currentDateTime()
         time_str = q_time.toString("yyyy-MM-dd hh:mm:ss")
-        x = str(format(time.time()%1,'.3f'))
-        self.status_bar.setText(time_str+x[1:]+"  Project #0;   PI: Testing;"
+        #x = str(format(time.time()%1,'.1f'))
+        self.status_bar.setText(time_str + "  Project #0;   PI: Testing;"
                                 +" file number: "+ str(int(param['f'])))
 
     def show_text(self):
-        parameter_text = ( "<u>Parameters</u></font><br>"
-                           " AGM: " + Read('agm') + " eV<br>"
+        # called every 0.5 sec
+        if CountDOWN > 0.1:
+            if CountDOWN != self.t0: # reset t0
+                self.t0 = float(CountDOWN) #reference
+                self.t1 = self.t0
+
+            self.t1 -= 0.1
+            if self.t1 < 0: self.t1 = 0
+
+            time_text = " ; remaining time = " + convertSeconds(self.t1)
+        else:
+            self.t0 = 0 # if no WorkingStatus to show
+            time_text = ""
+
+
+        parameter_text = ( " AGM: " + Read('agm') + " eV<br>"
                            " AGS: " + Read('ags') + " eV<br>"
                            " <br>"
                            " entrance slit   s1= " + Read('s1','int') + " &micro;m ; "
@@ -296,18 +312,24 @@ class StatusWidget(QWidget):
                            " <br>"
                            " Sample:  <br>"
                            " x = " + Read('x') + ", y = " + Read('y') + ", z = " + Read('z') + " <br>"
-                           " u = " + Read('u') + ", v = " + Read('v') + ", w = " + Read('w') + " <br>"
-                           " th = "+ Read('th') + ", tth = " + Read('tth')+"<br>"
-                           "   temperatures:  T<sub>a</sub> = " + Read('ta','int') + " K,"+
-                           " T<sub>b</sub> = " + Read('tb','int') + " K<br>"
-                           " I<sub>0</sub> = "+ Read('I0','current') + " Amp,"+
+                           "   temperatures:  T<sub>a</sub> = " + Read('ta','int') + " K,"
+                           " T<sub>b</sub> = " + Read('tb', 'int') + " K<br> <br>"
+                           " th = "+ Read('th') + ", tth = " + Read('tth')+"<br> <br>"
+                           " I<sub>0</sub> = "+ Read('I0','current') + " Amp,"
                            " I<sub>ph</sub> = "+ Read('Iph','current') + " Amp <br>"
                            " <br>"
                            " RIXS imager:  <br>"
                            " temperature = " + Read('Tccd',1) +" \u2103"+ ',   gain = ' + Read('gain',0) + " <br>"
-                           " <br><font color =red>"
-                           + workingSTATUS +"</font>")
-        self.status_box.setText(parameter_text)
+                           " <br>")
+        status_text = "%s <font color =red> %s %s </font>"%(parameter_text, WorkingSTATUS, time_text)
+        self.status_box.setText(status_text)
+
+    # def setString(self, string=None): #destroy global parameters
+    #     string = WorkingSTATUS
+    #     return string
+    #
+    # def setTime(self, t=None):
+    #     return t
 
         #Terminal
 class Command(QWidget):
@@ -500,7 +522,7 @@ class Command(QWidget):
     def send(self, txt):
         self.command_input.setDisabled(True)
         text = txt
-        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, workingSTATUS, spectrum_global
+        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, WorkingSTATUS, spectrum_global, CountDOWN
         # pre-formatting
         if len(text) != 0:
             text = self.preFormatting(text)
@@ -593,7 +615,7 @@ class Command(QWidget):
                     t = sptext[1]
                     BUSY=True
                     self.sysReturn(text, "v", True)
-                    workingSTATUS = "Taking image... ; Exposure time ="+str(t)
+                    WorkingSTATUS = "Taking image... ; Exposure time ="+str(t)
                     if SAFE:
                         pvl.ccd("exposure",t)
                         self.sysReturn("getting ccd image ...")
@@ -602,7 +624,7 @@ class Command(QWidget):
                         self.sysReturn("generating random image by numpy...")
                     self.imageExposure()
                     BUSY = False  # global flag
-                    workingSTATUS = " "
+                    WorkingSTATUS = " "
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("input error. use:   img + exposure_time", "err")
@@ -624,7 +646,6 @@ class Command(QWidget):
                     tt = datetime.datetime.now()
                     self.sysReturn('RIXS ' + str(int(param['f'])) + ' begins at ' + tt.strftime("%c"))
                     self.rixsthread = Rixs(t, n)
-                    self.rixsthread.save_img.connect(img_global.saveImg)
                     self.rixsthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.rixsthread.start()
                 else:
@@ -643,8 +664,7 @@ class Command(QWidget):
                 file_name = img_dir + sptext[1]#+'.txt'
                 self.loadimage[str].emit(file_name)
                 #spectrum_global.plotRixs(file_name)
-
-                self.sysReturn(file_name+" has been loaded.")
+                self.sysReturn(sptext[1]+" has been loaded.")
         elif text == 'r':
             self.sysReturn(text,"v")
             msg='parameter ranges:\n'
@@ -653,7 +673,6 @@ class Command(QWidget):
             self.sysReturn(msg)
 
         elif text == 'u':
-            #status_global.show_text()
             self.sysReturn(text,"v")
             self.sysReturn("Parameter values have been updated.")
 
@@ -936,7 +955,7 @@ class Command(QWidget):
         print('time span in seconds= %s'%dt)
         print('before get data')
         img_global.getData()
-        img_global.plotImg()
+        img_global.showImg()
 
     # def readFile(self, name):
     #     #==============Macro start===============
@@ -998,7 +1017,7 @@ class ImageWidget(QWidget):
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
 
-        self.plotImg()
+        self.showImg()
         # Widget layout
         self.status_bar = QLabel(self)
         self.layoutVertical = QVBoxLayout(self)
@@ -1054,9 +1073,9 @@ class ImageWidget(QWidget):
         file_name0 = datestamp + '_img_' + str(file_no)     # short ver. for display
         file_name = img_dir + file_name0   # for saving in correct dir
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',')
-        cmd_global.sysReturn('Image data saved as: '+file_name0)
+        cmd_global.sysReturn('Image data saved: '+file_name0)
 
-    def plotImg(self):
+    def showImg(self):
         self.imv.setImage(self.imgdata)
         # self.imgthread=ImagePlot(self.imgdata)
         # self.imgthread.datasignal.connect(self.imv.setImage)
@@ -1070,7 +1089,7 @@ class ImageWidget(QWidget):
         #print('data size = ', np.size(data))
         #data = np.delete(data, 0)
         self.imgdata = np.reshape(data, (1024, 2048), order='F')
-        self.plotImg()
+        self.showImg()
 
         '''
         raw_data=np.genfromtxt(filename, delimiter=',', usecols=1) # The type of data1 is <class 'numpy.ndarray'>
@@ -1229,7 +1248,7 @@ class StatextUpdate(QThread):
     def run(self):
         while True:
             self.refresh.emit()
-            time.sleep(0.5)
+            time.sleep(0.1)
 
 class Move(QThread):
     msg = pyqtSignal(str)
@@ -1240,7 +1259,7 @@ class Move(QThread):
         # list all write PVs and call later
 
     def run(self):
-        global cmd_global, workingSTATUS, BUSY
+        global cmd_global, WorkingSTATUS, BUSY
         # p : index(name) of parameter, should be a string; v : range-checked value
         p, v, BUSY= self.p, self.v, True
         if checkSafe(p):  # check device safety
@@ -1349,7 +1368,7 @@ class Scan(QThread):
         self.data_matrix = pd.DataFrame(columns=param_index)
 
     def run(self):
-        global file_no, param, BUSY, workingSTATUS, SCAN
+        global file_no, param, BUSY, WorkingSTATUS, SCAN, CountDOWN
         SCAN = True
         t1 = time.time()
         plot, scan_param, x1, x2= self.plot, self.scan_param, self.x1, self.x2
@@ -1357,7 +1376,7 @@ class Scan(QThread):
 
         x2_new = x1 + step * n
         scan_x = []  # the empty list for the scanning parameter
-        workingSTATUS = "moving " + scan_param + " ..."
+        WorkingSTATUS = "moving " + scan_param + " ..."
 
         # set_param(scan_param, x1)  # set the initial parameter value
         self.start_point.start()
@@ -1390,8 +1409,10 @@ class Scan(QThread):
             else:
                 remaining_time = (loop_time / i) * (n + 1 - i)
 
-            workingSTATUS = ('scanning ' + scan_param + '... ' + str(i + 1) + '/' + str(n + 1) +
-                             ', remaining time = ' + convertSeconds(remaining_time))
+            WorkingSTATUS = ('scanning ' + scan_param + '... ' + str(i + 1) + '/' + str(n + 1))
+                             #', remaining time = ' + convertSeconds(remaining_time))
+            CountDOWN = float(remaining_time)
+
             '''
             Set scanning parameters
             '''
@@ -1448,7 +1469,8 @@ class Scan(QThread):
         '''
         Loop finished
         '''
-        workingSTATUS = " "
+        WorkingSTATUS = ""
+        CountDown = 0
         print('[data_matrix]')
         print(self.data_matrix)
 
@@ -1480,7 +1502,6 @@ class Scan(QThread):
 
 class Rixs(QThread): #no dummy now
     cmd_msg = pyqtSignal(str)
-    save_img = pyqtSignal()
 
     def __init__(self, t, n):
         super(Rixs, self).__init__()
@@ -1488,44 +1509,43 @@ class Rixs(QThread): #no dummy now
         self.n = n
 
     def run(self):
-        global file_no, param, BUSY, workingSTATUS, cmd_global, img_global
+        global file_no, param, BUSY, WorkingSTATUS, cmd_global, img_global, CountDOWN
         BUSY = True
         pvl.ccd('exposure', self.t)
-        dwell_0 = 5  # extra time for the while loop
         self.t0 = time.time()
+        self.taken_i = 0
         for i in range(self.n):
             if i == 0:
-                workingSTATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n)
+                WorkingSTATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n)
             # print('i = ',i,'   ABORT =', ABORT)
             if ABORT:
                 break
-            IMGDONE = False
+            IMGDONE = False#?
+            t1 = time.time()#?
 
-
-            t1 = time.time()
             if i == 0:
                 dt = self.n * (self.t + 3)
             else:
                 dt = ((time.time() - self.t0) / i) * (self.n - i)  # remaining time
-            dt = round(dt, 2)
+            dt = round(dt, 2) # estimated remaining time
 
-            workingSTATUS = ('Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n) +
-                                 ',  remaining time = ' + str(dt) + ' sec')
+            WorkingSTATUS = ('Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n))
+                            #',  remaining time = ' + str(dt) + ' sec')
+            CountDOWN = dt
 
-            self.exposethread = Expose()
+            self.exposethread = Expose(self.t)
             self.exposethread.cmd_msg.connect(cmd_global.sysReturn)
             self.exposethread.get.connect(img_global.getData)
-            self.exposethread.plot.connect(img_global.plotImg)
+            self.exposethread.show.connect(img_global.showImg)
+            self.exposethread.save.connect(img_global.saveImg)
             self.exposethread.start()
             self.exposethread.wait()
+            if ABORT == False: self.taken_i += 1
 
-            self.save_img.emit()
-
-            img_number = str(i + 1) + ' image'
-            if i > 0:
-                img_number += 's'
-            self.cmd_msg.emit(img_number + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
-        workingSTATUS = " "
+        WorkingSTATUS = " "
+        CountDOWN = 0
+        string = str(self.taken_i) + " images" if self.taken_i != 1 else  str(self.taken_i) + "image"
+        self.cmd_msg.emit(string + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
         self.cmd_msg.emit('Completed taking RIXS images.')
         BUSY = False  # global flag
 
@@ -1534,39 +1554,48 @@ class Rixs(QThread): #no dummy now
 
 class Expose(QThread):
     get = pyqtSignal()
-    plot = pyqtSignal()
+    show = pyqtSignal()
+    save = pyqtSignal()
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self, t):
         super(Expose, self).__init__()
+        self.t = t
 
     def run(self):
-        global file_no, workingSTATUS
+        global file_no, WorkingSTATUS
         pvl.ccd('start', 1)  # 1 for activate
         t1 = time.time()
-        while pvl.ccd("dataok") == 1:  # check moving
+        while pvl.ccd("dataok") == 1:   # check for starting exposure
             pass
             if pvl.ccd("dataok") == 0:
                 break
-        while pvl.ccd("dataok") == 0:
-            pass
-            if pvl.ccd("dataok") == 1:
-                break
-            if ABORT:
-                self.cmd_msg.emit('RIXS aborted')
-                break
-        dt = round(time.time() - t1, 3)
-        print('time span in seconds= %s' % dt)
-        self.get.emit()
-        self.plot.emit()
 
+        while (time.time() - t1) < abs(self.t-0.5): # wait for exposure
+            time.sleep(0.5)
+            if ABORT:                               # check ABORT every 0.5 sec
+                pvl.ccd("stop", 1)
+                self.cmd_msg.emit('RIXS aborted, CCD exposure stopped.')
+                break
+
+        if ABORT == False:
+            while pvl.ccd("dataok") == 0:
+                pass
+                if pvl.ccd("dataok") == 1:
+                    break
+
+            dt = round(time.time() - t1, 3)
+            print('time span in seconds= %s' % dt)
+            self.get.emit()
+            self.show.emit()  # show image
+            self.save.emit()
 
 def main():
     global status_global
     app = QApplication(sys.argv)
     display_gui = BlueMagpie()
 
-    bar_update = BarUpdate()  # bar 0.2 sec
+    bar_update = BarUpdate()  # bar 0.5 sec
     bar_update.refresh.connect(status_global.show_bar)
     bar_update.start()
 
