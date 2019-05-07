@@ -129,7 +129,7 @@ if SAFE:
     pvl.ccd("exposure", 2)
     pvl.ccd("gain", 10)
     pvl.ccd("acqmode", 2) #0: video; 1: single (obsolete); 2: accumulation
-    pvl.ccd("accutype", 2) #0: raw image; 2: differnece image
+    pvl.ccd("accutype", 0) #0: raw image; 2: differnece image
 
 def get_param(p):
     if checkSafe(p):
@@ -187,7 +187,9 @@ def Read(p, form=3):
         elif form == 'int': string = str(int(value))
         elif form == 'switch':
             string = 'close' if value == 0 else 'open'
-        else: string = str(format(value, '.3f'))
+        elif form == 2: string = str(format(value, '.2f'))
+        else:
+            string = str(format(value, '.3f'))
 
         # real marked blue
         if real == 0: string = '<font color=gray>'+ string +'</font>'
@@ -272,7 +274,7 @@ class StatusWidget(QWidget):
         self.status_bar = QLabel(self)
         self.status_box = QTextEdit(self)
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
-        self.status_box.setFont(QtGui.QFont("UbuntuMono",12))
+        self.status_box.setFont(QtGui.QFont("UbuntuMono",11))
         self.status_box.setReadOnly(True)
         # Widget layout
         self.layoutVertical = QVBoxLayout(self)
@@ -288,13 +290,13 @@ class StatusWidget(QWidget):
                                 +" file number: "+ str(int(param['f'])))
 
     def show_text(self):
-        # called every 0.5 sec
-        if CountDOWN > 0.1:
+        # called every 1 sec
+        if CountDOWN > 1:
             if CountDOWN != self.t0: # reset t0
                 self.t0 = float(CountDOWN) #reference
                 self.t1 = self.t0
 
-            self.t1 -= 0.1
+            self.t1 -= 1
             if self.t1 < 0: self.t1 = 0
 
             time_text = " ; remaining time = " + convertSeconds(self.t1)
@@ -311,10 +313,10 @@ class StatusWidget(QWidget):
                            " shutter: " + Read('shutter','switch')+ "<br>"
                            " <br>"
                            " Sample:  <br>"
-                           " x = " + Read('x') + ", y = " + Read('y') + ", z = " + Read('z') + " <br>"
+                           " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + "mm <br>"
                            "   temperatures:  T<sub>a</sub> = " + Read('ta','int') + " K,"
                            " T<sub>b</sub> = " + Read('tb', 'int') + " K<br> <br>"
-                           " th = "+ Read('th') + ", tth = " + Read('tth')+"<br> <br>"
+                           " th = "+ Read('th',form = 2) + "&#176;, tth = " + Read('tth', form = 2)+"&#176;<br> <br>"
                            " I<sub>0</sub> = "+ Read('I0','current') + " Amp,"
                            " I<sub>ph</sub> = "+ Read('Iph','current') + " Amp <br>"
                            " <br>"
@@ -1248,7 +1250,7 @@ class StatextUpdate(QThread):
     def run(self):
         while True:
             self.refresh.emit()
-            time.sleep(0.1)
+            time.sleep(1)
 
 class Move(QThread):
     msg = pyqtSignal(str)
@@ -1599,7 +1601,7 @@ def main():
     bar_update.refresh.connect(status_global.show_bar)
     bar_update.start()
 
-    text_update = StatextUpdate() # status 0.5 sec
+    text_update = StatextUpdate() # status 1 sec
     text_update.refresh.connect(status_global.show_text)
     text_update.start()
 
