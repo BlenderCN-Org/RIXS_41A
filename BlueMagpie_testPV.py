@@ -1,4 +1,4 @@
-#Last edited:20190506 5pm
+#Last edited:20190508 3pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -90,7 +90,7 @@ param_range = pd.Series({'t':[0,1000], 's1':[1,30], 's2':[5,200], 'agm': [480, 1
                           'v': [-10,10], 'w': [-10,10], 'th':[-5, 185], 'tth':[-35, 0],
                         'ta':[5,350], 'tb':[5,350], 'I0': [0,1], 'Iph': [0,1], 'Tccd': [-100, 30], 'gain': [0, 100]})
 
-# Individual device control
+# Individual device safety control
 Device = pd.Series({
         "hexapod":0,"ccd":1,
         "th":0, "tth":0,
@@ -208,7 +208,7 @@ class BlueMagpie(QMainWindow):
         global status_global
         QMainWindow.__init__(self)
         # Window attributes
-        self.setFixedSize(1300, 820)
+        self.setFixedSize(1300, 780)
 #        self.setFixedSize(1900, 1600)
         self.setWindowTitle('TPS blue magpie')
 
@@ -283,8 +283,10 @@ class StatusWidget(QWidget):
         self.t0 = 0 # for remaining time reference
 
     def show_bar(self):
-        q_time = QDateTime.currentDateTime()
-        time_str = q_time.toString("yyyy-MM-dd hh:mm:ss")
+        #q_time = QDateTime.currentDateTime()
+        #time_str = q_time.toString("yyyy-MM-dd hh:mm:ss")
+        tt = datetime.datetime.now()
+        time_str = tt.strftime("%c")
         #x = str(format(time.time()%1,'.1f'))
         self.status_bar.setText(time_str + "  Project #0;   PI: Testing;"
                                 +" file number: "+ str(int(param['f'])))
@@ -1140,11 +1142,12 @@ class SpectrumWidget(QWidget):
         self.plotWidget.addItem(self.vLine, ignoreBounds=True)
         self.plotWidget.addItem(self.hLine, ignoreBounds=True)
         
-    def mouseMoved(pos):
-        mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
-        self.vLine.setPos(mousePoint.x())
-        self.hLine.setPos(mousePoint.y())
-        self.status_bar.setText("pos = ({:.2f}, {:.2f})".format(mousePoint.x(), mousePoint.y()))
+        def mouseMoved(pos):
+            mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
+            self.vLine.setPos(mousePoint.x())
+            self.hLine.setPos(mousePoint.y())
+            self.status_bar.setText("pos = ({:.2f}, {:.2f})".format(mousePoint.x(), mousePoint.y()))
+
         self.plotWidget.scene().sigMouseMoved.connect(mouseMoved)
         
     def enterEvent(self, event):
