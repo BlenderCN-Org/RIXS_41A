@@ -164,7 +164,7 @@ Dir for datasaving and macro
  - sub folders including log, macro, and data
  - TODO: build class?
 '''
-file_no = 0  #
+file_no = 0  # read file_no from exist log
 
 dir_date = datetime.datetime.today().strftime("%Y_%b%d")
 dir_name = "project #0"
@@ -1097,18 +1097,21 @@ class ImageWidget(QWidget):
             img_np = np.reshape(img_list, (1024, 2048), order='F')
         self.imgdata = img_np
 
-    def saveImg(self):
-        global file_no
+    def saveImg(self, img_number):
         '''
         save file as .txt
-        name format example: 2019_Apr18_142200(Hr/Min/Sec)
+        name format example: 20190508_img001(Hr/Min/Sec)
         optional serial timestamp: %H%M%S 
         '''
-        datestamp = datetime.datetime.today().strftime("%Y_%b%d")  # Format : Year_MonDt
-        file_no += 1
-        file_name0 = datestamp + '_img_' + str(file_no)  # short ver. for display
+        if img_number//100 == 0:
+            img_number = "00" + str(img_number) if img_number // 10 == 0 else "0" + str(img_number)
+        else:
+            img_number = str(img_number)
+
+        datestamp = datetime.datetime.today().strftime("%Y%m%d")  # Format : Year_MonDt
+        file_name0 = "rixs_%s_%s_img%s"%(datestamp, str(file_no), img_number)
         file_name = img_dir + file_name0  # for saving in correct dir
-        np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',')
+        np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',') # image data format
         cmd_global.sysReturn('Image data saved: ' + file_name0)
 
     def showImg(self):
@@ -1421,33 +1424,26 @@ class Scan(QThread):
             '''
             t0 = time.time()
             raw_array = np.array([])
-            record_i = 0
             while (time.time() - t0) <= dwell:  # while loop to get the data within dwell time
                 if (time.time() - t0) % 0.2 <= 0.0001:
-                    record_i += 1
-                    raw_array = np.append(raw_array, pvl.getVal('Iph'))   # Read Iph data through epics
+                    #raw_array = np.append(raw_array, pvl.getVal('Iph'))   # Read Iph data through epics
 
-                    # for i in range(len(plot)):
-                    #     raw_array = np.append(raw_array, get_param(plot[i]))
+                    for i in range(len(plot)):
+                        value = pvl.getVal(plot[i]) if checkSafe(plot[i]) else param[plot[i]]
+                        raw_array = np.append(raw_array, value)
 
-            #print("Record i = ", record_i, "Error i = ", error_i)
             current_param = pd.Series(param)  # generate series
 
-            # plot_list = [[], [], [], [], []] # prepare five empty list
-            # for i in range(raw_array.size):
-            #     plot_list[int(i%len(plot))].append(raw_array[i])
+            plot_list = [[], [], [], [], []] # prepare five empty list
+            for i in range(raw_array.size):
+                plot_list[int(i%len(plot))].append(raw_array[i])
 
             # average
-            # for i in range(len(plot)):
-            #     data_array = np.array(plot_list[i])
-            #     data_array = np.unique(data_array)  # remove the overlap
-            #     data_ave = np.mean(data_array)
-            #     current_param[plot[i]] = float(data_ave)  # replace param['Iph'] by averaged data
-
-            data_array = np.array(raw_array)
-            data_array = np.unique(data_array)  # remove the overlap
-            data_ave = np.mean(data_array)
-            current_param['Iph'] = float(data_ave)  # replace param['Iph'] by averaged data
+            for i in range(len(plot)):
+                data_array = np.array(plot_list[i])
+                data_array = np.unique(data_array)  # remove the overlap
+                data_ave = np.mean(data_array)
+                current_param[plot[i]] = float(data_ave)  # replace param['Iph'] by averaged data
 
             current_param['t'] = round(loop_time, 2)
             self.data_matrix.loc[len(self.data_matrix), :] = current_param.tolist()  # appending param to data_matrix
@@ -1499,13 +1495,15 @@ class Rixs(QThread):  # no dummy now
         super(Rixs, self).__init__()
         self.t = t
         self.n = n
+        self.taken_i = 0
+        self.img_number = 0
 
     def run(self):
         global file_no, param, BUSY, WorkingSTATUS, cmd_global, img_global, CountDOWN
+        file_no += 1
         BUSY = True
         pvl.ccd('exposure', self.t)
         self.t0 = time.time()
-        self.taken_i = 0
         for i in range(self.n):
             if i == 0:
                 WorkingSTATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n)
@@ -1525,35 +1523,38 @@ class Rixs(QThread):  # no dummy now
             # ',  remaining time = ' + str(dt) + ' sec')
             CountDOWN = dt
 
-            self.exposethread = Expose(self.t)
+            self.img_number += 1
+            self.exposethread = Expose(self.t, self.img_number)
             self.exposethread.cmd_msg.connect(cmd_global.sysReturn)
             self.exposethread.get.connect(img_global.getData)
             self.exposethread.show.connect(img_global.showImg)
-            self.exposethread.save.connect(img_global.saveImg)
+            self.exposethread.save[int].connect(img_global.saveImg)
             self.exposethread.start()
             self.exposethread.wait()
-            if ABORT == False: self.taken_i += 1
+            if ABORT == False:
+                self.taken_i += 1
+
 
         WorkingSTATUS = " "
         CountDOWN = 0
         string = str(self.taken_i) + " images" if self.taken_i != 1 else str(self.taken_i) + "image"
         self.cmd_msg.emit(string + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
-        self.cmd_msg.emit('Completed taking RIXS images.')
         BUSY = False  # global flag
 
 
 class Expose(QThread):
     get = pyqtSignal()
     show = pyqtSignal()
-    save = pyqtSignal()
+    save = pyqtSignal(int)
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self, t):
+    def __init__(self, t, n):
         super(Expose, self).__init__()
         self.t = t
+        self.n = n
 
     def run(self):
-        global file_no, WorkingSTATUS
+        global WorkingSTATUS
         pvl.ccd('start', 1)  # 1 for activate
         t1 = time.time()
         while pvl.ccd("dataok") == 1:  # check for starting exposure
@@ -1578,7 +1579,7 @@ class Expose(QThread):
             print('time span in seconds= %s' % dt)
             self.get.emit()
             self.show.emit()  # show image
-            self.save.emit()
+            self.save[int].emit(self.n)
 
 
 def main():
