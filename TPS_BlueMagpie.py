@@ -121,7 +121,10 @@ def checkMoving(p):  # for StatusWidget display only
     if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'agm', 'ags']:
         if pvl.movStat(p) == 1:  # 1: moving, 0: stop
             return True
-    else:  # including gain
+        else:  # including gain
+            return False
+    else:
+        print("p = ", p, " is not a checkable parameter")
         return False
 
 
@@ -204,7 +207,7 @@ def Read(p, form=3):
 
         # real marked blue
         if real == 0: string = '<font color=gray>' + string + '</font>'
-        if real == 1:
+        if real == 1 and p not in ['Tccd', 'I0',  'gain', 'Iph']:
             if checkMoving(p):
                 string = '<font color=blue>' + string + '</font>'
 
@@ -1305,83 +1308,32 @@ class Move(QThread):
         # p : index(name) of parameter, should be a string; v : range-checked value
         p, v, BUSY = self.p, self.v, True
         if checkSafe(p):  # check device safety
-            if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth']:
-                PV(pvName[p] + 'w').put(v)  # test put(v,wait=True)
-                # check moving status
+            if (p in param_index0) and (p not in ['Tccd', 'gain','ta']):
+                pvl.putVal(p, v)
                 t1 = time.time()
-                while PV(pvName[p] + 'm').get(timeout=3) == 0:  # = 0 not moving; = 1 moving
+                while checkMoving(p) == False:  # = 0 not moving; = 1 moving
                     time.sleep(0.2)
-                    if PV(pvName[p] + 'm').get(timeout=3) == 1 or (time.time() - t1) >= 1:
+                    if checkMoving(p) or (time.time() - t1) >= 1:
                         break
 
                 # wait moving complete
-                while PV(pvName[p] + 'm').get(timeout=3) == 1:
+                while checkMoving(p) == True:
                     time.sleep(0.2)  # hold here for BUSY flag
                     if ABORT:
                         # PV(pvName[p]+'s').put()
                         self.msg.emit("Move aborted.")
                         break
-                    if PV(pvName[p] + 'm').get(timeout=3) == 0:
+                    if checkMoving(p) == False:
                         self.msg.emit('Move finished.')
-                        if abs(PV(pvName[p] + 'r').get(timeout=3) - v) >= 0.02:
+                        if abs(pvl.getVal(p) - v) >= 0.02:
                             error_message = ("<font color=red>" + p + " not moving correctly, value: "
-                                             + PV(pvName[p] + "r").get(as_string=True) + "</font>")
+                                             + str(pvl.getVal(p)) + "</font>")
                             self.msg.emit(error_message)
                         break
 
-            elif p in ['agm', 'ags']:
-                if abs(PV(pvName[p] + '.RBV').get(timeout=3) - v) >= 0.005:
-                    PV(pvName[p]).put(v)
-                    # check moving status
-                    t1 = time.time()
-                    while PV(pvName[p] + ".MOVN").get(timeout=3) == 0:  # = 0 not moving; = 1 moving
-                        time.sleep(0.1)
-                        if PV(pvName[p] + ".MOVN").get(timeout=3) == 1 or (time.time() - t1) >= 1:
-                            break
-
-                    # wait moving complete
-                    while PV(pvName[p] + ".MOVN").get(timeout=3) == 1:
-                        time.sleep(0.1)  # hold here for BUSY flag
-                        if ABORT:
-                            # e.caput(pvName[p] + 's')
-                            self.msg.emit("Move aborted.")
-                            break
-                        if PV(pvName[p] + ".MOVN").get(timeout=3) == 0:
-                            self.msg.emit('Move finished.')
-                            if abs(PV(pvName[p] + ".RBV").get(timeout=3) - v) >= 0.02:
-                                error_message = ("<font color=red>" + p + " not moving correctly, value: "
-                                                 + PV(pvName[p] + ".RBV").get(timeout=3, as_string=True) + "</font>")
-                                self.msg.emit(error_message)
-                            break
-
-            elif p in ['agm', 'ags']:
-                if abs(PV("41a:AGM:Energy.RBV").get(timeout=3) - v) >= 0.005:
-                    PV(pvName[p]).put(v)
-                    # check moving status
-                    t1 = time.time()
-                    while PV("41a:AGM:Energy.MOVN").get(timeout=3) == 0:  # = 0 not moving; = 1 moving
-                        time.sleep(0.1)
-                        if PV("41a:AGM:Energy.MOVN").get(timeout=3) == 1 or (time.time() - t1) >= 1:
-                            break
-
-                    # wait moving complete
-                    while PV("41a:AGM:Energy.MOVN").get(timeout=3) == 1:
-                        time.sleep(0.1)  # hold here for BUSY flag
-                        if ABORT:
-                            # e.caput(pvName[p] + 's')
-                            self.msg.emit("Move aborted.")
-                            break
-                        if PV("41a:AGM:Energy.MOVN").get(timeout=3) == 0:
-                            self.msg.emit('Move finished.')
-                            if abs(PV("41a:AGM:Energy.RBV").get(timeout=3) - v) >= 0.02:
-                                error_message = ("<font color=red>" + p + " not moving correctly, value: "
-                                                 + PV("41a:AGM:Energy.RBV").get(timeout=3, as_string=True) + "</font>")
-                                self.msg.emit(error_message)
-                            break
-
             elif p == 'ta':
-                PV(pvName['heater']).put(1)
-                PV(pvName[p]).put(v)
+                pvl.putVal('heater', 1)
+                pvl.putVal(p, v)
             elif p in ['Tccd', 'gain']:
                 pvl.ccd(p, v)
         else:
@@ -1470,19 +1422,15 @@ class Scan(QThread):
             t0 = time.time()
             raw_array = np.array([])
             record_i = 0
-            error_i = 0
             while (time.time() - t0) <= dwell:  # while loop to get the data within dwell time
                 if (time.time() - t0) % 0.2 <= 0.0001:
                     record_i += 1
-                    value = param['Iph']
-                    if value == None:
-                        error_i += 1
-                    else:
-                        raw_array = np.append(raw_array, param['Iph'])  # Read Iph data through epics
+                    raw_array = np.append(raw_array, pvl.getVal('Iph'))   # Read Iph data through epics
+
                     # for i in range(len(plot)):
                     #     raw_array = np.append(raw_array, get_param(plot[i]))
 
-            print("Record i = ", record_i, "Error i = ", error_i)
+            #print("Record i = ", record_i, "Error i = ", error_i)
             current_param = pd.Series(param)  # generate series
 
             # plot_list = [[], [], [], [], []] # prepare five empty list
@@ -1513,7 +1461,7 @@ class Scan(QThread):
         Loop finished
         '''
         WorkingSTATUS = ""
-        CountDown = 0
+        CountDOWN = 0
         print('[data_matrix]')
         print(self.data_matrix)
 

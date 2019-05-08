@@ -1,5 +1,5 @@
 import epics as e
-from epics import PV
+from epics import PV, ca
 import time
 import numpy as np
 
@@ -15,7 +15,7 @@ moving = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:hexap
               tth="41a:sample:tthm")
 
 #Put Value
-putvalue = dict(agm="41a:AGM:Energy.RBV", ags="41a:AGS:Energy.RBV", x="41a:hexapod:xw", y="41a:hexapod:yw",
+putvalue = dict(agm="41a:AGM:Energy.VAL", ags="41a:AGS:Energy.VAL", x="41a:hexapod:xw", y="41a:hexapod:yw",
                z="41a:hexapod:zw", u="41a:hexapod:uw", v="41a:hexapod:vw", w="41a:hexapod:ww", th="41a:sample:thw",
                tth="41a:sample:tthw", heater="41a:sample:heater", ta="41a:sample:tmp1w")
 
@@ -40,10 +40,12 @@ def movStat(p):
 
 def ccd(p, value=None):
     keyvalue = ccdict[p] if p != "gain" else reading[p]
-    if (p not in ["dataok", "image"]) and (value != None):
+    if (p not in ["dataok", "image"]) and (value != None):  # put_value for ccd parameters
         pv_list[pvname_list.index(keyvalue)].put(value)
     elif (p == "image"):
-        #pv_list[pvname_list.index(keyvalue)].get(timeout=2)
         return e.caget("41a:ccd1:image")
     else:
         return pv_list[pvname_list.index(keyvalue)].get()
+
+def putVal(p, value):
+    PV(putvalue[p]).put(value)
