@@ -1,4 +1,4 @@
-# Last edited:20190508 3pm
+# Last edited:20190508 5pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -1316,15 +1316,13 @@ class Move(QThread):
                 t1 = time.time()
                 while checkMoving(p) == False:  # = 0 not moving; = 1 moving
                     time.sleep(0.2)
-                    if checkMoving(p) or (time.time() - t1) >= 1:
+                    if checkMoving(p) or (time.time() - t1) >= 1 or ABORT:
                         break
 
                 # wait moving complete
-                while checkMoving(p) == True:
+                while checkMoving(p) == True and ABORT == False:
                     time.sleep(0.2)  # hold here for BUSY flag
                     if ABORT:
-                        # PV(pvName[p]+'s').put()
-                        self.msg.emit("Move aborted.")
                         break
                     if checkMoving(p) == False:
                         self.msg.emit('Move finished.')
