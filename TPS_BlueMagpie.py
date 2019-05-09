@@ -257,7 +257,7 @@ class BlueMagpie(QMainWindow):
 
     def quitApplication(self):
         global cmd_global
-        cmd_global.fullLog("APP CLOSED")
+        cmd_global.fullLog("APP_CLOSED") #using space will cause pd reading problem
         qApp.quit()
 
 class Panel(QWidget):
@@ -414,11 +414,23 @@ class Command(QWidget):
         self.logname = str(dir_date) + "_commandlog"
         '''
         Full log (for KeyPressEvent function and file number)
+         - inherit all log from same day.
         '''
-        self.fullog_i = 0
+        self.fullog_name = log_dir + str(dir_date) + "_fullog.txt"  # Example: 20190509_fullog.txt
         self.fullog_col = ['Time', 'Text'] + param_index
-        self.fullog_name = log_dir + str(dir_date) + "_fullog" # Example:
-        self.fullog = pd.DataFrame(columns = self.fullog_col)
+        global file_no
+        if os.path.exists(self.fullog_name):
+            data = pd.read_csv(self.fullog_name, header=0, delimiter=" ")
+            file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
+            self.fullog = data[data['Text'] != "APP_CLOSED"]
+            self.fullog_i = len(self.fullog)
+        else:
+            self.fullog_i = 0
+            self.fullog = pd.DataFrame(columns = self.fullog_col)
+            file = open(self.fullog_name, "a")
+            file.write(" ".join(self.fullog_col) + "\n")
+            file.close()
+
 
         '''
         Abort Button
@@ -482,16 +494,18 @@ class Command(QWidget):
     def keyPressEvent(command_input, event): #detect keypress event in command_input area
         global cmd_global
         size = len(cmd_global.fullog)
+
         if event.key() == Qt.Key_Up and 0 < cmd_global.fullog_i <= size:
             cmd_global.fullog_i -= 1
             text = cmd_global.fullog['Text'][cmd_global.fullog_i]
             cmd_global.command_input.setText(text)
         elif event.key() == Qt.Key_Down and 0 <= cmd_global.fullog_i <= size-1:
             cmd_global.fullog_i += 1
-            text = cmd_global.fullog['Text'][cmd_global.fullog_i] if cmd_global.fullog_i <  size-1 else ""
+            text = cmd_global.fullog['Text'][cmd_global.fullog_i] if cmd_global.fullog_i < size - 1 else ""
             cmd_global.command_input.setText(text)
         else:
             super(Command, command_input).keyPressEvent(event)
+
 
         '''
         Log and show
@@ -552,7 +566,7 @@ class Command(QWidget):
 
     def fullLog(self,text): # used in self.send and closing App
         row = [datetime.datetime.now().isoformat(sep="_", timespec='seconds'), text] + param.astype(str).values.tolist()
-        file = open(self.fullog_name + ".txt", "a")
+        file = open(self.fullog_name, "a")
         file.write(" ".join(row) + "\n")
         file.close()
         self.fullog.loc[len(self.fullog), :] = row  # append new_row to dataframe of logging
