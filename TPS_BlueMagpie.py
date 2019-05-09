@@ -27,6 +27,33 @@ rixs_data = None  # RIXS spectrum
 rixs_img = None  # RIXS image data, np.ndrray
 
 '''
+Dir for datasaving and macro
+ - create a project folder named after date
+ - sub folders including log, macro, and data
+ - TODO: build class?
+'''
+file_no = 0  # read file_no from exist log
+
+dir_date = datetime.datetime.today().strftime("%Y_%b%d")
+dir_name = "project #0"
+current_path = os.getcwd()
+
+sla = '\\' if ('\\' in current_path) else '/'
+
+project_path = str(current_path) + sla + dir_name + sla
+macro_dir = str(project_path) + 'macro' + sla
+log_dir = str(project_path) + 'log' + sla
+data_dir = str(project_path) + 'data' + sla
+img_dir = data_dir + 'img' + sla
+
+if not os.path.exists(dir_name):
+    os.makedirs(project_path)
+    os.makedirs(macro_dir)
+    os.makedirs(log_dir)
+    os.makedirs(data_dir)
+    os.makedirs(img_dir)
+
+'''
 Abort
  - execution flag for commands.
    default : False
@@ -57,7 +84,7 @@ CountDOWN = 0
 # TODO: img?
 param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph',
                'imager', 'Tccd', 'shutter', 'ccd', 'gain']
-param_value = [int(0), 0., 2.0, 50., 710., 720., 0., 0., 0., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0, 25, 0, 0, 10]
+param_value = [int(file_no), 0., 2.0, 50., 710., 720., 0., 0., 0., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0, 25, 0, 0, 10]
 param = pd.Series(param_value, index=param_index)
 
 ## gloable device PV names
@@ -141,10 +168,12 @@ if SAFE:
 
 
 def get_param(p):
+    global param
     if checkSafe(p):
         v = pvl.getVal(p)
         if v == None:
             v = 'NoneType'
+        param[p] = v
     else:
         v = param[p]
     return v
@@ -156,35 +185,6 @@ def convertSeconds(seconds):
     if int(seconds // 60) == 0: m = ""
     time_stg = m + s
     return time_stg
-
-
-'''
-Dir for datasaving and macro
- - create a project folder named after date
- - sub folders including log, macro, and data
- - TODO: build class?
-'''
-file_no = 0  # read file_no from exist log
-
-dir_date = datetime.datetime.today().strftime("%Y_%b%d")
-dir_name = "project #0"
-current_path = os.getcwd()
-
-sla = '\\' if ('\\' in current_path) else '/'
-
-project_path = str(current_path) + sla + dir_name + sla
-macro_dir = str(project_path) + 'macro' + sla
-log_dir = str(project_path) + 'log' + sla
-data_dir = str(project_path) + 'data' + sla
-img_dir = data_dir + 'img' + sla
-
-if not os.path.exists(dir_name):
-    os.makedirs(project_path)
-    os.makedirs(macro_dir)
-    os.makedirs(log_dir)
-    os.makedirs(data_dir)
-    os.makedirs(img_dir)
-
 
 def Read(p, form=3):
     # get value by param_list index
@@ -412,12 +412,13 @@ class Command(QWidget):
         self.history_loc = 0
         self.logname = str(dir_date) + "_commandlog"
         '''
-        Keyboard log (for KeyPressEvent function)
-         - empty list
-         - empty index
+        Full log (for KeyPressEvent function and file number)
         '''
-        self.kblog = []
-        self.kbi = 0
+        self.fullog_i = 0
+        self.fullog_col = ['Time', 'Text'] + param_index
+        self.fullog_name = log_dir + str(dir_date) + "_fullog"
+        self.fullog = pd.DataFrame(columns = self.fullog_col)
+
         '''
         Abort Button
         default: closed
@@ -472,27 +473,22 @@ class Command(QWidget):
         '''
         Up and Down
          - redefine function of QLineEdit(originally support return only)
-         - read kbi and kblog for command convenience.
+         - read fullog_i and fullog["Text"] for command convenience.
          - TODO: solve global problem
 
         '''
 
-    def keyPressEvent(command_input, event):
+    def keyPressEvent(command_input, event): #detect keypress event in command_input area
         global cmd_global
-        size = len(cmd_global.kblog)
-        if event.key() == Qt.Key_Up and 0 < cmd_global.kbi <= size:
-            cmd_global.kbi += -1
-            i = cmd_global.kbi
-            Up_text = cmd_global.kblog[i]
-            cmd_global.command_input.setText(Up_text)
-        elif event.key() == Qt.Key_Down and 0 <= cmd_global.kbi < size:
-            if cmd_global.kbi < size - 1:
-                cmd_global.kbi += 1
-                i = cmd_global.kbi
-                Down_text = cmd_global.kblog[i]
-                cmd_global.command_input.setText(Down_text)
-            else:
-                cmd_global.command_input.setText("")
+        size = len(cmd_global.fullog)
+        if event.key() == Qt.Key_Up and 0 < cmd_global.fullog_i <= size:
+            cmd_global.fullog_i -= 1
+            text = cmd_global.fullog['Text'][cmd_global.fullog_i]
+            cmd_global.command_input.setText(text)
+        elif event.key() == Qt.Key_Down and 0 <= cmd_global.fullog_i <= size-1:
+            cmd_global.fullog_i += 1
+            text = cmd_global.fullog['Text'][cmd_global.fullog_i] if cmd_global.fullog_i <  size-1 else ""
+            cmd_global.command_input.setText(text)
         else:
             super(Command, command_input).keyPressEvent(event)
 
@@ -520,11 +516,9 @@ class Command(QWidget):
             if log == True:
                 self.abort_button.setEnabled(True)
                 # =================== history log=======================
-                # current_size
-                i = (self.history_log.size) / 2
+                i = (self.history_log.size) / 2 # current_size
                 self.history_loc = int(i + 1)
-                # append valid command to history
-                row = pd.Series([t, x], index=self.history_index, name=self.history_loc)
+                row = pd.Series([t, x], index=self.history_index, name=self.history_loc) # append valid command to history
                 self.history_log = self.history_log.append(row)
                 print(self.history_log)
                 # TODO: format arrangement
@@ -555,17 +549,18 @@ class Command(QWidget):
                 text = text[:c - 1] + text[c:]
         return text
 
-    def send(self, txt):
+    def send(self, text):
         self.command_input.setDisabled(True)
-        text = txt
         global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, WorkingSTATUS, spectrum_global, CountDOWN
         # pre-formatting
         if len(text) != 0:
             text = self.preFormatting(text)
-        # keyboard log for Up and Down
-        if text != "":
-            self.kblog.append(text)
-            self.kbi = len(self.kblog)
+            row = [datetime.datetime.now().isoformat(sep="_", timespec='seconds'), text] + param.astype(str).values.tolist()
+            file = open(self.fullog_name + ".txt", "a")
+            file.write(" ".join(row)+"\n")
+            file.close()
+            self.fullog.loc[len(self.fullog), :] = row # append new_row to dataframe of logging
+            self.fullog_i = len(self.fullog)
 
         '''
         Check valid commands below ...
@@ -1325,7 +1320,6 @@ class Move(QThread):
                     if ABORT:
                         break
                     if checkMoving(p) == False:
-                        self.msg.emit('Move finished.')
                         if abs(pvl.getVal(p) - v) >= 0.02:
                             error_message = ("<font color=red>" + p + " not moving correctly, value: "
                                              + str(pvl.getVal(p)) + "</font>")
