@@ -32,9 +32,10 @@ Dir for datasaving and macro
  - sub folders including log, macro, and data
  - TODO: build class?
 '''
+
 file_no = 0  # read file_no from exist log
 
-dir_date = datetime.datetime.today().strftime("%Y_%b%d")
+dir_date = datetime.datetime.today().strftime("%Y%m%d")
 dir_name = "project #0"
 current_path = os.getcwd()
 
@@ -232,7 +233,8 @@ class BlueMagpie(QMainWindow):
         exitAct = QAction(QIcon('exit.png'), ' &Quit', self)
         exitAct.setShortcut('Ctrl+Q')
         exitAct.setStatusTip('Exit application')
-        exitAct.triggered.connect(qApp.quit)
+        exitAct.triggered.connect(self.quitApplication)
+
 
         menubar = self.menuBar()
         menubar.setNativeMenuBar(False)
@@ -249,6 +251,14 @@ class BlueMagpie(QMainWindow):
         self.setCentralWidget(self.panel_widget)
         self.show()
 
+    def closeEvent(self, event):
+        self.quitApplication()
+        event.accept()
+
+    def quitApplication(self):
+        global cmd_global
+        cmd_global.fullLog("APP CLOSED")
+        qApp.quit()
 
 class Panel(QWidget):
     def __init__(self, parent):
@@ -327,33 +337,25 @@ class StatusWidget(QWidget):
             time_text = ""
 
         parameter_text = (" AGM: " + Read('agm') + " eV<br>"
-                                                   " AGS: " + Read('ags') + " eV<br>"
-                                                                            " <br>"
-                                                                            " entrance slit   s1= " + Read('s1',
-                                                                                                           'int') + " &micro;m ; "
-                                                                                                                    " exit slit   s2= " + Read(
-            's2', 'int') + " &micro;m<br>"
-                           " shutter: " + Read('shutter', 'switch') + "<br>"
-                                                                      " <br>"
-                                                                      " Sample:  <br>"
-                                                                      " x = " + Read('x') + " mm, y = " + Read(
-            'y') + " mm, z = " + Read('z') + "mm <br>"
-                                             "   temperatures:  T<sub>a</sub> = " + Read('ta', 'int') + " K,"
-                                                                                                        " T<sub>b</sub> = " + Read(
-            'tb', 'int') + " K<br> <br>"
-                           " th = " + Read('th', form=2) + "&#176;, tth = " + Read('tth', form=2) + "&#176;<br> <br>"
-                                                                                                    " I<sub>0</sub> = " + Read(
-            'I0', 'current') + " Amp,"
-                               " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp <br>"
-                                                                               " <br>"
-                                                                               " RIXS imager:  <br>"
-                                                                               " temperature = " + Read('Tccd',
-                                                                                                        1) + " \u2103" + ',   gain = ' + Read(
-            'gain', 0) + " <br>"
-                         " <br>")
+                        " AGS: " + Read('ags') + " eV<br>"
+                        " <br>"
+                        " entrance slit   s1= " + Read('s1','int') + " &micro;m ; "
+                        " exit slit   s2= " + Read('s2', 'int') + " &micro;m<br>"
+                        " shutter: " + Read('shutter', 'switch') + "<br>"
+                        " <br>"
+                        " Sample:  <br>"
+                        " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + "mm <br>"
+                        "   temperatures:  T<sub>a</sub> = " + Read('ta', 'int') + " K,"
+                        " T<sub>b</sub> = " + Read('tb', 'int') + " K<br> <br>"
+                        " th = " + Read('th', form=2) + "&#176;, tth = " + Read('tth', form=2) + "&#176;<br> <br>"
+                        " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
+                        " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp <br> <br>"
+                        " RIXS imager:  <br>"
+                        " temperature = " + Read('Tccd',1) + " \u2103" + ',   gain = ' + Read('gain', 0) + " <br> <br>")
         status_text = "%s <font color =red> %s %s </font>" % (parameter_text, WorkingSTATUS, time_text)
         self.status_box.setText(status_text)
 
+    # TODO: deglobalize
     # def setString(self, string=None): #destroy global parameters
     #     string = WorkingSTATUS
     #     return string
@@ -362,7 +364,6 @@ class StatusWidget(QWidget):
     #     return t
 
     # Terminal
-
 
 class Command(QWidget):
     popup = pyqtSignal()
@@ -416,7 +417,7 @@ class Command(QWidget):
         '''
         self.fullog_i = 0
         self.fullog_col = ['Time', 'Text'] + param_index
-        self.fullog_name = log_dir + str(dir_date) + "_fullog"
+        self.fullog_name = log_dir + str(dir_date) + "_fullog" # Example:
         self.fullog = pd.DataFrame(columns = self.fullog_col)
 
         '''
@@ -549,19 +550,21 @@ class Command(QWidget):
                 text = text[:c - 1] + text[c:]
         return text
 
+    def fullLog(self,text): # used in self.send and closing App
+        row = [datetime.datetime.now().isoformat(sep="_", timespec='seconds'), text] + param.astype(str).values.tolist()
+        file = open(self.fullog_name + ".txt", "a")
+        file.write(" ".join(row) + "\n")
+        file.close()
+        self.fullog.loc[len(self.fullog), :] = row  # append new_row to dataframe of logging
+        self.fullog_i = len(self.fullog)
+
     def send(self, text):
         self.command_input.setDisabled(True)
         global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, WorkingSTATUS, spectrum_global, CountDOWN
         # pre-formatting
         if len(text) != 0:
             text = self.preFormatting(text)
-            row = [datetime.datetime.now().isoformat(sep="_", timespec='seconds'), text] + param.astype(str).values.tolist()
-            file = open(self.fullog_name + ".txt", "a")
-            file.write(" ".join(row)+"\n")
-            file.close()
-            self.fullog.loc[len(self.fullog), :] = row # append new_row to dataframe of logging
-            self.fullog_i = len(self.fullog)
-
+            self.fullLog(text)
         '''
         Check valid commands below ...
          - should be integrated as valid-command class
