@@ -1,4 +1,4 @@
-# Last edited:20190510 2pm
+# Last edited:20190510 4pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -71,7 +71,7 @@ Busy
  - checked in Command(cmdDone function)
 '''
 BUSY = False
-SCAN = False
+MACROBUSY = False
 
 '''
 global flag & parameters for RIXS
@@ -457,7 +457,6 @@ class Command(QWidget):
     def send_message(self):
         global ABORT
         ABORT = False
-        self.abort_button.setEnabled(True)
         txt = self.command_input.text()
         self.command_input.setText("")
         self.command_message.moveCursor(QtGui.QTextCursor.End)
@@ -471,12 +470,12 @@ class Command(QWidget):
         global ABORT
         ABORT = True
         self.abort_button.setDisabled(True)
+
         '''
         Macro Window
          - under construction
          - pop up TextEdit
         '''
-
     def popupMacro(self):
         print("Opening a new popup window...")
         self.macro = MacroWindow()
@@ -652,33 +651,34 @@ class Command(QWidget):
         #         self.sysReturn(text,"iv")
         #         self.sysReturn('input error. use:   ccd  0 or 1', 'err')
 
-        elif 'img' in text[:4]:
-            # All sequence below should be organized as function(text)
-            space = text.count(' ')
-            sptext = text.split(' ')
-            if space == 1:  # e.g. img t
-                if self.checkFloat(sptext[1]):
-                    t = sptext[1]
-                    BUSY = True
-                    self.sysReturn(text, "v", True)
-                    WorkingSTATUS = "Taking image... ; Exposure time =" + str(t)
-                    if SAFE:
-                        pvl.ccd("exposure", t)
-                        self.sysReturn("getting ccd image ...")
-                    else:
-                        self.sysReturn("Warning: CCD not connected", "err")
-                        self.sysReturn("generating random image by numpy...")
-                    self.imageExposure()
-                    BUSY = False  # global flag
-                    WorkingSTATUS = " "
-                else:
-                    self.sysReturn(text, "iv")
-                    self.sysReturn("input error. use:   img + exposure_time", "err")
-            else:
-                self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   img + exposure_time/off", "err")
+        # elif 'img' in text[:4]:
+        #     # All sequence below should be organized as function(text)
+        #     space = text.count(' ')
+        #     sptext = text.split(' ')
+        #     if space == 1:  # e.g. img t
+        #         if self.checkFloat(sptext[1]):
+        #             t = sptext[1]
+        #             BUSY = True
+        #             self.sysReturn(text, "v", True)
+        #             WorkingSTATUS = "Taking image... ; Exposure time =" + str(t)
+        #             if SAFE:
+        #                 pvl.ccd("exposure", t)
+        #                 self.sysReturn("getting ccd image ...")
+        #             else:
+        #                 self.sysReturn("Warning: CCD not connected", "err")
+        #                 self.sysReturn("generating random image by numpy...")
+        #             self.imageExposure()
+        #             BUSY = False  # global flag
+        #             WorkingSTATUS = " "
+        #         else:
+        #             self.sysReturn(text, "iv")
+        #             self.sysReturn("input error. use:   img + exposure_time", "err")
+        #     else:
+        #         self.sysReturn(text, "iv")
+        #         self.sysReturn("input error. use:   img + exposure_time/off", "err")
 
         elif text == 'rixs' or text[:5] == 'rixs ':
+            BUSY = True
             # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
@@ -694,6 +694,7 @@ class Command(QWidget):
                     self.sysReturn('RIXS %s begins at %s'%(file_no, tt.strftime("%c")))
                     self.rixsthread = Rixs(t, n)
                     self.rixsthread.cmd_msg.connect(cmd_global.sysReturn)
+                    self.rixsthread.finished.connect(self.threadFinish)
                     self.rixsthread.start()
                 else:
                     self.sysReturn(text, "iv")
@@ -741,6 +742,7 @@ class Command(QWidget):
 
         # mv function
         elif text == 'mv' or text[:3] == 'mv ':
+            BUSY = True
             # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
@@ -769,6 +771,7 @@ class Command(QWidget):
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
         elif 'scan' in text[:5]:
+            BUSY = True
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)  # checking input command and parameters
             if check == 'OK':
@@ -820,18 +823,19 @@ class Command(QWidget):
             self.sysReturn(text, "v")
             self.popup.emit()
 
-        # elif text[:3] == "do ":
-        #     space = text.count(' ')
-        #     sptext = text.split(' ')
-        #     name = sptext[1]
-        #     # read macro file
-        #     if space is 1:
-        #         self.doMacro(name)
-        #     else:
-        #         self.sysReturn("input error. use:   do macroname","err")
+        elif text[:3] == "do ":
+            space = text.count(' ')
+            sptext = text.split(' ')
+            name = sptext[1]
+            # read macro file
+            if space is 1:
+                self.doMacro(name)
+            else:
+                self.sysReturn("input error. use:   do macroname","err")
 
         # TODO: wait command test after Thread
         elif text[:5] == "wait ":
+            BUSY = True
             space = text.count(' ')
             sptext = text.split(' ')
             # set delay time
@@ -849,9 +853,15 @@ class Command(QWidget):
             self.sysReturn("Type 'help' to list commands", "err")
 
     def threadFinish(self):
-        global BUSY
+        global BUSY, ABORT
         BUSY = False
+        ABORT = False
         print("Thread finished")
+
+    def macroFinish(self):
+        global MACROBUSY
+        MACROBUSY = False
+
 
     def checkFloat(self, x):
         try:
@@ -874,7 +884,7 @@ class Command(QWidget):
         return check_msg
 
     def check_param_scan(self, text):
-        global param, scan_data, param_index
+        global param, param_index
         # input text format: scan scan_param begin end step dwell
         # or  scan plot1 plot2 ....: scan_param begin end step dwell
         check_format = (' ')
@@ -948,82 +958,29 @@ class Command(QWidget):
         timer.start(100)  # repeat every 0.1 second
 
     def lockInput(self):
-        if SCAN:
-            self.command_input.setDisabled(SCAN)
+        if MACROBUSY:
+            self.command_input.setDisabled(MACROBUSY)
         else:
             self.command_input.setDisabled(BUSY)
             if BUSY == False:
                 self.command_input.setFocus()
-
+    # not necessary
     def doMacro(self, name):
-        # reset macro numbers
-        self.macro_index = 0
+        self.macro_index = 0 # reset macro numbers
         self.macro_n = 0
-        macro_name = macro_dir + str(name) + ".txt"
-        # check file exist
-        if os.path.exists(macro_name):
-            self.sysReturn(text, "v", True)
-            self.readFile(macro_name)  # to get macro_n
-            self.sysReturn("macro begins: " + macro_name)
-            self.macroLoop(self.macro_n, macro_name)
+        macro_name = "%s%s.txt"%(macro_dir, name) #directory
+        if os.path.exists(macro_name): # check file exist
+            self.sysReturn('do %s'%name, "v", True)
+            self.sysReturn("macro begins: %s.txt"%name)
+            self.macrothread = Macroloop(macro_name)
+            self.macrothread.finished.connect(self.threadFinish)
+            self.macrothread.finished.connect(self.macroFinish)
+            self.macrothread.msg.connect(self.sysReturn)
+            self.macrothread.send.connect(self.send)
+            self.macrothread.start()
         else:
-            self.sysReturn(text, "iv")
+            self.sysReturn(text, "iv") #file doesn't exist
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir), "err")
-
-    def imageExposure(self):
-        pvl.ccd('start', 1)  # 1 for activate
-        t1 = time.time()
-        while pvl.ccd("dataok") == 1:  # check moving
-            if (time.time() - t1) % 0.2 <= 0.0001:
-                pass
-                if pvl.ccd("dataok") == 0:
-                    break
-        t1 = time.time()
-        print('t1 =', t1)
-        if SAFE:
-            j = 0  # a counter to mimic timer
-            while pvl.ccd("dataok") == 0:
-                j += 1
-                if (time.time() - t1) % 0.2 <= 0.0001:
-                    # QApplication.processEvents()
-                    pass
-                if pvl.ccd("dataok") == 1:
-                    break
-                if ABORT:
-                    self.sysReturn('RIXS aborted', 'err')
-                    break
-        dt = round(time.time() - t1, 3)
-        print('time span in seconds= %s' % dt)
-        print('before get data')
-        img_global.getData()
-        img_global.showImg()
-
-    # def readFile(self, name):
-    #     #==============Macro start===============
-    #     readfile=[]
-    #     f = open(name,"r")
-    #     for x in f:
-    #         x = x.replace('\n','')
-    #         readfile.append(x)
-    #     self.macro_n = len(readfile)
-    #     return (readfile)
-    #
-    # def macroLoop(self,n,name):
-    #     global BUSY
-    #     while self.macro_index < self.macro_n:
-    #         file = self.readFile(name)
-    #         line = file[self.macro_index]
-    #         msg = ("macro line [{0}] : {1}".format(str(self.macro_index), line))
-    #         self.sysReturn(msg)
-    #         while BUSY == True:
-    #             timer = QTimer(self)
-    #             timer.start(1000)
-    #             # wait until not busy...
-    #         #self.macrostat[str].emit(msg)
-    #         self.send(line)
-    #         self.macro_index += 1
-    #     self.sysReturn("macro finished.")
-
 
 class ImageWidget(QWidget):
     def __init__(self, parent=None):
@@ -1278,11 +1235,11 @@ class MacroWindow(QWidget):
         self.macro_editor.setEnabled(False)
 
 
-class BarUpdate(QThread):
+class Barupdate(QThread):
     refresh = pyqtSignal()
 
     def __init__(self):
-        super(BarUpdate, self).__init__()
+        super(Barupdate, self).__init__()
 
     def run(self):
         while True:
@@ -1290,11 +1247,11 @@ class BarUpdate(QThread):
             time.sleep(0.5)
 
 
-class StatextUpdate(QThread):
+class Statupdate(QThread):
     refresh = pyqtSignal()
 
     def __init__(self):
-        super(StatextUpdate, self).__init__()
+        super(Statupdate, self).__init__()
 
     def run(self):
         while True:
@@ -1471,7 +1428,6 @@ class Scan(QThread):
         '''
         self.spec_number += 1
         self.saveSpec(self.spec_number)
-        SCAN = False
         self.quit()
 
     def saveSpec(self, spec_number):
@@ -1495,27 +1451,25 @@ class Rixs(QThread):  # no dummy now
         self.img_number = 0
 
     def run(self):
-        global param, BUSY, WorkingSTATUS, cmd_global, img_global, CountDOWN
+        global param, WorkingSTATUS, cmd_global, img_global, CountDOWN
         BUSY = True
         pvl.ccd('exposure', self.t)
         self.t0 = time.time()
         for i in range(self.n):
-            if i == 0:
-                WorkingSTATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n)
-            # print('i = ',i,'   ABORT =', ABORT)
-            if ABORT:
-                break
-            IMGDONE = False  # ?
-            t1 = time.time()  # ?
+            if i == 0: WorkingSTATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n)
+            if ABORT: break
 
+            t1 = time.time()  # ?
+            '''
+            Estimate remaining time
+            '''
             if i == 0:
                 dt = self.n * (self.t + 3)
             else:
                 dt = ((time.time() - self.t0) / i) * (self.n - i)  # remaining time
-            dt = round(dt, 2)  # estimated remaining time
+            dt = round(dt, 2)
 
             WorkingSTATUS = ('Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n))
-            # ',  remaining time = ' + str(dt) + ' sec')
             CountDOWN = dt
 
             self.img_number += 1
@@ -1526,16 +1480,15 @@ class Rixs(QThread):  # no dummy now
             self.exposethread.save[int].connect(img_global.saveImg)
             self.exposethread.start()
             self.exposethread.wait()
-            if ABORT == False:
-                self.taken_i += 1
+            if ABORT == False: self.taken_i += 1
 
-
+        '''
+        Loop finished
+        '''
         WorkingSTATUS = " "
         CountDOWN = 0
         string = str(self.taken_i) + " images" if self.taken_i != 1 else str(self.taken_i) + "image"
         self.cmd_msg.emit(string + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
-        BUSY = False  # global flag
-
 
 class Expose(QThread):
     get = pyqtSignal()
@@ -1576,22 +1529,51 @@ class Expose(QThread):
             self.show.emit()  # show image
             self.save[int].emit(self.n)
 
+class Macroloop(QThread):
+    msg = pyqtSignal(str)
+    send = pyqtSignal(str)
 
-def main():
-    global status_global
+    def __init__(self, name):
+        super(Macroloop, self).__init__()
+        self.name = name
+        self.macro_n = 0 # start from zero
+        self.macro_index = 0
+    #TODO: 1. ABORT 2. changing macro
+    def run(self):
+        global MACROBUSY, cmd_global
+        MACROBUSY = True
+        self.readFile()
+        while self.macro_index < self.macro_n:
+            line = self.readFile()[self.macro_index]
+            while BUSY: time.sleep(1) # hold here to wait previous command finish
+            self.send.emit(line)
+            cmd_global.command_input.setText("macro line [{0}] : {1}".format(str(self.macro_index+1), line))
+            time.sleep(1)
+            self.macro_index += 1
+        cmd_global.command_input.setText("")
+        self.msg.emit("macro finished.")
+        self.quit()
+
+    def readFile(self):
+        #==============Macro start===============
+        readfile=[]
+        f = open(self.name,"r")
+        for x in f:
+            x = x.replace("\n","")
+            readfile.append(x)
+        self.macro_n = len(readfile) # refresh macro_n
+        return readfile
+
+if __name__ == '__main__':
     app = QApplication(sys.argv)
     display_gui = BlueMagpie()
 
-    bar_update = BarUpdate()  # bar 0.5 sec
+    bar_update = Barupdate()  # bar 0.5 sec
     bar_update.refresh.connect(status_global.show_bar)
     bar_update.start()
 
-    text_update = StatextUpdate()  # status 1 sec
+    text_update = Statupdate()  # status 1 sec
     text_update.refresh.connect(status_global.show_text)
     text_update.start()
 
     sys.exit(app.exec_())
-
-
-if __name__ == '__main__':
-    main()
