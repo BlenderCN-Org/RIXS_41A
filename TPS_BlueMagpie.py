@@ -1,4 +1,4 @@
-# Last edited:20190508 5pm
+# Last edited:20190510 2pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -85,7 +85,7 @@ CountDOWN = 0
 # TODO: img?
 param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph',
                'imager', 'Tccd', 'shutter', 'ccd', 'gain']
-param_value = [int(file_no), 0., 2.0, 50., 710., 720., 0., 0., 0., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0, 25, 0, 0, 10]
+param_value = [file_no, 0., 2.0, 50., 710., 720., 0., 0., 0., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0, 25, 0, 0, 10]
 param = pd.Series(param_value, index=param_index)
 
 ## gloable device PV names
@@ -313,13 +313,14 @@ class StatusWidget(QWidget):
         self.t0 = 0  # for remaining time reference
 
     def show_bar(self):
+        global param, file_no
         # q_time = QDateTime.currentDateTime()
         # time_str = q_time.toString("yyyy-MM-dd hh:mm:ss")
         tt = datetime.datetime.now()
-        time_str = tt.strftime("%c")
-        # x = str(format(time.time()%1,'.1f'))
+        time_str = tt.strftime("%X, %b %d (%a) %Y; ")
+        param['f'] = file_no
         self.status_bar.setText(time_str + "  Project #0;   PI: Testing;"
-                                + " file number: " + str(int(param['f'])))
+                                + " file number: " + str(file_no))
 
     def show_text(self):
         # called every 1 sec
@@ -420,15 +421,17 @@ class Command(QWidget):
         self.fullog_col = ['Time', 'Text'] + param_index
         global file_no
         if os.path.exists(self.fullog_name):
-            data = pd.read_csv(self.fullog_name, header=0, delimiter=" ")
+            data = pd.read_csv(self.fullog_name, header=0, delimiter="|")
             file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
-            self.fullog = data[data['Text'] != "APP_CLOSED"]
-            self.fullog_i = len(self.fullog)
+            print('file_no = ', file_no)
+            self.fullog = data[data['Text'] != "APP_CLOSED"].reset_index(drop=True)
+            self.fullog_i = len(self.fullog) # removed APP_CLOSED for keyboard calling
+            print(self.fullog)
         else:
             self.fullog_i = 0
             self.fullog = pd.DataFrame(columns = self.fullog_col)
             file = open(self.fullog_name, "a")
-            file.write(" ".join(self.fullog_col) + "\n")
+            file.write("|".join(self.fullog_col) + "\n")
             file.close()
 
 
@@ -494,7 +497,6 @@ class Command(QWidget):
     def keyPressEvent(command_input, event): #detect keypress event in command_input area
         global cmd_global
         size = len(cmd_global.fullog)
-
         if event.key() == Qt.Key_Up and 0 < cmd_global.fullog_i <= size:
             cmd_global.fullog_i -= 1
             text = cmd_global.fullog['Text'][cmd_global.fullog_i]
@@ -535,10 +537,6 @@ class Command(QWidget):
                 self.history_loc = int(i + 1)
                 row = pd.Series([t, x], index=self.history_index, name=self.history_loc) # append valid command to history
                 self.history_log = self.history_log.append(row)
-                print(self.history_log)
-                # TODO: format arrangement
-                name = log_dir + self.logname + ".csv"
-                row.to_csv(name, mode='a', header=False, index=False)
                 # =================== history log========================
 
             self.command_message.append(' ')
@@ -567,14 +565,14 @@ class Command(QWidget):
     def fullLog(self,text): # used in self.send and closing App
         row = [datetime.datetime.now().isoformat(sep="_", timespec='seconds'), text] + param.astype(str).values.tolist()
         file = open(self.fullog_name, "a")
-        file.write(" ".join(row) + "\n")
+        file.write("|".join(row) + "\n")
         file.close()
         self.fullog.loc[len(self.fullog), :] = row  # append new_row to dataframe of logging
         self.fullog_i = len(self.fullog)
 
     def send(self, text):
         self.command_input.setDisabled(True)
-        global param_index, param, cmd_global, file_no, img_global, BUSY, IMGDONE, WorkingSTATUS, spectrum_global, CountDOWN
+        global param_index, param, cmd_global, file_no, img_global, BUSY, WorkingSTATUS, spectrum_global, CountDOWN
         # pre-formatting
         if len(text) != 0:
             text = self.preFormatting(text)
@@ -687,12 +685,13 @@ class Command(QWidget):
             # check format
             if space == 2:  # e.g. rixs t n
                 if self.checkFloat(sptext[1]) and self.checkFloat(sptext[2]):
+                    file_no += 1
                     # t as exposure time ; n as number of images.
                     t = float(sptext[1])
                     n = int(sptext[2])
                     self.sysReturn(text, "v", True)
                     tt = datetime.datetime.now()
-                    self.sysReturn('RIXS ' + str(int(param['f'])) + ' begins at ' + tt.strftime("%c"))
+                    self.sysReturn('RIXS %s begins at %s'%(file_no, tt.strftime("%c")))
                     self.rixsthread = Rixs(t, n)
                     self.rixsthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.rixsthread.start()
@@ -754,10 +753,10 @@ class Command(QWidget):
                     check_param = self.check_param_range(p, v)
                     if check_param == 'OK' and self.checkFloat(v):
                         self.sysReturn(text, "v", True)
-                        self.WorkeThread = Move(p, float(v))
-                        self.WorkeThread.finished.connect(self.finish_message)  # check if finished or not
-                        self.WorkeThread.msg.connect(self.sysReturn)
-                        self.WorkeThread.start()
+                        self.movethread = Move(p, float(v))  # check if finished or not
+                        self.movethread.msg.connect(self.sysReturn)
+                        self.movethread.finished.connect(self.threadFinish)
+                        self.movethread.start()
                     else:
                         self.sysReturn(text, "iv")
                         self.sysReturn(check_param, "err")
@@ -767,9 +766,6 @@ class Command(QWidget):
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   mv parameter value", "err")
-
-        # scan function
-        # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
         elif 'scan' in text[:5]:
@@ -777,7 +773,6 @@ class Command(QWidget):
             check = self.check_param_scan(text)  # checking input command and parameters
             if check == 'OK':
                 self.sysReturn(text, 'v', True)  # "v": log text in history; True: mark blue
-                # QApplication.processEvents()
                 if text.find(',') is -1:  # no "," i.e. scan x 1 10 1 0.1
                     c = 3
                     plot = ['Iph']  # default detection parameter
@@ -802,14 +797,13 @@ class Command(QWidget):
 
                 if (check_param1 == 'OK') and (check_param2 == 'OK'):
                     file_no += 1
-                    param['f'] = file_no  # print('file no =', file_no, 'param[\'f\']', param['f'])
                     start_time = datetime.datetime.now()
-                    self.sysReturn('Scan ' + str(int(param['f'])) + ' begins at ' + start_time.strftime("%c"))
-                    # spectrum_global.scan_loop(plot, scan_param, x1, x2, step, dwell, n)
+                    self.sysReturn('Scan %s begins at %s'%(file_no, start_time.strftime("%c")))
                     self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n)
                     self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
                     self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.scanthread.set_data.connect(spectrum_global.setScandata)
+                    self.scanthread.finished.connect(self.threadFinish)
                     self.scanthread.start()
                 else:
                     self.sysReturn(text, "iv")
@@ -820,42 +814,44 @@ class Command(QWidget):
                 # Return error message
                 self.sysReturn(text, "iv")
                 self.sysReturn(check, "err")
+
         elif text == "macro":
             # popup window
             self.sysReturn(text, "v")
             self.popup.emit()
 
-        # =============================================================================
-        #         elif text[:3] == "do ":
-        #             space = text.count(' ')
-        #             sptext = text.split(' ')
-        #             name = sptext[1]
-        #             # read macro file
-        #             if space is 1:
-        #                 self.doMacro(name)
-        #             else:
-        #                 self.sysReturn("input error. use:   do macroname","err")
-        # =============================================================================
-        # TODO: wait command test after Thread
-        # elif text[:5] == "wait ":
+        # elif text[:3] == "do ":
         #     space = text.count(' ')
         #     sptext = text.split(' ')
-        #     # set delay time
-        #     if space == 1:
-        #         t = sptext[1]
-        #         if self.checkFloat(t):
-        #             self.sysReturn(text, "v", True)
-        #             self.sysReturn("wait for %s seconds..." %str(t))
-        #             self.pause[float].emit(float(t))
-        #         else:
-        #             self.sysReturn("input error. use:   wait time", "err")
+        #     name = sptext[1]
+        #     # read macro file
+        #     if space is 1:
+        #         self.doMacro(name)
+        #     else:
+        #         self.sysReturn("input error. use:   do macroname","err")
+
+        # TODO: wait command test after Thread
+        elif text[:5] == "wait ":
+            space = text.count(' ')
+            sptext = text.split(' ')
+            # set delay time
+            if space == 1:
+                t = sptext[1]
+                if self.checkFloat(t):
+                    self.sysReturn(text, "v", True)
+                    self.sysReturn("wait for %s seconds..." %t)
+                    self.pause[float].emit(float(t))
+                else:
+                    self.sysReturn("input error. Format: wait time", "err")
 
         elif text != "":
             self.sysReturn(text, "iv")
             self.sysReturn("Type 'help' to list commands", "err")
 
-    def finish_message(self):
-        print("Move thread finished")
+    def threadFinish(self):
+        global BUSY
+        BUSY = False
+        print("Thread finished")
 
     def checkFloat(self, x):
         try:
@@ -941,12 +937,9 @@ class Command(QWidget):
         global BUSY
         BUSY = True
         timer = QTimer(self)
-        timer.timeout.connect(self.cmdDone)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self.threadFinish)
         timer.start(1000 * float(t))  # count for t seconds then open user input
-
-    def cmdDone(self):
-        global BUSY, status_global
-        BUSY = False
 
     def commandLock(self):
         timer = QTimer(self)
@@ -1120,7 +1113,7 @@ class ImageWidget(QWidget):
         else:
             img_number = str(img_number)
 
-        datestamp = datetime.datetime.today().strftime("%Y%m%d")  # Format : Year_MonDt
+        datestamp = datetime.datetime.today().strftime("%Y%m%d")  # Format : YYYYMMDD
         file_name0 = "rixs_%s_%s_img%s"%(datestamp, str(file_no), img_number)
         file_name = img_dir + file_name0  # for saving in correct dir
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',') # image data format
@@ -1321,7 +1314,7 @@ class Move(QThread):
     def run(self):
         global cmd_global, WorkingSTATUS, BUSY
         # p : index(name) of parameter, should be a string; v : range-checked value
-        p, v, BUSY = self.p, self.v, True
+        p, v, BUSY= self.p, self.v, True
         if checkSafe(p):  # check device safety
             if (p in param_index0) and (p not in ['Tccd', 'gain','ta']):
                 pvl.putVal(p, v)
@@ -1350,18 +1343,7 @@ class Move(QThread):
                 pvl.ccd(p, v)
         else:
             param[p] = v
-        BUSY = False
         self.quit()
-
-
-# class ImagePlot(QThread):
-#     datasignal = pyqtSignal(np.ndarray)
-#     def __init__(self, data):
-#         super(ImagePlot, self).__init__()
-#         self.data = data
-#     def run(self):
-#         self.datasignal.emit(self.data)
-
 
 class Scan(QThread):
     scan_plot = pyqtSignal(list, str, float, float)
@@ -1374,10 +1356,11 @@ class Scan(QThread):
         self.x1, self.x2, self.dwell, self.n = x1, x2, dwell, n
         self.start_point = Move(scan_param, x1)
         self.data_matrix = pd.DataFrame(columns=param_index)
+        self.spec_number = 0
 
     def run(self):
-        global file_no, param, BUSY, WorkingSTATUS, SCAN, CountDOWN
-        SCAN = True
+        global param, WorkingSTATUS, BUSY, CountDOWN
+        BUSY = True
         t1 = time.time()
         plot, scan_param, x1, x2 = self.plot, self.scan_param, self.x1, self.x2
         step, dwell, n = self.step, self.dwell, self.n
@@ -1393,7 +1376,6 @@ class Scan(QThread):
         self.scan_plot.emit(plot, scan_param, x1, x2_new)
         '''
         Scanning loop
-        - start time
         set scanning parameters = > Data collection (averaging)  => plot data
         '''
         print('Loop begin')
@@ -1402,7 +1384,7 @@ class Scan(QThread):
                 print("loop stopped")
                 break
             '''
-            start time
+            Remaining time estimate
             '''
             # time recording
             if i == 0:
@@ -1429,16 +1411,17 @@ class Scan(QThread):
             self.WorkerThread.start()
             self.WorkerThread.wait()  # wait move finish
             '''
-            Data collection time
+            Data collection
             '''
             t0 = time.time()
             raw_array = np.array([])
             while (time.time() - t0) <= dwell:  # while loop to get the data within dwell time
-                if (time.time() - t0) % 0.2 <= 0.0001:
+                if (time.time() - t0) % 0.1 <= 0.0001:
                     #raw_array = np.append(raw_array, pvl.getVal('Iph'))   # Read Iph data through epics
 
                     for i in range(len(plot)):
-                        value = pvl.getVal(plot[i]) if checkSafe(plot[i]) else param[plot[i]]
+                        if checkSafe(plot[i]): value = pvl.getVal(plot[i])
+                        else: value = param[plot[i]]
                         raw_array = np.append(raw_array, value)
 
             current_param = pd.Series(param)  # generate series
@@ -1476,7 +1459,7 @@ class Scan(QThread):
         if ABORT:
             self.cmd_msg.emit('Scaning loop has been terminated; time span  = ' + convertSeconds(dt), 'err')
         else:
-            self.cmd_msg.emit('Scan ' + str(int(param['f'])) + ' is completed; time span  = ' + convertSeconds(dt))
+            self.cmd_msg.emit('Scan %s completed; time span  = %s'%(scan_param ,convertSeconds(dt)))
 
         '''
         Data saving
@@ -1486,16 +1469,20 @@ class Scan(QThread):
 
         TODO: check exist number, don't overwrite old ones.
         '''
-
-        filename = str(dir_date) + "scan_" + str(file_no) + ".txt"  # change file_no to capital
-        if os.path.exists(filename):
-            file_no += 1
-        filename = str(dir_date) + "scan_" + str(file_no) + ".txt"
-        self.data_matrix.to_csv(data_dir + filename, mode='w', index_label="index")
-        self.cmd_msg.emit('Scan data saved in [' + filename + ']')
+        self.spec_number += 1
+        self.saveSpec(self.spec_number)
         SCAN = False
         self.quit()
 
+    def saveSpec(self, spec_number):
+        if spec_number//100 == 0:
+            spec_number = "00" + str(spec_number) if spec_number // 10 == 0 else "0" + str(spec_number)
+        else:
+            spec_number = str(spec_number)
+        filename0="scan_%s_%s_%s" % (dir_date, str(file_no), spec_number)
+        filename = data_dir + filename0
+        self.data_matrix.to_csv(filename)
+        self.cmd_msg.emit('Scan data saved in [' + filename0 + ']')
 
 class Rixs(QThread):  # no dummy now
     cmd_msg = pyqtSignal(str)
@@ -1508,8 +1495,7 @@ class Rixs(QThread):  # no dummy now
         self.img_number = 0
 
     def run(self):
-        global file_no, param, BUSY, WorkingSTATUS, cmd_global, img_global, CountDOWN
-        file_no += 1
+        global param, BUSY, WorkingSTATUS, cmd_global, img_global, CountDOWN
         BUSY = True
         pvl.ccd('exposure', self.t)
         self.t0 = time.time()
