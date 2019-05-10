@@ -1,4 +1,4 @@
-# Last edited:20190510 4pm
+# Last edited:20190510 5pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -74,10 +74,8 @@ BUSY = False
 MACROBUSY = False
 
 '''
-global flag & parameters for RIXS
+global flag & parameters for multi-step process
 '''
-IMGDONE = False
-
 WorkingSTATUS = ""
 CountDOWN = 0
 
@@ -651,31 +649,29 @@ class Command(QWidget):
         #         self.sysReturn(text,"iv")
         #         self.sysReturn('input error. use:   ccd  0 or 1', 'err')
 
-        # elif 'img' in text[:4]:
-        #     # All sequence below should be organized as function(text)
-        #     space = text.count(' ')
-        #     sptext = text.split(' ')
-        #     if space == 1:  # e.g. img t
-        #         if self.checkFloat(sptext[1]):
-        #             t = sptext[1]
-        #             BUSY = True
-        #             self.sysReturn(text, "v", True)
-        #             WorkingSTATUS = "Taking image... ; Exposure time =" + str(t)
-        #             if SAFE:
-        #                 pvl.ccd("exposure", t)
-        #                 self.sysReturn("getting ccd image ...")
-        #             else:
-        #                 self.sysReturn("Warning: CCD not connected", "err")
-        #                 self.sysReturn("generating random image by numpy...")
-        #             self.imageExposure()
-        #             BUSY = False  # global flag
-        #             WorkingSTATUS = " "
-        #         else:
-        #             self.sysReturn(text, "iv")
-        #             self.sysReturn("input error. use:   img + exposure_time", "err")
-        #     else:
-        #         self.sysReturn(text, "iv")
-        #         self.sysReturn("input error. use:   img + exposure_time/off", "err")
+        elif 'img' in text[:4]:
+            if text=='img': text = 'img 2'  # default exposure time = 2
+            space = text.count(' ')
+            sptext = text.split(' ')
+
+            if space == 1 and self.checkFloat(sptext[1]):  # e.g. img t
+                t = sptext[1]
+                BUSY = True
+                self.sysReturn(text, "v", True)
+                WorkingSTATUS = "Taking image... "
+                CountDOWN = float(t)+3.5
+                pvl.ccd("exposure", t)
+                self.exposethread = Expose(float(t), 0)
+                self.exposethread.cmd_msg.connect(self.sysReturn)
+                self.exposethread.get.connect(img_global.getData)
+                self.exposethread.show.connect(img_global.showImg)
+                self.exposethread.finished.connect(self.threadFinish)
+                self.exposethread.finished.connect(self.imgFinish)
+                self.exposethread.start()
+
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   img(+ exposure_time)", "err")
 
         elif text == 'rixs' or text[:5] == 'rixs ':
             BUSY = True
@@ -853,15 +849,19 @@ class Command(QWidget):
             self.sysReturn("Type 'help' to list commands", "err")
 
     def threadFinish(self):
-        global BUSY, ABORT
+        global BUSY, ABORT, WorkingSTATUS, CountDOWN
         BUSY = False
         ABORT = False
+        WorkingSTATUS = ""
+        CountDOWN = 0
         print("Thread finished")
 
     def macroFinish(self):
         global MACROBUSY
         MACROBUSY = False
 
+    def imgFinish(self):
+        self.sysReturn("img taken.")
 
     def checkFloat(self, x):
         try:
@@ -1045,13 +1045,11 @@ class ImageWidget(QWidget):
         self.imv.scene.sigMouseMoved.connect(mouseMoved)
 
     def getData(self):
-        global IMGDONE
         if SAFE:
             raw_img = pvl.ccd("image")
             print(raw_img)
             img_list = np.asarray(raw_img)  # convert raw image to 1d numpy array
             img_np = np.reshape(img_list, (1024, 2048), order='F')  # reshape from 1d to 2d numpy array
-            IMGDONE = True
         else:
             # else
             raw_img = np.random.uniform(0, 500 + 1, 1024 * 2048)
@@ -1527,7 +1525,8 @@ class Expose(QThread):
             print('time span in seconds= %s' % dt)
             self.get.emit()
             self.show.emit()  # show image
-            self.save[int].emit(self.n)
+            if self.n != 0: # img command doesn't save file
+                self.save[int].emit(self.n)
 
 class Macroloop(QThread):
     msg = pyqtSignal(str)
