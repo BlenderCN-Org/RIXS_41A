@@ -582,20 +582,21 @@ class Command(QWidget):
             self.sysReturn(text, "v")
             msg = ("<b>p</b>: list valid parameters.<br>\n"
                    "<b>r</b>: show all parameter ranges.<br>\n"
-                   # "<b>macro</b>: open a macro editor.<br>\n"
-                   # "<b>do</b>: execute a macro by calling a text file.<br>\n"
+                   "<b>macro</b>: open a macro editor.<br>\n"
+                   "<b>do</b>: execute a macro by calling a text file.<br>\n"
                    "<b>h</b>: recall previous commands executed sucessfully.<br>\n"
                    "<br>\n"
                    "<b>mv</b>: set a parameter to its absolute value.<br>\n"
                    # "<b>mvr</b>: change a parameter in terms of a relative value.<br>\n"
                    "<b>scan</b>: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n"
                    "<b>xas</b>:  <br>\n"
-                   "<b>rixs</b>:  take RIXS images, t sec per iamge for n images <br>\n"
+                   "<b>img t</b>:  take 1 image, exposure t sec (t= 2 sec if not defined). <br>\n"
+                   "<b>rixs t n</b>:  take RIXS images, t sec per iamge for n images <br>\n"
                    "<br>\n"
                    "<b>s2</b>: set the opening of the exit slit.<br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    # "<b>ccd</b>: turn on or turn off the CCD.<br>\n"
-                   "<b>load</b>: load an image file.<br>")
+                   "<b>load</b>: load an image file from project#0/data/img folder.<br>")
             self.sysReturn(msg)
 
         elif text == "h":
