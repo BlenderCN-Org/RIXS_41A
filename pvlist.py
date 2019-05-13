@@ -7,12 +7,14 @@ import numpy as np
 reading = dict(agm="41a:AGM:Energy.RBV", ags="41a:AGS:Energy.RBV", x="41a:hexapod:x", y="41a:hexapod:y",
                z="41a:hexapod:z", u="41a:hexapod:u", v="41a:hexapod:v", w="41a:hexapod:w", th="41a:sample:thr",
                tth="41a:sample:tthr", heater="41a:sample:heater", ta="41a:sample:tmp1", tb="41a:sample:tmp2",
-               I0="41a:sample:i0", Iph="41a:sample:phdi", Tccd="41a:ccd1:tmpr", gain="41a:ccd1:gain")
+               I0="41a:sample:i0", Iph="41a:sample:phdi", Tccd="41a:ccd1:tmpr", gain="41a:ccd1:gain",
+               ring="SR-DI-DCCT:BeamCurrent")
 
 #Get Value
 moving = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:hexapod:xm", y="41a:hexapod:ym",
               z="41a:hexapod:zm", u="41a:hexapod:um", v="41a:hexapod:vm", w="41a:hexapod:wm", th="41a:sample:thm",
               tth="41a:sample:tthm")
+
 
 #Put Value
 putvalue = dict(agm="41a:AGM:Energy.VAL", ags="41a:AGS:Energy.VAL", x="41a:hexapod:xw", y="41a:hexapod:yw",

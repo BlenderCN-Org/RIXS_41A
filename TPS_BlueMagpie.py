@@ -317,8 +317,8 @@ class StatusWidget(QWidget):
         tt = datetime.datetime.now()
         time_str = tt.strftime("%X, %b %d (%a) %Y; ")
         param['f'] = file_no
-        self.status_bar.setText(time_str + "  Project #0;   PI: Testing;"
-                                + " file number: " + str(file_no))
+        self.status_bar.setText("%s  Project #0;   PI: Testing; file number: %s; ring current:%s"
+                                %(time_str, int(file_no), round(pvl.getVal('ring'),3)))
 
     def show_text(self):
         # called every 1 sec
@@ -850,9 +850,8 @@ class Command(QWidget):
             self.sysReturn("Type 'help' to list commands", "err")
 
     def threadFinish(self):
-        global BUSY, ABORT, WorkingSTATUS, CountDOWN
+        global BUSY, WorkingSTATUS, CountDOWN
         BUSY = False
-        ABORT = False
         WorkingSTATUS = ""
         CountDOWN = 0
         print("Thread finished")
@@ -1413,7 +1412,7 @@ class Scan(QThread):
         print('time span in senconds=', dt)
 
         if ABORT:
-            self.cmd_msg.emit('Scaning loop has been terminated; time span  = ' + convertSeconds(dt), 'err')
+            self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
         else:
             self.cmd_msg.emit('Scan %s completed; time span  = %s'%(scan_param ,convertSeconds(dt)))
 
@@ -1543,7 +1542,7 @@ class Macroloop(QThread):
         global MACROBUSY, cmd_global
         MACROBUSY = True
         self.readFile()
-        while self.macro_index < self.macro_n:
+        while self.macro_index < self.macro_n and ABORT == False:
             line = self.readFile()[self.macro_index]
             while BUSY: time.sleep(1) # hold here to wait previous command finish
             self.send.emit(line)
@@ -1551,7 +1550,11 @@ class Macroloop(QThread):
             time.sleep(1)
             self.macro_index += 1
         cmd_global.command_input.setText("")
-        self.msg.emit("macro finished.")
+        if ABORT == False:
+            end_msg = "macro finished."
+        else:
+            end_msg = "macro has been terminated, executed macro line: %s."%self.macro_index
+        self.msg.emit(end_msg)
         self.quit()
 
     def readFile(self):
