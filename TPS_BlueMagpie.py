@@ -1,4 +1,4 @@
-# Last edited:20190510 5pm
+# Last edited:20190514 10am
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -312,12 +312,11 @@ class StatusWidget(QWidget):
 
     def show_bar(self):
         global param, file_no
-        # q_time = QDateTime.currentDateTime()
-        # time_str = q_time.toString("yyyy-MM-dd hh:mm:ss")
         tt = datetime.datetime.now()
         time_str = tt.strftime("%X, %b %d (%a) %Y; ")
         param['f'] = file_no
-        self.status_bar.setText("%s  Project #0;   PI: Testing; file number: %s; ring current:%s"
+        self.status_bar.setText("%s  Project #0;   PI: Testing; file number: %s &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+                                "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;I<sub>ring</sub>:%s mA"
                                 %(time_str, int(file_no), round(pvl.getVal('ring'),3)))
 
     def show_text(self):
@@ -583,15 +582,16 @@ class Command(QWidget):
             msg = ("<b>p</b>: list valid parameters.<br>\n"
                    "<b>r</b>: show all parameter ranges.<br>\n"
                    "<b>macro</b>: open a macro editor.<br>\n"
-                   "<b>do</b>: execute a macro by calling a text file.<br>\n"
-                   "<b>h</b>: recall previous commands executed sucessfully.<br>\n"
+                   "<b>do</b>: open a text file to execute macro commands.<br>\n"
+                   "<b>h</b>: recall previous commands executed successfully.<br>\n"
                    "<br>\n"
                    "<b>mv</b>: set a parameter to its absolute value.<br>\n"
                    # "<b>mvr</b>: change a parameter in terms of a relative value.<br>\n"
-                   "<b>scan</b>: stepwise scan a parameter and plot selected paramters with some dwell time.<br>\n"
+                   "<b>scan</b>: stepwise scan a parameter and plot selected parameters with some dwell time.<br>\n"
                    "<b>xas</b>:  <br>\n"
-                   "<b>img t</b>:  take 1 image, exposure t sec (t= 2 sec if not defined). <br>\n"
-                   "<b>rixs t n</b>:  take RIXS images, t sec per iamge for n images <br>\n"
+                   "<b>img</b>:  take one RIXS image with an exposure time (default exposure time= 2). <br>\n"
+                   "<b>rixs</b>:  take a series of RIXS images with a fixed exposure time (t).<br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>rixs t n </font> <br>\n"
                    "<br>\n"
                    "<b>s2</b>: set the opening of the exit slit.<br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
@@ -739,7 +739,6 @@ class Command(QWidget):
 
         # mv function
         elif text == 'mv' or text[:3] == 'mv ':
-            BUSY = True
             # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
@@ -768,7 +767,6 @@ class Command(QWidget):
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
         elif 'scan' in text[:5]:
-            BUSY = True
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)  # checking input command and parameters
             if check == 'OK':
@@ -814,6 +812,7 @@ class Command(QWidget):
                 # Return error message
                 self.sysReturn(text, "iv")
                 self.sysReturn(check, "err")
+        #elif text[:3] == "xas":
 
         elif text == "macro":
             # popup window
@@ -1544,10 +1543,11 @@ class Macroloop(QThread):
         self.readFile()
         while self.macro_index < self.macro_n and ABORT == False:
             line = self.readFile()[self.macro_index]
-            while BUSY: time.sleep(1) # hold here to wait previous command finish
+            while BUSY:
+                time.sleep(1) # hold here to wait previous command finish
             self.send.emit(line)
-            cmd_global.command_input.setText("macro line [{0}] : {1}".format(str(self.macro_index+1), line))
             time.sleep(1)
+            cmd_global.command_input.setText("macro line [{0}] : {1}".format(str(self.macro_index+1), line))
             self.macro_index += 1
         cmd_global.command_input.setText("")
         if ABORT == False:
