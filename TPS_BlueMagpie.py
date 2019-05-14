@@ -1,4 +1,4 @@
-# Last edited:20190514 3pm
+# Last edited:20190514 5pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -313,10 +313,10 @@ class StatusWidget(QWidget):
     def show_bar(self):
         global param, file_no
         tt = datetime.datetime.now()
-        time_str = tt.strftime("%X, %b %d (%a) %Y; ")
+        time_str = tt.strftime("%H:%M:%S, %b %d %Y; ")
         param['f'] = file_no
         self.status_bar.setText("%s  Project #0;   PI: Testing; file number: %s &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
-                                "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;I<sub>ring</sub>:%s mA"
+                                "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;I<sub>ring</sub>: %s mA"
                                 %(time_str, int(file_no), round(pvl.getVal('ring'),3)))
 
     def show_text(self):
@@ -342,7 +342,7 @@ class StatusWidget(QWidget):
                         " shutter: " + Read('shutter', 'switch') + "<br>"
                         " <br>"
                         " Sample:  <br>"
-                        " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + "mm <br>"
+                        " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm <br>"
                         "   temperatures:  T<sub>a</sub> = " + Read('ta', 'int') + " K,"
                         " T<sub>b</sub> = " + Read('tb', 'int') + " K<br> <br>"
                         " th = " + Read('th', form=2) + "&#176;, tth = " + Read('tth', form=2) + "&#176;<br> <br>"
@@ -651,12 +651,11 @@ class Command(QWidget):
         #         self.sysReturn('input error. use:   ccd  0 or 1', 'err')
 
         elif 'img' in text[:4]:
-            if text=='img': text = 'img 2'  # default exposure time = 2
             space = text.count(' ')
             sptext = text.split(' ')
+            t = sptext[1] if text != 'img' else 2 # default exposure time = 2
 
-            if space == 1 and self.checkFloat(sptext[1]):  # e.g. img t
-                t = sptext[1]
+            if self.checkFloat(t):  # e.g. img t
                 BUSY = True
                 self.sysReturn(text, "v", True)
                 WorkingSTATUS = "Taking image... "
@@ -813,7 +812,8 @@ class Command(QWidget):
 
         elif text[:3] == "xas":
             if self.checkXasformat(text):
-                [e1, e2, dE, dwell, N] = text.split(" ")[1:] # N times of scan
+                [e1, e2, dE, dwell] = text.split(" ")[1:5] # N times of scan
+                N = 1 if text.count(' ') ==4 else text.split(" ")[-1]
                 dE = abs(float(dE)) * np.sign(float(e2) - float(e1))  # step is negative if x1 > x2
                 dwell = float(dwell)
                 n = int(abs((float(e2) - float(e1)) / dE)) # n steps
@@ -875,7 +875,7 @@ class Command(QWidget):
         MACROBUSY = False
 
     def imgFinish(self):
-        self.sysReturn("img taken.")
+        self.sysReturn("img taken (data not saved).")
 
     def checkFloat(self, x):
         try:
@@ -961,8 +961,13 @@ class Command(QWidget):
 
     def checkXasformat(self, text):
         sptext = text.split(' ')
-        if sptext[0] == 'xas' and text.count(' ') == 5: # check format = xas Ei Ef dE dt n
-            [e1, e2, de, dt, n] = sptext[1:]
+        if sptext[0] == 'xas':
+            if text.count(' ') == 4:
+                [e1, e2, de, dt] = sptext[1:]
+                n = 1
+            elif text.count(' ') == 5: # check format = xas Ei Ef dE dt n
+                [e1, e2, de, dt, n] = sptext[1:]
+
             for x in [e1, e2, de, dt]: #check float: e1, e2, de, dt
                 if self.checkFloat(x) == False:
                     self.sysReturn(text, 'iv')
@@ -1118,7 +1123,7 @@ class ImageWidget(QWidget):
         file_name0 = "rixs_%s_%s_img%s"%(datestamp, str(file_no), img_number)
         file_name = img_dir + file_name0  # for saving in correct dir
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',') # image data format
-        cmd_global.sysReturn('Image data saved: ' + file_name0)
+        cmd_global.sysReturn('Image data saved: {}.txt'.format(file_name0))
 
     def showImg(self):
         self.imv.setImage(self.imgdata)
@@ -1207,8 +1212,11 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.clear()
         self.plotWidget.plot(x)
 
-    def scanPlot(self, plot, scan_param, x1, x2_new):
-        title_plot = 'Scan ' + str(int(param['f'])) + ': scanning ' + scan_param + ',  plotting ' + plot[0]
+    def scanPlot(self, plot, scan_param, x1, x2_new, xas):
+        if xas:
+            title_plot = 'XAS {0}'.format(int(param['f']))
+        else:
+            title_plot = 'Scan {0} : scanning {1},  plotting {2}'.format(int(param['f']), scan_param, plot[0])
         for i in range(0, len(plot)):
             if i > 0: title_plot += ', ' + plot[i]
 
@@ -1275,7 +1283,7 @@ class MacroWindow(QWidget):
         # write line to output file
         file.write(text)
         file.close()
-        self.macro_editor.append("file saved: " + txt_file)
+        self.macro_editor.append("file saved: {}".format(txt_file))
         self.macro_editor.setEnabled(False)
 
 
@@ -1348,7 +1356,7 @@ class Move(QThread):
 
 
 class Scan(QThread):
-    scan_plot = pyqtSignal(list, str, float, float)
+    scan_plot = pyqtSignal(list, str, float, float, bool)
     set_data = pyqtSignal(int, list, pd.Series)
     cmd_msg = pyqtSignal(str)
 
@@ -1376,7 +1384,7 @@ class Scan(QThread):
         self.start_point.start()
         self.start_point.wait()
 
-        self.scan_plot.emit(plot, scan_param, x1, x2_new)
+        self.scan_plot.emit(plot, scan_param, x1, x2_new, self.xas)
         '''
         Scanning loop
         set scanning parameters = > Data collection (averaging)  => plot data
@@ -1486,7 +1494,7 @@ class Scan(QThread):
             filename0="xas_%s_%s_%s" % (dir_date, str(file_no), spec_number)
         filename = data_dir + filename0
         self.data_matrix.to_csv(filename)
-        self.cmd_msg.emit('{0} data saved in [{1}]'.format("XAS" if self.xas else "scan" ,filename0))
+        self.cmd_msg.emit('{0} data saved in {1}.txt'.format("XAS" if self.xas else "scan" ,filename0))
 
 class Xas(QThread):  # no dummy now
     cmd_msg = pyqtSignal(str)
@@ -1516,7 +1524,7 @@ class Xas(QThread):  # no dummy now
         Loop finished
         '''
         spantime = time.time() - self.t0
-        self.cmd_msg.emit('{0:d} absorption scan executed, time span= {1:.2f} sec'.format(self.done_i , spantime))
+        self.cmd_msg.emit('{0:d} xas scan{1} completed, time span= {2:.2f} sec'.format(self.done_i , "" if self.done_i ==1 else "s",spantime))
         cmd_global.command_input.setText("")
         self.quit()
 
@@ -1566,7 +1574,7 @@ class Rixs(QThread):  # no dummy now
         '''
         WorkingSTATUS = " "
         CountDOWN = 0
-        string = str(self.taken_i) + " images" if self.taken_i != 1 else str(self.taken_i) + "image"
+        string = str(self.taken_i) + " images" if self.taken_i != 1 else str(self.taken_i) + " image"
         self.cmd_msg.emit(string + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
 
 class Expose(QThread):
