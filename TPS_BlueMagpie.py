@@ -1,4 +1,4 @@
-# Last edited:20190514 10am
+# Last edited:20190514 3pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -675,13 +675,12 @@ class Command(QWidget):
                 self.sysReturn("input error. use:   img(+ exposure_time)", "err")
 
         elif text == 'rixs' or text[:5] == 'rixs ':
-            BUSY = True
             # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
             # check format
             if space == 2:  # e.g. rixs t n
-                if self.checkFloat(sptext[1]) and self.checkFloat(sptext[2]):
+                if self.checkFloat(sptext[1]) and self.checkInt(sptext[2]):
                     file_no += 1
                     # t as exposure time ; n as number of images.
                     t = float(sptext[1])
@@ -797,7 +796,7 @@ class Command(QWidget):
                     file_no += 1
                     start_time = datetime.datetime.now()
                     self.sysReturn('Scan %s begins at %s'%(file_no, start_time.strftime("%c")))
-                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n)
+                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False)
                     self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
                     self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.scanthread.set_data.connect(spectrum_global.setScandata)
@@ -805,14 +804,28 @@ class Command(QWidget):
                     self.scanthread.start()
                 else:
                     self.sysReturn(text, "iv")
-                    if (check_param1 != 'OK'): check_param = check_param1
-                    if (check_param2 != 'OK'): check_param = check_param2
+                    check_param = check_param1 if (check_param1 != 'OK') else check_param2
                     self.sysReturn(check_param, "err")
             else:
                 # Return error message
                 self.sysReturn(text, "iv")
                 self.sysReturn(check, "err")
-        #elif text[:3] == "xas":
+
+        elif text[:3] == "xas":
+            if self.checkXasformat(text):
+                [e1, e2, dE, dwell, N] = text.split(" ")[1:] # N times of scan
+                dE = abs(float(dE)) * np.sign(float(e2) - float(e1))  # step is negative if x1 > x2
+                dwell = float(dwell)
+                n = int(abs((float(e2) - float(e1)) / dE)) # n steps
+                file_no += 1
+                start_time = datetime.datetime.now()
+                self.sysReturn(text, 'v', True)
+                self.sysReturn('XAS %s begins at %s' % (file_no, start_time.strftime("%c")))
+                self.xas = Xas(float(e1), float(e2), dE, dwell, n, int(N))
+                self.xas.cmd_msg.connect(self.sysReturn)
+                self.xas.finished.connect(self.threadFinish)
+                self.xas.start()
+
 
         elif text == "macro":
             # popup window
@@ -827,6 +840,7 @@ class Command(QWidget):
             if space is 1:
                 self.doMacro(name)
             else:
+                self.sysReturn(text, 'iv')
                 self.sysReturn("input error. use:   do macroname","err")
 
         # TODO: wait command test after Thread
@@ -842,6 +856,7 @@ class Command(QWidget):
                     self.sysReturn("wait for %s seconds..." %t)
                     self.pause[float].emit(float(t))
                 else:
+                    self.sysReturn(text, 'iv')
                     self.sysReturn("input error. Format: wait time", "err")
 
         elif text != "":
@@ -869,8 +884,15 @@ class Command(QWidget):
         except ValueError:
             return False
 
+    def checkInt(self, x):
+        try:
+            int(x)
+            return True
+        except ValueError:
+            return False
+
     def check_param_range(self, param_name, param_value):
-        if self.checkFloat(param_value) is True:
+        if self.checkFloat(param_value):
             global param_range
             # if (parame_name in param_index0) and self.checkFloat(param_value) == True:
             j = float(param_value)
@@ -903,8 +925,7 @@ class Command(QWidget):
             if (sptext[0] != '') and (len(sptext) == 5):
                 j = 0  # check index
                 for i in range(4):  # i from 0 to 3
-                    if self.checkFloat(sptext[i + 1]) is True:
-                        j += 1.0
+                    if self.checkFloat(sptext[i + 1]):j += 1.0
                 if j == 4:
                     if sptext[0] in param_index0:
                         if float(sptext[4]) > 0:  # float(sptext[4]) assigns dwell time
@@ -937,6 +958,32 @@ class Command(QWidget):
 
         print('scan paramter check:', check_msg)
         return check_msg
+
+    def checkXasformat(self, text):
+        sptext = text.split(' ')
+        if sptext[0] == 'xas' and text.count(' ') == 5: # check format = xas Ei Ef dE dt n
+            [e1, e2, de, dt, n] = sptext[1:]
+            for x in [e1, e2, de, dt]: #check float: e1, e2, de, dt
+                if self.checkFloat(x) == False:
+                    self.sysReturn(text, 'iv')
+                    self.sysReturn('{} is not float.'.format(x), 'err')
+                    return False
+            if self.checkInt(n):
+                if self.check_param_range('agm', e1) == 'OK' and self.check_param_range('agm', e2) == 'OK':
+                    return True
+                else:
+                    self.sysReturn(text, 'iv')
+                    if self.check_param_range('agm', e1) != 'OK': self.sysReturn(self.check_param_range('agm', e1),'err')
+                    else: self.sysReturn(self.check_param_range('agm', e2),'err')
+                    return False
+            else:
+                self.sysReturn(text, 'iv')
+                self.sysReturn('n: {} should be integer'.format(n),'err')
+                return False
+        else:
+            self.sysReturn(text,'iv')
+            self.sysReturn('input error. Format: xas Ei Ef dE dt n','err')
+            return False
 
         '''
         check function for Wait command
@@ -1299,18 +1346,20 @@ class Move(QThread):
             param[p] = v
         self.quit()
 
+
 class Scan(QThread):
     scan_plot = pyqtSignal(list, str, float, float)
     set_data = pyqtSignal(int, list, pd.Series)
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self, plot, scan_param, x1, x2, step, dwell, n):
+    def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas):
         super(Scan, self).__init__()
         self.plot, self.scan_param, self.step = plot, scan_param, step
         self.x1, self.x2, self.dwell, self.n = x1, x2, dwell, n
         self.start_point = Move(scan_param, x1)
         self.data_matrix = pd.DataFrame(columns=param_index)
-        self.spec_number = 0
+        self.spec_number = N
+        self.xas = xas # flag for file saving and other messages
 
     def run(self):
         global param, WorkingSTATUS, BUSY, CountDOWN
@@ -1321,7 +1370,7 @@ class Scan(QThread):
 
         x2_new = x1 + step * n
         scan_x = []  # the empty list for the scanning parameter
-        WorkingSTATUS = "moving " + scan_param + " ..."
+        WorkingSTATUS = "moving {} ...".format(scan_param)
 
         # set_param(scan_param, x1)  # set the initial parameter value
         self.start_point.start()
@@ -1353,7 +1402,6 @@ class Scan(QThread):
                 remaining_time = (loop_time / i) * (n + 1 - i)
 
             WorkingSTATUS = ('scanning ' + scan_param + '... ' + str(i + 1) + '/' + str(n + 1))
-            # ', remaining time = ' + convertSeconds(remaining_time))
             CountDOWN = float(remaining_time)
 
             '''
@@ -1413,7 +1461,8 @@ class Scan(QThread):
         if ABORT:
             self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
         else:
-            self.cmd_msg.emit('Scan %s completed; time span  = %s'%(scan_param ,convertSeconds(dt)))
+            if self.xas != True:
+                self.cmd_msg.emit('scan %s completed; time span  = %s'%(scan_param ,convertSeconds(dt)))
 
         '''
         Data saving
@@ -1423,19 +1472,54 @@ class Scan(QThread):
 
         TODO: check exist number, don't overwrite old ones.
         '''
-        self.spec_number += 1
-        self.saveSpec(self.spec_number)
+        self.saveSpec(self.spec_number, self.xas)
         self.quit()
 
-    def saveSpec(self, spec_number):
+    def saveSpec(self, spec_number, xas):
         if spec_number//100 == 0:
             spec_number = "00" + str(spec_number) if spec_number // 10 == 0 else "0" + str(spec_number)
         else:
             spec_number = str(spec_number)
-        filename0="scan_%s_%s_%s" % (dir_date, str(file_no), spec_number)
+        if xas == False:
+            filename0="scan_%s_%s_%s" % (dir_date, str(file_no), spec_number)
+        else:
+            filename0="xas_%s_%s_%s" % (dir_date, str(file_no), spec_number)
         filename = data_dir + filename0
         self.data_matrix.to_csv(filename)
-        self.cmd_msg.emit('Scan data saved in [' + filename0 + ']')
+        self.cmd_msg.emit('{0} data saved in [{1}]'.format("XAS" if self.xas else "scan" ,filename0))
+
+class Xas(QThread):  # no dummy now
+    cmd_msg = pyqtSignal(str)
+    def __init__(self, e1, e2, de, dwell, n, N):
+        super(Xas, self).__init__()
+        self.e1, self.e2, self.de, self.dwell, self.n, self.N = e1, e2, de, dwell, n, N
+        self.done_i = 0
+
+    def run(self):
+        global param, WorkingSTATUS, cmd_global, CountDOWN, BUSY, spectrum_global
+        BUSY = True
+        self.t0 = time.time()
+        for i in range(self.N):
+            if ABORT:
+                break
+            cmd_global.command_input.setText("XAS [{0:d} / {1:d}] : scanning...".format(i+1, self.N))
+            self.scanthread = Scan(['Iph'], 'agm', self.e1, self.e2, self.de, self.dwell, self.n, i+1, True)
+            self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
+            self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
+            self.scanthread.set_data.connect(spectrum_global.setScandata)
+            self.scanthread.start()
+            self.scanthread.wait()
+            if ABORT == False:
+                self.done_i += 1
+
+        '''
+        Loop finished
+        '''
+        spantime = time.time() - self.t0
+        self.cmd_msg.emit('{0:d} absorption scan executed, time span= {1:.2f} sec'.format(self.done_i , spantime))
+        cmd_global.command_input.setText("")
+        self.quit()
+
 
 class Rixs(QThread):  # no dummy now
     cmd_msg = pyqtSignal(str)
@@ -1448,15 +1532,13 @@ class Rixs(QThread):  # no dummy now
         self.img_number = 0
 
     def run(self):
-        global param, WorkingSTATUS, cmd_global, img_global, CountDOWN
+        global param, WorkingSTATUS, cmd_global, img_global, CountDOWN, BUSY
         BUSY = True
         pvl.ccd('exposure', self.t)
         self.t0 = time.time()
         for i in range(self.n):
-            if i == 0: WorkingSTATUS = 'Taking RIXS data ... ' + str(i + 1) + '/' + str(self.n)
-            if ABORT: break
 
-            t1 = time.time()  # ?
+            if ABORT: break
             '''
             Estimate remaining time
             '''
