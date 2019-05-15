@@ -143,17 +143,6 @@ def checkSafe(p):  # Individual device safe check
         return False
 
 
-def checkMoving(p):  # for StatusWidget display only
-    if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'agm', 'ags']:
-        if pvl.movStat(p) == 1:  # 1: moving, 0: stop
-            return True
-        else:  # including gain
-            return False
-    else:
-        print("p = ", p, " is not a checkable parameter")
-        return False
-
-
 # SAFE = False
 SAFE = True
 
@@ -207,7 +196,7 @@ def Read(p, form=3):
         # real marked blue
         if real == 0: string = '<font color=gray>' + string + '</font>'
         if real == 1 and p not in ['Tccd', 'I0',  'gain', 'Iph']:
-            if checkMoving(p):
+            if pvl.checkMoving(p):
                 string = '<font color=blue>' + string + '</font>'
 
     return string
@@ -234,15 +223,15 @@ class BlueMagpie(QMainWindow):
         exitAct.triggered.connect(self.quitApplication)
 
 
-        menubar = self.menuBar()
-        menubar.setNativeMenuBar(False)
+        #menubar = self.menuBar()
+        #menubar.setNativeMenuBar(False)
 
-        fileMenu = menubar.addMenu('&File')
-        fileMenu.addAction(exitAct)
+        #fileMenu = menubar.addMenu('&File')
+        #fileMenu.addAction(exitAct)
 
-        emccdMenu = menubar.addMenu("EMCCD")
-        emccdMenu.addAction("cooling on")
-        emccdMenu.addAction("cooling off")
+        #emccdMenu = menubar.addMenu("EMCCD")
+        #emccdMenu.addAction("cooling on")
+        #emccdMenu.addAction("cooling off")
 
         # Import panel
         self.panel_widget = Panel(self)
@@ -300,13 +289,18 @@ class StatusWidget(QWidget):
     def __init__(self, parent=None):
         super(StatusWidget, self).__init__(parent=parent)
         self.status_bar = QLabel(self)
+        self.ring_current = QLabel(self)
+        self.ring_current.setFont(QtGui.QFont("UbuntuMono", 10))
         self.status_box = QTextEdit(self)
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
         self.status_box.setFont(QtGui.QFont("UbuntuMono", 11))
         self.status_box.setReadOnly(True)
         # Widget layout
         self.layoutVertical = QVBoxLayout(self)
-        self.layoutVertical.addWidget(self.status_bar)
+        self.barhorizontal = QHBoxLayout()
+        self.barhorizontal.addWidget(self.status_bar)
+        self.barhorizontal.addWidget(self.ring_current)
+        self.layoutVertical.addLayout(self.barhorizontal)
         self.layoutVertical.addWidget(self.status_box)
         self.t0 = 0  # for remaining time reference
 
@@ -315,9 +309,9 @@ class StatusWidget(QWidget):
         tt = datetime.datetime.now()
         time_str = tt.strftime("%H:%M:%S, %b %d %Y; ")
         param['f'] = file_no
-        self.status_bar.setText("%s  Project #0;   PI: Testing; file number: %s &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
-                                "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;I<sub>ring</sub>: %s mA"
-                                %(time_str, int(file_no), round(pvl.getVal('ring'),3)))
+        self.status_bar.setText("%s  Project #0;   PI: Testing; file number: %s;"
+                                %(time_str, int(file_no)))
+        self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format(pvl.getVal('ring')))
 
     def show_text(self):
         # called every 1 sec
@@ -420,10 +414,8 @@ class Command(QWidget):
         if os.path.exists(self.fullog_name):
             data = pd.read_csv(self.fullog_name, header=0, delimiter="|")
             file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
-            print('file_no = ', file_no)
             self.fullog = data[data['Text'] != "APP_CLOSED"].reset_index(drop=True)
             self.fullog_i = len(self.fullog) # removed APP_CLOSED for keyboard calling
-            print(self.fullog)
         else:
             self.fullog_i = 0
             self.fullog = pd.DataFrame(columns = self.fullog_col)
@@ -446,10 +438,11 @@ class Command(QWidget):
         # CommandWidget design
         self.Commandlayout = QVBoxLayout(self)
         self.Commandlayout.addWidget(self.command_message)
-        self.Input = QHBoxLayout(self)
+        self.Input = QHBoxLayout()
         self.Input.addWidget(self.command_input)
         self.Input.addWidget(self.abort_button)
         self.Commandlayout.addLayout(self.Input)
+
 
     def send_message(self):
         global ABORT
@@ -1328,17 +1321,17 @@ class Move(QThread):
             if (p in param_index0) and (p not in ['Tccd', 'gain','ta']):
                 pvl.putVal(p, v)
                 t1 = time.time()
-                while checkMoving(p) == False:  # = 0 not moving; = 1 moving
+                while pvl.checkMoving(p) == False:  # = 0 not moving; = 1 moving
                     time.sleep(0.2)
-                    if checkMoving(p) or (time.time() - t1) >= 1 or ABORT:
+                    if pvl.checkMoving(p) or (time.time() - t1) >= 1 or ABORT:
                         break
 
                 # wait moving complete
-                while checkMoving(p) == True and ABORT == False:
+                while pvl.checkMoving(p) == True and ABORT == False:
                     time.sleep(0.2)  # hold here for BUSY flag
                     if ABORT:
                         break
-                    if checkMoving(p) == False:
+                    if pvl.checkMoving(p) == False:
                         if abs(pvl.getVal(p) - v) >= 0.02:
                             error_message = ("<font color=red>" + p + " not moving correctly, value: "
                                              + str(pvl.getVal(p)) + "</font>")
