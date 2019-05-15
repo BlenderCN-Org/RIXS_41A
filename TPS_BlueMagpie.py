@@ -1232,7 +1232,7 @@ class SpectrumWidget(QWidget):
         if self.legenditems != []:
             for x in self.legenditems:
                 self.legend.removeItem(x)
-        self.plotWidget.plotItem.clear()
+        self.plotWidget.plotItem.clear() # legends not in viewbox
         self.legenditems = plot
         self.plotWidget.plotItem.setTitle(title=title_plot)
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
@@ -1244,11 +1244,12 @@ class SpectrumWidget(QWidget):
         color = ['g', 'b', 'w', 'r', 'y']
         scan_x = []  # the empty list for the scanning parameter
         for i in range(0, len(plot)):
-            self.curve[i] = self.plotWidget.plot(scan_x, [], pen=pg.mkPen(color=color[i],style=1,width=1))
-            self.legend.addItem(self.curve[i], plot[i])
+            self.curve[i] = self.plotWidget.plot(scan_x, [], pen=pg.mkPen(color=color[i],style=1,width=1), name=plot[i])
+            #self.legend.addItem(self.curve[i], plot[i])
         if xas:
-            self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1))
-            self.legend.addItem(self.xas_curve, "mean I<sub>ph</sub>") # default pen = grey.
+            self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1), name="mean I<sub>ph</sub>")
+            #self.legend.addItem(self.xas_curve, "mean I<sub>ph</sub>") # default pen = grey.
+            self.legenditems.append("mean I<sub>ph</sub>")
 
     def setScandata(self, i, list_x, series_y):
         self.curve[i].setData(list_x, series_y)
@@ -1260,8 +1261,8 @@ class SpectrumWidget(QWidget):
     def plotXAS(self):
         self.plotWidget.plotItem.clear()
         self.legend.removeItem('Iph')
-        self.legenditems = []
-        self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1), name ="mean I<sub>ph</sub>") #default pen = grey.
+        self.legenditems = ["mean I<sub>ph</sub>"]
+        self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1)) #default pen = grey.
 
     def plotRixs(self, filename):
         global rixs_img
