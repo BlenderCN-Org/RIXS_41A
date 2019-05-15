@@ -1,4 +1,4 @@
-# Last edited:20190514 5pm
+# Last edited:20190515 5pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -467,12 +467,7 @@ class Command(QWidget):
          - pop up TextEdit
         '''
     def popupMacro(self):
-        print("Opening a new popup window...")
         self.macro = MacroWindow()
-        self.macro.setWindowTitle("Macro Editor")
-        self.macro.resize(300, 500)
-        self.macro.setWindowFlags(self.macro.windowFlags() & QtCore.Qt.CustomizeWindowHint)
-        self.macro.setWindowFlags(self.macro.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.show()
         '''
@@ -816,6 +811,8 @@ class Command(QWidget):
                 self.sysReturn('XAS %s begins at %s' % (file_no, start_time.strftime("%c")))
                 self.xas = Xas(float(e1), float(e2), dE, dwell, n, int(N))
                 self.xas.cmd_msg.connect(self.sysReturn)
+                self.xas.xas_plot.connect(spectrum_global.setXASdata)
+                self.xas.final_plot.connect(spectrum_global.plotXAS)
                 self.xas.finished.connect(self.threadFinish)
                 self.xas.start()
 
@@ -1182,6 +1179,11 @@ class SpectrumWidget(QWidget):
         self.plotWidget.addItem(self.vLine, ignoreBounds=True)
         self.plotWidget.addItem(self.hLine, ignoreBounds=True)
 
+        self.legend = self.plotWidget.addLegend((50, 30), offset=(450, 150))
+        self.curve = [None, None, None, None, None]
+        self.legenditems = []
+        self.legend.setParentItem(self.plotWidget.plotItem)
+
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
             self.vLine.setPos(mousePoint.x())
@@ -1205,7 +1207,18 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.clear()
         self.plotWidget.plot(x)
 
-    def scanPlot(self, plot, scan_param, x1, x2_new, xas):
+    def scanPlot(self, plot, scan_param, x1, x2, xas):
+        '''
+        :param plot: list of detectors
+        :param scan_param: the scanning parameter
+        :param x1: start point of scanning
+        :param x2_new: end point of scanning
+        :param xas: specify XAS procedure or not
+        '''
+
+        '''
+        title of plot 
+        '''
         if xas:
             title_plot = 'XAS {0}'.format(int(param['f']))
         else:
@@ -1213,23 +1226,42 @@ class SpectrumWidget(QWidget):
         for i in range(0, len(plot)):
             if i > 0: title_plot += ', ' + plot[i]
 
+        '''
+        setup plotItem
+        '''
+        if self.legenditems != []:
+            for x in self.legenditems:
+                self.legend.removeItem(x)
         self.plotWidget.plotItem.clear()
+        self.legenditems = plot
         self.plotWidget.plotItem.setTitle(title=title_plot)
-        self.plotWidget.plotItem.setXRange(float(x1), float(x2_new), padding=None, update=True)
+        self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', text=scan_param)
         self.plotWidget.plotItem.setLabel('left', text='Intensity', units='A')
-        self.legend = self.plotWidget.addLegend((50, 30), offset=(450, 150))
-        self.legend.setParentItem(self.plotWidget.plotItem)
-        self.curve = [None, None, None, None, None]
+        '''
+        curve settings
+        '''
         color = ['g', 'b', 'w', 'r', 'y']
-        print('plot: ', plot, ', color: ', color)
-
         scan_x = []  # the empty list for the scanning parameter
         for i in range(0, len(plot)):
-            self.curve[i] = self.plotWidget.plot(scan_x, [], pen=color[i], linewidth=2, name=plot[i])
+            self.curve[i] = self.plotWidget.plot(scan_x, [], pen=pg.mkPen(color=color[i],style=1,width=1))
+            self.legend.addItem(self.curve[i], plot[i])
+        if xas:
+            self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1))
+            self.legend.addItem(self.xas_curve, "mean I<sub>ph</sub>") # default pen = grey.
 
     def setScandata(self, i, list_x, series_y):
         self.curve[i].setData(list_x, series_y)
+
+    def setXASdata(self, sum_x, sum_y):
+        self.xas_x = sum_x
+        self.xas_y = sum_y
+
+    def plotXAS(self):
+        self.plotWidget.plotItem.clear()
+        self.legend.removeItem('Iph')
+        self.legenditems = []
+        self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1), name ="mean I<sub>ph</sub>") #default pen = grey.
 
     def plotRixs(self, filename):
         global rixs_img
@@ -1257,7 +1289,10 @@ class MacroWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.macro_editor = QTextEdit(self)
-        self.macro_editor.resize(300, 400)
+        self.setWindowTitle("Macro Editor")
+        self.resize(300, 500)
+        self.setWindowFlags(self.windowFlags() & QtCore.Qt.CustomizeWindowHint)
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint)
         self.save_button = QPushButton("save", self)
         self.save_button.clicked.connect(self.save_macro)
         self.window_layout = QVBoxLayout(self)
@@ -1351,6 +1386,7 @@ class Move(QThread):
 class Scan(QThread):
     scan_plot = pyqtSignal(list, str, float, float, bool)
     set_data = pyqtSignal(int, list, pd.Series)
+    data_set = pyqtSignal(list, list)
     cmd_msg = pyqtSignal(str)
 
     def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas):
@@ -1382,7 +1418,6 @@ class Scan(QThread):
         Scanning loop
         set scanning parameters = > Data collection (averaging)  => plot data
         '''
-        print('Loop begin')
         for i in range(n + 1):
             if ABORT:
                 print("loop stopped")
@@ -1409,7 +1444,6 @@ class Scan(QThread):
             Set scanning parameters
             '''
             scan_x.append(x1 + i * step)
-            print("set ", scan_param, " to ", x1 + i * step)
             self.WorkerThread = Move(scan_param, scan_x[i])
             self.WorkerThread.start()
             self.WorkerThread.wait()  # wait move finish
@@ -1455,9 +1489,9 @@ class Scan(QThread):
         CountDOWN = 0
         print('[data_matrix]')
         print(self.data_matrix)
-
         dt = round(time.time() - t1, 3)
         print('time span in senconds=', dt)
+        if self.xas: self.data_set.emit(scan_x, self.data_matrix.loc[:, 'Iph'].tolist())  # for accumulation in XAS
 
         if ABORT:
             self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
@@ -1491,35 +1525,51 @@ class Scan(QThread):
 
 class Xas(QThread):  # no dummy now
     cmd_msg = pyqtSignal(str)
+    xas_plot = pyqtSignal(list, list)
+    final_plot =pyqtSignal()
     def __init__(self, e1, e2, de, dwell, n, N):
         super(Xas, self).__init__()
         self.e1, self.e2, self.de, self.dwell, self.n, self.N = e1, e2, de, dwell, n, N
         self.done_i = 0
+        self.sum_x, self.sum_y = [], []
 
     def run(self):
         global param, WorkingSTATUS, cmd_global, CountDOWN, BUSY, spectrum_global
         BUSY = True
         self.t0 = time.time()
         for i in range(self.N):
-            if ABORT:
-                break
+            if ABORT: break
+            if i == 0: self.xas_plot.emit(self.sum_x, self.sum_y) #refresh accum
             cmd_global.command_input.setText("XAS [{0:d} / {1:d}] : scanning...".format(i+1, self.N))
             self.scanthread = Scan(['Iph'], 'agm', self.e1, self.e2, self.de, self.dwell, self.n, i+1, True)
             self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
             self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
             self.scanthread.set_data.connect(spectrum_global.setScandata)
+            self.scanthread.data_set.connect(self.sumPlot)
             self.scanthread.start()
             self.scanthread.wait()
-            if ABORT == False:
-                self.done_i += 1
+            if ABORT == False: self.done_i += 1
 
         '''
         Loop finished
         '''
+        self.final_plot.emit()
+        self.sum_x, self.sum_y = [], []
         spantime = time.time() - self.t0
         self.cmd_msg.emit('{0:d} xas scan{1} completed, time span= {2:.2f} sec'.format(self.done_i , "" if self.done_i ==1 else "s",spantime))
         cmd_global.command_input.setText("")
         self.quit()
+
+    def sumPlot(self, x, y):
+        if (self.sum_x == []):
+            self.sum_x = x
+        if (self.sum_y == []):
+            self.sum_y = y
+        else:
+            self.sum_y = [(a + b*self.done_i)/(self.done_i+1) for a, b in zip(y, self.sum_y)]#initialize
+        print('i = {0}, sum_x = {1}, sum_y = {2}'.format(self.done_i,self.sum_x,self.sum_y))
+        self.xas_plot.emit(self.sum_x, self.sum_y)
+
 
 
 class Rixs(QThread):  # no dummy now
