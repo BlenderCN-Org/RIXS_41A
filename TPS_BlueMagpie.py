@@ -470,6 +470,7 @@ class Command(QWidget):
     def popupMacro(self):
         self.macro = macro.MacroWindow(macro_dir)
         self.macro.macroMsg.connect(self.sysReturn)
+        self.macro.errorMsg.connect(self.sysReturn)
         self.macro.show()
         '''
         Up and Down

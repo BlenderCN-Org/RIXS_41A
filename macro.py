@@ -6,6 +6,7 @@ from PyQt5.QtCore import *
 import sys, os
 
 class MacroWindow(QWidget):
+    errorMsg = pyqtSignal(str,str)
     macroMsg = pyqtSignal(str)
     def __init__(self, directory):
         super().__init__()
@@ -19,14 +20,15 @@ class MacroWindow(QWidget):
 
     def __mainwindow__(self):
         self.setWindowTitle("Macro Editor")
-        self.resize(300, 500)
+        self.resize(400, 600)
         self.setWindowFlags(self.windowFlags() & Qt.CustomizeWindowHint)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowMinMaxButtonsHint)
 
     def __statusbar__(self):
         self.status_bar = QLineEdit(self)
         self.status_bar.setReadOnly(True)
-        self.show_bar()
+        self.status_bar.setDisabled(True)
+        self.show_bar('New File',False)
 
     def __editor__(self):
         self.editor = QTextEdit(self)
@@ -52,28 +54,31 @@ class MacroWindow(QWidget):
         self.window_layout.addWidget(self.editor)
         self.window_layout.addLayout(self.buttons_layout)
 
-
-
     def save(self):
         file_name = self.getName()
-        text = self.editor.toPlainText() # transform user_text to plaintext
-        txt_file = "{0}{1}.txt".format(self.directory, file_name)
-        file = open(txt_file, "w")
-        file.write(text)
-        file.close()
-        self.editor.setDisabled(True)
+        if file_name != None:
+            text = self.editor.toPlainText() # transform user_text to plaintext
+            txt_file = "{0}{1}.txt".format(self.directory, file_name)
+            file = open(txt_file, "w")
+            file.write(text)
+            file.close()
+            self.editor.setDisabled(True)
 
     def getName(self):
         text, ok = QInputDialog.getText(self, 'Save Macro', 'New macro name:')
         if ok:
-            if os.path.exists(self.directory + text):
-                self.show_bar("File already exist: {0} file not saved.".format(text), False)
-                pass
+            if os.path.exists('{0}{1}.txt'.format(self.directory,text)):
+                error_msg = "File name already exist: {0}, file not saved.".format(text)
+                self.show_bar(error_msg, False)
+                self.errorMsg.emit(error_msg, 'err')
+                file_name = None
             else:
                 file_name = str(text)
                 self.show_bar(str(text))
                 self.macroMsg.emit("macro file saved: {0}.txt".format(file_name))
+        print('File name = ', file_name)
         return (file_name)
+
 
     def open(self):
         fname = QFileDialog.getOpenFileName(self, 'Open macro file',
@@ -87,11 +92,12 @@ class MacroWindow(QWidget):
             with f:
                 data = f.read()
                 self.editor.setText(data)
+                self.show_bar(os.path.basename(fname[0]))
 
     def edit(self):
         pass
 
-    def show_bar(self, name=" ", flag=True):
+    def show_bar(self, name, flag=True):
         if flag:
             string = "File Name: {0}".format(name)
         else:
