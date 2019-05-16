@@ -1,4 +1,4 @@
-# Last edited:20190515 5pm
+# Last edited:20190516 4pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -15,6 +15,7 @@ from pyepics_ccd_device import CcdDevices as pecd
 import epics as e
 from epics import PV
 import pvlist as pvl
+import macro
 
 # Global for connection
 spectrum_global = None
@@ -217,17 +218,17 @@ class BlueMagpie(QMainWindow):
         #        self.setFixedSize(1900, 1600)
         self.setWindowTitle('TPS blue magpie')
 
-        exitAct = QAction(QIcon('exit.png'), ' &Quit', self)
+        exitAct = QAction(QIcon('exit.png'), ' &Quit',  self)
         exitAct.setShortcut('Ctrl+Q')
         exitAct.setStatusTip('Exit application')
         exitAct.triggered.connect(self.quitApplication)
 
 
-        #menubar = self.menuBar()
-        #menubar.setNativeMenuBar(False)
+        menubar = self.menuBar()
+        menubar.setNativeMenuBar(False)
 
-        #fileMenu = menubar.addMenu('&File')
-        #fileMenu.addAction(exitAct)
+        fileMenu = menubar.addMenu('&File')
+        fileMenu.addAction(exitAct)
 
         #emccdMenu = menubar.addMenu("EMCCD")
         #emccdMenu.addAction("cooling on")
@@ -293,7 +294,7 @@ class StatusWidget(QWidget):
         self.ring_current.setFont(QtGui.QFont("UbuntuMono", 10))
         self.status_box = QTextEdit(self)
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
-        self.status_box.setFont(QtGui.QFont("UbuntuMono", 11))
+        self.status_box.setFont(QtGui.QFont("UbuntuMono", 10.5))
         self.status_box.setReadOnly(True)
         # Widget layout
         self.layoutVertical = QVBoxLayout(self)
@@ -467,7 +468,7 @@ class Command(QWidget):
          - pop up TextEdit
         '''
     def popupMacro(self):
-        self.macro = MacroWindow()
+        self.macro = macro.MacroWindow(macro_dir)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.show()
         '''
@@ -1282,39 +1283,6 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units')
         self.plotWidget.addLegend((50, 30), offset=(450, 150))
         self.plotWidget.plotItem.clear()
-
-
-class MacroWindow(QWidget):
-    macroMsg = pyqtSignal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.macro_editor = QTextEdit(self)
-        self.setWindowTitle("Macro Editor")
-        self.resize(300, 500)
-        self.setWindowFlags(self.windowFlags() & QtCore.Qt.CustomizeWindowHint)
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowMinMaxButtonsHint)
-        self.save_button = QPushButton("save", self)
-        self.save_button.clicked.connect(self.save_macro)
-        self.window_layout = QVBoxLayout(self)
-        self.window_layout.addWidget(self.macro_editor)
-        self.window_layout.addWidget(self.save_button)
-
-    def save_macro(self):
-        text = self.macro_editor.toPlainText()
-        print(text)
-        print(text.split("\n"))
-        # will be extended as user defined macro name
-        file_title = "macro" + ".txt"
-        # open new file
-        txt_file = macro_dir + file_title
-        file = open(txt_file, "w")
-        # write line to output file
-        file.write(text)
-        file.close()
-        self.macro_editor.append("file saved: {}".format(txt_file))
-        self.macro_editor.setEnabled(False)
-
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
