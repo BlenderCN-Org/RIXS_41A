@@ -1,4 +1,4 @@
-# Last edited:20190516 4pm
+# Last edited:20190520 10am
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -1036,8 +1036,8 @@ class ImageWidget(QWidget):
         # replace by RGB pixel Magpie picture?
 
         plt = pg.PlotItem(labels={'bottom': ('x pixel', ''), 'left': ('y pixel', '')})
-        plt.getAxis('bottom').setTickSpacing(200, 2)  # This is the trick
-        plt.getAxis('left').setTickSpacing(200, 2)  # This is the trick
+        plt.getViewBox().setRange(yRange=(1, 2048), xRange=(1, 1024), disableAutoRange=False)
+        plt.setLimits(minXRange=4, maxXRange=8192, minYRange=4, maxYRange=8192)
 
         ## Set a custom color map
         rainbow_colors = [
