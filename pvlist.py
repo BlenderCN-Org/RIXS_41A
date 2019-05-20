@@ -51,3 +51,12 @@ def ccd(p, value=None):
 
 def putVal(p, value):
     PV(putvalue[p]).put(value)
+
+def checkMoving(p):
+    if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'agm', 'ags']:
+        if movStat(p) == 1:  # 1: moving, 0: stop
+            return True
+        else:  # including gain
+            return False
+    else:
+        return False
