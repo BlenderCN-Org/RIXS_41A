@@ -1,4 +1,4 @@
-# Last edited:20190521 10am
+# Last edited:20190521 5pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -9,9 +9,6 @@ from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
 import time, datetime, math, re
-from pyepics_device import Devices as ped
-from pyepics_tmp_device import TmpDevices as petd
-from pyepics_ccd_device import CcdDevices as pecd
 import epics as e
 from epics import PV
 import pvlist as pvl
@@ -472,7 +469,7 @@ class Command(QWidget):
         self.macro = macro.MacroWindow(macro_dir)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.errorMsg.connect(self.sysReturn)
-        self.macrostarted.connect(self.macro.editButton)
+        self.macrostarted.connect(self.macro.marcoStart)
         self.macro.show()
 
         '''
@@ -868,8 +865,11 @@ class Command(QWidget):
         MACROBUSY = True
 
     def macroFinish(self):
-        global MACROBUSY
+        global MACROBUSY, BUSY, WorkingSTATUS, CountDOWN
         MACROBUSY = False
+        BUSY = False
+        WorkingSTATUS = ""
+        CountDOWN = 0
 
     def imgFinish(self):
         self.sysReturn("img taken (data not saved).")
@@ -1014,23 +1014,22 @@ class Command(QWidget):
                 self.command_input.setFocus()
     # not necessary
     def doMacro(self, name):
-        self.macro_index = 0 # reset macro numbers
-        self.macro_n = 0
-        macro_name = "%s%s.txt"%(macro_dir, name) #directory
+        macro_name = "%s%s.txt"%(macro_dir, name) # directory
         if os.path.exists(macro_name): # check file exist
             self.sysReturn('do %s'%name, "v", True)
             self.sysReturn("macro begins: %s.txt"%name)
+            if self.macro == None: self.popup.emit()
             self.macrostarted.emit(macro_name) # to inform macro window which file is running and activate edit button
             self.macrothread = Macroloop(macro_name)
-            self.macrothread.finished.connect(self.threadFinish)
             self.macrothread.finished.connect(self.macroFinish)
+            self.macrothread.finished.connect(self.macro.macroFinished)
+            self.macrothread.number.connect(self.macro.macroNum)
             self.macrothread.started.connect(self.macroStart)
             self.macrothread.msg.connect(self.sysReturn)
             self.macrothread.send.connect(self.send)
             self.macrothread.setText.connect(self.command_input.setText)
             self.macrothread.start()
         else:
-            self.sysReturn(text, "iv") #file doesn't exist
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir), "err")
 
 class ImageWidget(QWidget):
@@ -1641,6 +1640,7 @@ class Expose(QThread):
 class Macroloop(QThread):
     msg = pyqtSignal(str)
     send = pyqtSignal(str)
+    number = pyqtSignal(int)
     setText = pyqtSignal(str)
 
     def __init__(self, name):
@@ -1663,6 +1663,7 @@ class Macroloop(QThread):
                     if read != "###MacroPause###":
                         break
             line = file[self.macro_index]
+            self.number.emit(self.macro_index) # to macrowindow
             self.send.emit(line)
             self.setText.emit("macro line [{0}] : {1}".format(str(self.macro_index+1), line))
             self.macro_index += 1
