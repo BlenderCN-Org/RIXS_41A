@@ -17,6 +17,7 @@ class MacroWindow(QWidget):
         self.__layout__()
         self.directory = directory # inherited by Mainwindow
         self.macro_running = False
+        self.current_file = None
 
     def __mainwindow__(self):
         self.setWindowTitle("Macro Editor")
@@ -39,7 +40,7 @@ class MacroWindow(QWidget):
         self.save_button = QPushButton("save", self)
         self.open_button = QPushButton("open", self)
         self.edit_button = QPushButton("edit", self)
-        self.save_button.clicked.connect(self.save)
+        self.save_button.clicked.connect(self.overWrite)
         self.open_button.clicked.connect(self.open)
         self.edit_button.clicked.connect(self.edit)
         self.edit_button.setDisabled(True)
@@ -54,29 +55,51 @@ class MacroWindow(QWidget):
         self.window_layout.addWidget(self.editor)
         self.window_layout.addLayout(self.buttons_layout)
 
-    def save(self):
-        file_name = self.getName()
-        if file_name != None:
-            text = self.editor.toPlainText() # transform user_text to plaintext
+    def overWrite(self):
+        if self.current_file != None: #if there's a name already, check overwrite
+            buttonReply = QMessageBox.question(self, 'Save Macro', "Do you want to overwrite?",
+                                               QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if buttonReply == QMessageBox.Yes:
+                self.save(os.path.basename(self.current_file))
+            else:
+                file_name = self.getName()
+                self.save(file_name)
+        else:
+            file_name = self.getName()
+            self.save(file_name)
+
+    def save(self, file_name):
+        if file_name != False:
+            text = self.editor.toPlainText()  # transform user_text to plaintext
             txt_file = "{0}{1}.txt".format(self.directory, file_name)
-            file = open(txt_file, "w")
-            file.write(text)
-            file.close()
+            with open(txt_file, "w") as file:
+                file.write(text)
             self.editor.setDisabled(True)
 
-    def getName(self):
-        text, ok = QInputDialog.getText(self, 'Save Macro', 'New macro name:')
+    def getName(self, msg=""):
+        text, ok = QInputDialog.getText(self, 'Save Macro', 'New macro name:\n'
+                                                            '{}'.format(msg))
         if ok:
-            if os.path.exists('{0}{1}.txt'.format(self.directory,text)):
-                error_msg = "File name already exist: {0}, file not saved.".format(text)
+            if text != "":
+                if os.path.exists('{0}{1}.txt'.format(self.directory,text)):
+                    file_name = False
+                    error_msg = "File name already exist: {0}.".format(text)
+                    self.show_bar(error_msg, False)
+                    self.errorMsg.emit(error_msg, 'err')
+                    self.getName(error_msg)
+                else:
+                    file_name = str(text)
+                    self.show_bar(str(text))
+                    self.macroMsg.emit("macro file saved: {0}.txt".format(file_name))
+            else:
+                file_name = False
+                error_msg = 'file name can\'t be empty'
                 self.show_bar(error_msg, False)
                 self.errorMsg.emit(error_msg, 'err')
-                file_name = None
-            else:
-                file_name = str(text)
-                self.show_bar(str(text))
-                self.macroMsg.emit("macro file saved: {0}.txt".format(file_name))
-        print('File name = ', file_name)
+                self.getName(error_msg)
+        else:
+            file_name = False
+
         return (file_name)
 
 
@@ -86,16 +109,27 @@ class MacroWindow(QWidget):
                                     ,filter = 'Text files (*.txt)'
                                     ,options=QFileDialog.ReadOnly)
 
-        if fname[0]:
-            f = open(fname[0], 'r')
-
-            with f:
-                data = f.read()
-                self.editor.setText(data)
-                self.show_bar(os.path.basename(fname[0]))
+        self.current_file = fname[0]
+        print('current file = ', self.current_file)
+        with open(fname[0], 'r') as f:
+            data = f.read()
+            self.editor.setText(data)
+            self.show_bar(os.path.basename(fname[0]))
 
     def edit(self):
-        pass
+        with open(self.current_file, 'r') as f: #load text to editor
+            data = f.read()
+            self.editor.setText(data)
+            self.show_bar(os.path.basename(self.current_file))
+
+        with open(self.current_file, "a") as f:
+            f.write("\n###MacroPause###")
+
+        self.editor.setEnabled(True)
+
+    def editButton(self, name):
+        self.current_file = name
+        self.edit_button.setEnabled(True)
 
     def show_bar(self, name, flag=True):
         if flag:

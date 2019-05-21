@@ -1,4 +1,4 @@
-# Last edited:20190520 10am
+# Last edited:20190521 10am
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -365,6 +365,7 @@ class Command(QWidget):
     pause = pyqtSignal(float)
     loadimage = pyqtSignal(str)
     plot_rixs = pyqtSignal(str)
+    macrostarted = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -471,7 +472,9 @@ class Command(QWidget):
         self.macro = macro.MacroWindow(macro_dir)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.errorMsg.connect(self.sysReturn)
+        self.macrostarted.connect(self.macro.editButton)
         self.macro.show()
+
         '''
         Up and Down
          - redefine function of QLineEdit(originally support return only)
@@ -576,7 +579,6 @@ class Command(QWidget):
                    "<b>h</b>: recall previous commands executed successfully.<br>\n"
                    "<br>\n"
                    "<b>mv</b>: set a parameter to its absolute value.<br>\n"
-                   # "<b>mvr</b>: change a parameter in terms of a relative value.<br>\n"
                    "<b>scan</b>: stepwise scan a parameter and plot selected parameters with some dwell time.<br>\n"
                    "<b>xas</b>:  <br>\n"
                    "<b>img</b>:  take one RIXS image with an exposure time (default exposure time= 2). <br>\n"
@@ -860,7 +862,10 @@ class Command(QWidget):
         BUSY = False
         WorkingSTATUS = ""
         CountDOWN = 0
-        print("Thread finished")
+
+    def macroStart(self):
+        global MACROBUSY
+        MACROBUSY = True
 
     def macroFinish(self):
         global MACROBUSY
@@ -1015,11 +1020,14 @@ class Command(QWidget):
         if os.path.exists(macro_name): # check file exist
             self.sysReturn('do %s'%name, "v", True)
             self.sysReturn("macro begins: %s.txt"%name)
+            self.macrostarted.emit(macro_name) # to inform macro window which file is running and activate edit button
             self.macrothread = Macroloop(macro_name)
             self.macrothread.finished.connect(self.threadFinish)
             self.macrothread.finished.connect(self.macroFinish)
+            self.macrothread.started.connect(self.macroStart)
             self.macrothread.msg.connect(self.sysReturn)
             self.macrothread.send.connect(self.send)
+            self.macrothread.setText.connect(self.command_input.setText)
             self.macrothread.start()
         else:
             self.sysReturn(text, "iv") #file doesn't exist
@@ -1633,34 +1641,46 @@ class Expose(QThread):
 class Macroloop(QThread):
     msg = pyqtSignal(str)
     send = pyqtSignal(str)
+    setText = pyqtSignal(str)
 
     def __init__(self, name):
         super(Macroloop, self).__init__()
         self.name = name
         self.macro_n = 0 # start from zero
         self.macro_index = 0
+        self.abort = False
+
     #TODO: 1. ABORT 2. changing macro
     def run(self):
-        global MACROBUSY, cmd_global
-        MACROBUSY = True
-        self.readFile()
-        while self.macro_index < self.macro_n and ABORT == False:
-            line = self.readFile()[self.macro_index]
-            while BUSY:
-                time.sleep(1) # hold here to wait previous command finish
+        self.readFile()   #get self.macro_n
+        while self.macro_index < self.macro_n:
+            file = self.readFile()
+            if file[-1] == "###MacroPause###":
+                self.setText.emit("Macro paused: waiting for macro file edition")
+                while True:
+                    time.sleep(1)
+                    read = self.readFile()[-1] #check every second during macro pause
+                    if read != "###MacroPause###":
+                        break
+            line = file[self.macro_index]
             self.send.emit(line)
-            time.sleep(1)
-            cmd_global.command_input.setText("macro line [{0}] : {1}".format(str(self.macro_index+1), line))
+            self.setText.emit("macro line [{0}] : {1}".format(str(self.macro_index+1), line))
             self.macro_index += 1
-        cmd_global.command_input.setText("")
+            time.sleep(0.5)
+            while BUSY:
+                time.sleep(1) # hold here to wait command finish
+            if ABORT:
+                break
+
         if ABORT == False:
             end_msg = "macro finished."
         else:
             end_msg = "macro has been terminated, executed macro line: %s."%self.macro_index
+        self.setText.emit("")
         self.msg.emit(end_msg)
         self.quit()
 
-    def readFile(self):
+    def readFile(self): # refresh macro number (length of file)
         #==============Macro start===============
         readfile=[]
         f = open(self.name,"r")
@@ -1669,6 +1689,11 @@ class Macroloop(QThread):
             readfile.append(x)
         self.macro_n = len(readfile) # refresh macro_n
         return readfile
+
+    def abort(self):
+        self.abort = True
+
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
