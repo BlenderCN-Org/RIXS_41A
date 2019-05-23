@@ -1,4 +1,4 @@
-# Last edited:20190523 2pm
+# Last edited:20190523 5pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -101,7 +101,7 @@ param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":1,
+    "hexapod": 0, "ccd": 1, "xyzstage":0,
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
@@ -586,8 +586,10 @@ class Command(QWidget):
         elif text == 'p':
             self.sysReturn(text, "v")
             # adjust return msg format of parameter index
-            p = ', '.join(param_index0)
-            self.sysReturn(p)
+            movable = ', '.join(param_index0)
+            immovable = ', '.join(non_movables)
+            self.sysReturn("movable : {}".format(movable))
+            self.sysReturn("immovable : {}".format(immovable))
 
         # elif "shut" in text[:5]:
         #     space = text.count(' ')
@@ -772,7 +774,7 @@ class Command(QWidget):
                     self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False)
                     self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
                     self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
-                    self.scanthread.set_data.connect(spectrum_global.setScandata)
+                    self.scanthread.set_data.connect(spectrum_global.liveplot)
                     self.scanthread.finished.connect(self.threadFinish)
                     self.scanthread.start()
                 else:
@@ -788,10 +790,15 @@ class Command(QWidget):
             if self.checkTscanformat(text):
                 [p, dt, n]=text.split(" ")[1:]
                 self.sysReturn(text, 'v', True)
-                self.sysReturn('tscan {0} begins at {1}'.format(file_no, start_time.strftime("%c")))
-                self.tscan = Tscan(p, float(dt), int(n))
+                timestamp = QTime.currentTime()
+                t0 = timestamp.toString()
+                self.sysReturn('tscan {0} begins at {1}'.format(file_no, t0))
+                self.tscan = Tscan(p, t0, float(dt), int(n))
+                self.tscan.cmd_msg.connect(self.sysReturn)
+                self.tscan.setplot.connect(spectrum_global.tscanPlot)
+                self.tscan.plot.connect(spectrum_global.liveplot)
+                self.tscan.finished.connect(self.threadFinish)
                 self.tscan.start()
-
 
         elif text[:3] == "xas":
             if self.checkXasformat(text):
@@ -952,11 +959,9 @@ class Command(QWidget):
 
     def checkTscanformat(self, text): #timescan, p, dt, n
         sptext = text.split(' ')
-        if sptext[0] != 'tscan':
+        if sptext[0] != 'tscan' or text.count(' ') != 3:
             self.sysReturn(text, 'iv')
             self.sysReturn('input error. Format: tscan p dt n', 'err')
-            return False
-        if text.count(' ') != 4:
             return False
         [p, dt, n] = sptext[1:]
         if p not in param_index:
@@ -1259,10 +1264,7 @@ class SpectrumWidget(QWidget):
         '''
         setup plotItem
         '''
-        if self.legenditems != []:
-            for x in self.legenditems:
-                self.legend.removeItem(x)
-        self.plotWidget.plotItem.clear() # legends not in viewbox
+        self.clearplot()
         self.legenditems = plot
         self.plotWidget.plotItem.setTitle(title=title_plot)
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
@@ -1272,16 +1274,26 @@ class SpectrumWidget(QWidget):
         curve settings
         '''
         color = ['g', 'b', 'w', 'r', 'y']
-        scan_x = []  # the empty list for the scanning parameter
         for i in range(0, len(plot)):
-            self.curve[i] = self.plotWidget.plot(scan_x, [], pen=pg.mkPen(color=color[i],style=1,width=1), name=plot[i])
-            #self.legend.addItem(self.curve[i], plot[i])
+            self.curve[i] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[i],style=1,width=1), name=plot[i])
         if xas:
             self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1), name="mean I<sub>ph</sub>")
-            #self.legend.addItem(self.xas_curve, "mean I<sub>ph</sub>") # default pen = grey.
             self.legenditems.append("mean I<sub>ph</sub>")
 
-    def setScandata(self, i, list_x, series_y):
+    def tscanPlot(self, p, dt, n):
+        self.clearplot()
+        self.legenditems.append(p)
+        title = 'time scan {0} : {1}'.format(int(param['f']), p)
+        self.plotWidget.plotItem.setTitle(title=title)
+        t1 = 0
+        t2 = dt * n
+        self.plotWidget.plotItem.setXRange(t1, float(t2), padding=None, update=True)
+        self.plotWidget.plotItem.setLabel('bottom', text='time (sec)')
+        self.plotWidget.plotItem.setLabel('left', text=p)
+        color = ['g', 'b', 'w', 'r', 'y'] # extendable
+        self.curve[0] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[0],style=1,width=1),name=p)
+
+    def liveplot(self, i, list_x, series_y):
         self.curve[i].setData(list_x, series_y)
 
     def setXASdata(self, sum_x, sum_y):
@@ -1312,6 +1324,13 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units')
         self.plotWidget.addLegend((50, 30), offset=(450, 150))
         self.plotWidget.plotItem.clear()
+
+    def clearplot(self):
+        if self.legenditems != []:
+            for x in self.legenditems:
+                self.legend.removeItem(x)
+        self.plotWidget.plotItem.clear() # legends not in viewbox
+        self.legenditems = []
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
@@ -1472,8 +1491,7 @@ class Scan(QThread):
                     #raw_array = np.append(raw_array, pvl.getVal('Iph'))   # Read Iph data through epics
 
                     for i in range(len(plot)):
-                        if checkSafe(plot[i]): value = pvl.getVal(plot[i])
-                        else: value = param[plot[i]]
+                        value = get_param(plot[i])
                         raw_array = np.append(raw_array, value)
 
             current_param = pd.Series(param)  # generate series
@@ -1538,6 +1556,77 @@ class Scan(QThread):
         self.data_matrix.to_csv(filename)
         self.cmd_msg.emit('{0} data saved in {1}.txt'.format("XAS" if self.xas else "scan" ,filename0))
 
+class Tscan(QThread):
+    setplot = pyqtSignal(str, float, int)
+    plot = pyqtSignal(int, list, pd.Series)
+    cmd_msg = pyqtSignal(str)
+
+    def __init__(self, p, t0, dt, n):
+        super().__init__()
+        self.p = p
+        self.dt = dt
+        self.n = n
+        self.t0 = t0
+        self.start_point = get_param(p)
+        self.timelist = []                                      #as axis x
+        self.data_matrix = pd.DataFrame(columns=param_index)    #as axis y
+
+    def run(self):
+        global param, WorkingSTATUS, BUSY, CountDOWN, file_no
+        BUSY = True
+        file_no += 1
+        '''
+        Data collection
+        '''
+        t1 = time.time()
+        self.setplot.emit(self.p, self.dt, self.n)
+        for i in range(self.n+1):
+            t01 = time.time()
+            # timestamp = QTime.currentTime()
+            # t = timestamp.toString()
+            if i != 0:
+                t = t01-t1
+                v = get_param(self.p)
+            else:
+                t = 0
+                v = get_param(self.p)
+            self.timelist.append(t)
+            # appending current_param to data_matrix
+            current_param = pd.Series(param)
+            current_param['t'] = t
+            current_param[self.p] = v
+            self.data_matrix.loc[len(self.data_matrix), :] = current_param.tolist()
+            '''
+            plot from data_matrix
+            '''
+            #for i in range(0, len(plot)):
+            self.plot.emit(0, self.timelist, self.data_matrix.loc[:, self.p])
+            dt = time.time()-t01
+            time.sleep(self.dt-dt)
+        '''
+        Loop finished
+        '''
+        WorkingSTATUS = ""
+        CountDOWN = 0
+        print('[data_matrix]')
+        print(self.data_matrix)
+        dt = round(time.time() - t1, 3)
+        print('time span in senconds=', dt)
+        # if ABORT:
+        #     self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
+        # else:
+        #     self.cmd_msg.emit('scan %s completed'%(self.p))
+        self.saveSpec()
+        self.quit()
+
+    def saveSpec(self):
+        filename0="tscan_{0}_{1}".format(dir_date, file_no)
+        filename = data_dir + filename0
+        self.data_matrix.to_csv(filename)
+        self.cmd_msg.emit('{0} data saved in {1}.txt'.format("Tscan" , filename0))
+
+
+
 class Xas(QThread):  # no dummy now
     cmd_msg = pyqtSignal(str)
     xas_plot = pyqtSignal(list, list)
@@ -1559,7 +1648,7 @@ class Xas(QThread):  # no dummy now
             self.scanthread = Scan(['Iph'], 'agm', self.e1, self.e2, self.de, self.dwell, self.n, i+1, True)
             self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
             self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
-            self.scanthread.set_data.connect(spectrum_global.setScandata)
+            self.scanthread.set_data.connect(spectrum_global.liveplot)
             self.scanthread.data_set.connect(self.sumPlot)
             self.scanthread.start()
             self.scanthread.wait()

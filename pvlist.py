@@ -65,9 +65,10 @@ def putVal(p, value):
     PV(putvalue[p]).put(value)
     print('set {0} = {1}'.format(p, value))
     if p in ['x','y','z']:
-        PV(put_xyz[p]).put(1) # for xyz stage: set target then move
-                              # 1= Move
+        time.sleep(0.2)         # ensure value set correctly
+        PV(put_xyz[p]).put(1)   # for xyz stage: set target then move, put(1)= Move
         print('start moving..')
+
 def moving(p):
     if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'agm', 'ags']:
         if movStat(p) == 1:  # 1: moving, 0: stop
