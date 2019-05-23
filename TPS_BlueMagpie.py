@@ -1,4 +1,4 @@
-# Last edited:20190521 5pm
+# Last edited:20190523 10am
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -194,7 +194,7 @@ def Read(p, form=3):
         # real marked blue
         if real == 0: string = '<font color=gray>' + string + '</font>'
         if real == 1 and p not in ['Tccd', 'I0',  'gain', 'Iph']:
-            if pvl.checkMoving(p):
+            if pvl.moving(p):
                 string = '<font color=blue>' + string + '</font>'
 
     return string
@@ -1330,26 +1330,15 @@ class Move(QThread):
         # p : index(name) of parameter, should be a string; v : range-checked value
         p, v, BUSY= self.p, self.v, True
         if checkSafe(p):  # check device safety
-            if (p in param_index0) and (p not in ['Tccd', 'gain','ta']):
+            if (p in param_index0) and (p not in ['x','y','z','Tccd', 'gain','ta']):
                 pvl.putVal(p, v)
-                t1 = time.time()
-                while pvl.checkMoving(p) == False:  # = 0 not moving; = 1 moving
-                    time.sleep(0.2)
-                    if pvl.checkMoving(p) or (time.time() - t1) >= 1 or ABORT:
-                        break
-
-                # wait moving complete
-                while pvl.checkMoving(p) == True and ABORT == False:
-                    time.sleep(0.2)  # hold here for BUSY flag
-                    if ABORT:
-                        break
-                    if pvl.checkMoving(p) == False:
-                        if abs(pvl.getVal(p) - v) >= 0.02:
-                            error_message = ("<font color=red>" + p + " not moving correctly, value: "
-                                             + str(pvl.getVal(p)) + "</font>")
-                            self.msg.emit(error_message)
-                        break
-
+                self.moveCheck(p, v)
+            elif p in ['x','y','z']:
+                v = self.transVal(p, v)
+                pvl.putVal(p,v-500) #considering backlash, put v-500 first
+                self.moveCheck(p, v-500)
+                pvl.putVal(p,v)
+                self.moveCheck(p, v)
             elif p == 'ta':
                 pvl.putVal('heater', 1)
                 pvl.putVal(p, v)
@@ -1358,6 +1347,30 @@ class Move(QThread):
         else:
             param[p] = v
         self.quit()
+
+    def transVal(self, p, v): #get correct target value
+        if p="z":
+            return int(pvl.getVal + v*8000)
+        else:
+            return int(pvl.getVal + v*32000)
+
+    def moveCheck(self, p, v):
+        t1 = time.time()
+        while not pvl.moving(p):
+            time.sleep(0.2)
+            if pvl.moving(p) or (time.time() - t1) >= 1 or ABORT:
+                break
+
+        while pvl.moving(p) and not ABORT:
+            time.sleep(0.2)  # hold here for BUSY flag
+            if ABORT:
+                break
+            if not pvl.moving(p):
+                if abs(pvl.getVal(p) - v) >= 0.02:
+                    error_message = ("<font color=red>" + p + " not moving correctly, value: "
+                                     + str(pvl.getVal(p)) + "</font>")
+                    self.msg.emit(error_message)
+                break
 
 
 class Scan(QThread):

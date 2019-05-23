@@ -50,9 +50,9 @@ class MacroWindow(QWidget):
         self.save_button = QPushButton("save", self)
         self.open_button = QPushButton("open", self)
         self.edit_button = QPushButton("edit", self)
-        self.save_button.clicked.connect(self.overWrite)
-        self.open_button.clicked.connect(self.open)
-        self.edit_button.clicked.connect(self.edit)
+        self.save_button.clicked.connect(self.overWrite)# check overwrite problem first, then decide new file name
+        self.open_button.clicked.connect(self.open)     # request user to choose a file
+        self.edit_button.clicked.connect(self.edit)     # activated while macro started
         self.edit_button.setDisabled(True)
         self.buttons_layout = QHBoxLayout()
         self.buttons_layout.addWidget(self.save_button)
@@ -183,7 +183,7 @@ class MacroWindow(QWidget):
 
 
 # test running independently
-# app = QApplication(sys.argv)
-# macro = MacroWindow("a")
-# macro.show()
-# sys.exit(app.exec_())
+app = QApplication(sys.argv)
+macro = MacroWindow("a")
+macro.show()
+sys.exit(app.exec_())

@@ -4,22 +4,27 @@ import time
 import numpy as np
 
 #Get Value
-reading = dict(agm="41a:AGM:Energy.RBV", ags="41a:AGS:Energy.RBV", x="41a:hexapod:x", y="41a:hexapod:y",
-               z="41a:hexapod:z", u="41a:hexapod:u", v="41a:hexapod:v", w="41a:hexapod:w", th="41a:sample:thr",
+reading = dict(agm="41a:AGM:Energy.RBV", ags="41a:AGS:Energy.RBV", x= "41a:RIXS:xyz:xr", y= "41a:RIXS:xyz:yr",
+               z= "41a:RIXS:xyz:zr", hex_x="41a:hexapod:x", hex_y="41a:hexapod:y", hex_z="41a:hexapod:z",
+               u="41a:hexapod:u", v="41a:hexapod:v", w="41a:hexapod:w", th="41a:sample:thr",
                tth="41a:sample:tthr", heater="41a:sample:heater", ta="41a:sample:tmp1", tb="41a:sample:tmp2",
                I0="41a:sample:i0", Iph="41a:sample:phdi", Tccd="41a:ccd1:tmpr", gain="41a:ccd1:gain",
                ring="SR-DI-DCCT:BeamCurrent")
 
 #Get Value
-moving = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:hexapod:xm", y="41a:hexapod:ym",
-              z="41a:hexapod:zm", u="41a:hexapod:um", v="41a:hexapod:vm", w="41a:hexapod:wm", th="41a:sample:thm",
+moving = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:RIXS:xyz:x:Moving",
+              y="41a:RIXS:xyz:y:Moving", z="41a:RIXS:xyz:z:Moving", hex_x="41a:hexapod:xm", hex_y="41a:hexapod:ym",
+              hex_z="41a:hexapod:zm", u="41a:hexapod:um", v="41a:hexapod:vm", w="41a:hexapod:wm", th="41a:sample:thm",
               tth="41a:sample:tthm")
 
 
 #Put Value
-putvalue = dict(agm="41a:AGM:Energy.VAL", ags="41a:AGS:Energy.VAL", x="41a:hexapod:xw", y="41a:hexapod:yw",
-               z="41a:hexapod:zw", u="41a:hexapod:uw", v="41a:hexapod:vw", w="41a:hexapod:ww", th="41a:sample:thw",
+putvalue = dict(agm="41a:AGM:Energy.VAL", ags="41a:AGS:Energy.VAL", x="41a:RIXS:xyz:xw",
+              y="41a:RIXS:xyz:yw", z="41a:RIXS:xyz:zw", hex_x="41a:hexapod:xw", hex_y="41a:hexapod:yw",
+               hex_z="41a:hexapod:zw", u="41a:hexapod:uw", v="41a:hexapod:vw", w="41a:hexapod:ww", th="41a:sample:thw",
                tth="41a:sample:tthw", heater="41a:sample:heater", ta="41a:sample:tmp1w")
+
+put_xyz = dict(x="41a:RIXS:xyz:x:Move", y="41a:RIXS:xyz:y:Move", z="41a:RIXS:xyz:z:Move")
 
 #Get/Put Value for CCD
 ccdict = dict(exposure="41a:ccd1:expot", start="41a:ccd1:start", stop="41a:ccd1:stop", dataok="41a:ccd1:dataok",
@@ -51,8 +56,10 @@ def ccd(p, value=None):
 
 def putVal(p, value):
     PV(putvalue[p]).put(value)
-
-def checkMoving(p):
+    if p in ['x','y','z']:
+        PV(put_xyz[p]).put(1) # for xyz stage: set target then move
+                              # 1= Move
+def moving(p):
     if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'agm', 'ags']:
         if movStat(p) == 1:  # 1: moving, 0: stop
             return True
