@@ -1581,6 +1581,8 @@ class Tscan(QThread):
         t1 = time.time()
         self.setplot.emit(self.p, self.dt, self.n)
         for i in range(self.n+1):
+            if ABORT:
+                break
             t01 = time.time()
             # timestamp = QTime.currentTime()
             # t = timestamp.toString()
@@ -1606,16 +1608,17 @@ class Tscan(QThread):
         '''
         Loop finished
         '''
+
         WorkingSTATUS = ""
         CountDOWN = 0
         print('[data_matrix]')
         print(self.data_matrix)
         dt = round(time.time() - t1, 3)
         print('time span in senconds=', dt)
-        # if ABORT:
-        #     self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
-        # else:
-        #     self.cmd_msg.emit('scan %s completed'%(self.p))
+        if ABORT:
+            self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
+        else:
+            self.cmd_msg.emit('scan %s completed'%(self.p))
         self.saveSpec()
         self.quit()
 
