@@ -1,4 +1,4 @@
-# Last edited:20190523 10am
+# Last edited:20190523 2pm
 import os, sys, time, random
 from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
@@ -101,10 +101,10 @@ param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1,
-    "th": 0, "tth": 0,
+    "hexapod": 0, "ccd": 1, "xyzstage":1,
+    "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
-    "ta": 0, "tb": 0,
+    "ta": 1, "tb": 1,
     "I0": 1, "Iph": 1,
     "s1": 0, "s2": 0, "shutter": 0
 })
@@ -113,7 +113,7 @@ Device = pd.Series({
 def checkSafe(p):  # Individual device safe check
     if SAFE:
         if p in ['x', 'y', 'z', 'u', 'v', 'w']:
-            if Device["hexapod"] != 0:
+            if Device["xyzstage"] == 1:
                 return True
         elif p in ["ccd", "gain", "Tccd"]:
             if Device['ccd'] == 1:
@@ -135,12 +135,19 @@ if SAFE:
 
 #TODO: restart PV while get None
 def get_param(p):
-    global param
+    global param, Device
     if checkSafe(p):
         v = pvl.getVal(p)
         if v == None:
-            v = 'NoneType'
-        param[p] = v
+            if p in ['x','y','z','u','v','w']:
+                Device["xyzstage"] = 0
+            elif p in ["ccd", "gain", "Tccd"]:
+                Device['ccd'] = 0
+            else:
+                Device[p] = 0
+            v = param[p]
+        else:
+            param[p] = v
     else:
         v = param[p]
     return v
@@ -153,11 +160,10 @@ def convertSeconds(seconds):
     time_stg = m + s
     return time_stg
 
-def Read(p, form=3):
+def Read(p, form='.3f'):
     # get value by param_list index
     value = get_param(p)
     real = 1 if checkSafe(p) else 0
-
     if isinstance(value, str):  # got None from device
         string = "<font color= red>none</font><font color = black> </font>"
     else:
@@ -167,11 +173,8 @@ def Read(p, form=3):
             string = str(int(value))
         elif form == 'switch':
             string = 'close' if value == 0 else 'open'
-        elif form == 2:
-            string = str(format(value, '.2f'))
-        else:
-            string = str(format(value, '.3f'))
-
+        elif '.' in form:
+            string = str(format(value, form))
         # real marked blue
         if real == 0: string = '<font color=gray>' + string + '</font>'
         if real == 1 and p not in ['Tccd', 'I0',  'gain', 'Iph']:
@@ -316,13 +319,13 @@ class StatusWidget(QWidget):
                         " <br>"
                         " Sample:  <br>"
                         " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm <br>"
-                        "   temperatures:  T<sub>a</sub> = " + Read('ta', 'int') + " K,"
-                        " T<sub>b</sub> = " + Read('tb', 'int') + " K<br> <br>"
-                        " th = " + Read('th', form=2) + "&#176;, tth = " + Read('tth', form=2) + "&#176;<br> <br>"
+                        "   temperatures:  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
+                        " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
+                        " th = " + Read('th', '.2f') + "&#176;, tth = " + Read('tth', '.2f') + "&#176;<br> <br>"
                         " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
                         " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp <br> <br>"
                         " RIXS imager:  <br>"
-                        " temperature = " + Read('Tccd',1) + " \u2103" + ',   gain = ' + Read('gain', 0) + " <br> <br>")
+                        " temperature = " + Read('Tccd','.1f') + " \u2103" + ',   gain = ' + Read('gain', 'int') + " <br> <br>")
         status_text = "%s <font color =red> %s %s </font>" % (parameter_text, WorkingSTATUS, time_text)
         self.status_box.setText(status_text)
 
@@ -735,7 +738,7 @@ class Command(QWidget):
                 self.sysReturn("input error. use:   mv parameter value", "err")
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
-        elif 'scan' in text[:5]:
+        elif text[:5] == 'scan ':
             # if the input command is only 'scan' but not parameters check != 'OK',
             check = self.check_param_scan(text)  # checking input command and parameters
             if check == 'OK':
@@ -780,6 +783,15 @@ class Command(QWidget):
                 # Return error message
                 self.sysReturn(text, "iv")
                 self.sysReturn(check, "err")
+
+        elif text[:5] == "tscan":
+            if self.checkTscanformat(text):
+                [p, dt, n]=text.split(" ")[1:]
+                self.sysReturn(text, 'v', True)
+                self.sysReturn('tscan {0} begins at {1}'.format(file_no, start_time.strftime("%c")))
+                self.tscan = Tscan(p, float(dt), int(n))
+                self.tscan.start()
+
 
         elif text[:3] == "xas":
             if self.checkXasformat(text):
@@ -938,6 +950,29 @@ class Command(QWidget):
         print('scan paramter check:', check_msg)
         return check_msg
 
+    def checkTscanformat(self, text): #timescan, p, dt, n
+        sptext = text.split(' ')
+        if sptext[0] != 'tscan':
+            self.sysReturn(text, 'iv')
+            self.sysReturn('input error. Format: tscan p dt n', 'err')
+            return False
+        if text.count(' ') != 4:
+            return False
+        [p, dt, n] = sptext[1:]
+        if p not in param_index:
+            self.sysReturn(text, 'iv')
+            self.sysReturn('p: {} is not a scannable parameter'.format(n), 'err')
+            return False
+        if not self.checkFloat(dt):
+            self.sysReturn(text, 'iv')
+            self.sysReturn('{} is not float.'.format(x), 'err')
+            return False
+        if not self.checkInt(n):
+            self.sysReturn(text, 'iv')
+            self.sysReturn('{} is not float.'.format(x), 'err')
+            return False
+        return True
+
     def checkXasformat(self, text):
         sptext = text.split(' ')
         if sptext[0] == 'xas':
@@ -947,22 +982,26 @@ class Command(QWidget):
             elif text.count(' ') == 5: # check format = xas Ei Ef dE dt n
                 [e1, e2, de, dt, n] = sptext[1:]
 
-            for x in [e1, e2, de, dt]: #check float: e1, e2, de, dt
-                if self.checkFloat(x) == False:
-                    self.sysReturn(text, 'iv')
-                    self.sysReturn('{} is not float.'.format(x), 'err')
-                    return False
-            if self.checkInt(n):
-                if self.check_param_range('agm', e1) == 'OK' and self.check_param_range('agm', e2) == 'OK':
-                    return True
+                for x in [e1, e2, de, dt]: #check float: e1, e2, de, dt
+                    if self.checkFloat(x) == False:
+                        self.sysReturn(text, 'iv')
+                        self.sysReturn('{} is not float.'.format(x), 'err')
+                        return False
+                if self.checkInt(n):
+                    if self.check_param_range('agm', e1) == 'OK' and self.check_param_range('agm', e2) == 'OK':
+                        return True
+                    else:
+                        self.sysReturn(text, 'iv')
+                        if self.check_param_range('agm', e1) != 'OK': self.sysReturn(self.check_param_range('agm', e1),'err')
+                        else: self.sysReturn(self.check_param_range('agm', e2),'err')
+                        return False
                 else:
                     self.sysReturn(text, 'iv')
-                    if self.check_param_range('agm', e1) != 'OK': self.sysReturn(self.check_param_range('agm', e1),'err')
-                    else: self.sysReturn(self.check_param_range('agm', e2),'err')
+                    self.sysReturn('n: {} should be integer'.format(n),'err')
                     return False
             else:
                 self.sysReturn(text, 'iv')
-                self.sysReturn('n: {} should be integer'.format(n),'err')
+                self.sysReturn('input error. Format: xas Ei Ef dE dt n', 'err')
                 return False
         else:
             self.sysReturn(text,'iv')
@@ -1298,6 +1337,7 @@ class Statupdate(QThread):
             time.sleep(1)
 
 
+
 class Move(QThread):
     msg = pyqtSignal(str)
 
@@ -1317,6 +1357,7 @@ class Move(QThread):
                 self.moveCheck(p, v)
             elif p in ['x','y','z']:
                 v = self.transVal(p, v)
+                print('target pulse = ', v)
                 pvl.putVal(p,v-500) #considering backlash, put v-500 first
                 self.moveCheck(p, v-500)
                 pvl.putVal(p,v)
@@ -1332,9 +1373,9 @@ class Move(QThread):
 
     def transVal(self, p, v): #get correct target value
         if p=="z":
-            return int(pvl.getVal + v*8000)
+            return int(v*32000)
         else:
-            return int(pvl.getVal + v*32000)
+            return int(v*8000)
 
     def moveCheck(self, p, v):
         t1 = time.time()
@@ -1342,23 +1383,25 @@ class Move(QThread):
             time.sleep(0.2)
             if pvl.moving(p) or (time.time() - t1) >= 1 or ABORT:
                 break
-
+        print('{0} started to move'.format(p))
+        time.sleep(0.1)
         while pvl.moving(p) and not ABORT:
             time.sleep(0.2)  # hold here for BUSY flag
             if ABORT:
                 break
             if not pvl.moving(p):
-                if abs(pvl.getVal(p) - v) >= 0.02:
+                if (abs(pvl.getVal(p) - v) >= 0.02) and (p not in ['x','y','z']):
                     error_message = ("<font color=red>" + p + " not moving correctly, value: "
                                      + str(pvl.getVal(p)) + "</font>")
                     self.msg.emit(error_message)
                 break
+        print('{0} finished moving'.format(p))
 
 
 class Scan(QThread):
     scan_plot = pyqtSignal(list, str, float, float, bool)
     set_data = pyqtSignal(int, list, pd.Series)
-    data_set = pyqtSignal(list, list)
+    data_set = pyqtSignal(list, list) #for xas plot collection
     cmd_msg = pyqtSignal(str)
 
     def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas):

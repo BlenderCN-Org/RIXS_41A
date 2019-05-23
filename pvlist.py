@@ -39,7 +39,14 @@ pv_list = [PV(name) for name in pvname_list] # generate PVs
 
 def getVal(p):
     i = pvname_list.index(reading[p]) # from key(param_index) find pvname
-    return (pv_list[i].get()) # get PV value
+    v = pv_list[i].get()
+    if p == 'z':
+        if v != None:
+            v = float(v/32000)
+    elif p in ['x','y']:
+        if v!= None:
+            v = float(v/8000)
+    return v # get PV value
 
 def movStat(p):
     i = pvname_list.index(movingstat[p])
@@ -56,9 +63,11 @@ def ccd(p, value=None):
 
 def putVal(p, value):
     PV(putvalue[p]).put(value)
+    print('set {0} = {1}'.format(p, value))
     if p in ['x','y','z']:
         PV(put_xyz[p]).put(1) # for xyz stage: set target then move
                               # 1= Move
+        print('start moving..')
 def moving(p):
     if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'agm', 'ags']:
         if movStat(p) == 1:  # 1: moving, 0: stop
