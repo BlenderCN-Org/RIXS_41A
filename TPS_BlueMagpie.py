@@ -84,23 +84,6 @@ param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w',
 param_value = [file_no, 0., 2.0, 50., 710., 720., 0., 0., 0., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0, 25, 0, 0, 10]
 param = pd.Series(param_value, index=param_index)
 
-## gloable device PV names
-pvName = {'agm': "41a:AGM:Energy",
-          'ags': "41a:AGS:Energy",
-          "x": "41a:hexapod:x",
-          "y": "41a:hexapod:y",
-          "z": "41a:hexapod:z",
-          "u": "41a:hexapod:u",
-          "v": "41a:hexapod:v",
-          "w": "41a:hexapod:w",
-          "th": "41a:sample:th",
-          "tth": "41a:sample:tth",
-          "heater": "41a:sample:heater",
-          "ta": "41a:sample:tmp1",
-          "tb": "41a:sample:tmp2",
-          "I0": "41a:sample:i0",
-          "Iph": "41a:sample:phdi"}
-
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
 # note: we can't use param_index0 = param_index
 non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', 'tb']
@@ -144,15 +127,13 @@ def checkSafe(p):  # Individual device safe check
 # SAFE = False
 SAFE = True
 
-# SETUP_epics
 if SAFE:
-    # setup_CCD
     pvl.ccd("exposure", 2)
     pvl.ccd("gain", 10)
     pvl.ccd("acqmode", 2)  # 0: video; 1: single (obsolete); 2: accumulation
     pvl.ccd("accutype", 0)  # 0: raw image; 2: differnece image
 
-
+#TODO: restart PV while get None
 def get_param(p):
     global param
     if checkSafe(p):
@@ -412,7 +393,8 @@ class Command(QWidget):
         global file_no
         if os.path.exists(self.fullog_name):
             data = pd.read_csv(self.fullog_name, header=0, delimiter="|")
-            file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
+            if len(data)-1 >= 0 :
+                file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
             self.fullog = data[data['Text'] != "APP_CLOSED"].reset_index(drop=True)
             self.fullog_i = len(self.fullog) # removed APP_CLOSED for keyboard calling
         else:
@@ -1349,7 +1331,7 @@ class Move(QThread):
         self.quit()
 
     def transVal(self, p, v): #get correct target value
-        if p="z":
+        if p=="z":
             return int(pvl.getVal + v*8000)
         else:
             return int(pvl.getVal + v*32000)

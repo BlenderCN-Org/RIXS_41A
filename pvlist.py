@@ -12,7 +12,7 @@ reading = dict(agm="41a:AGM:Energy.RBV", ags="41a:AGS:Energy.RBV", x= "41a:RIXS:
                ring="SR-DI-DCCT:BeamCurrent")
 
 #Get Value
-moving = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:RIXS:xyz:x:Moving",
+movingstat = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:RIXS:xyz:x:Moving",
               y="41a:RIXS:xyz:y:Moving", z="41a:RIXS:xyz:z:Moving", hex_x="41a:hexapod:xm", hex_y="41a:hexapod:ym",
               hex_z="41a:hexapod:zm", u="41a:hexapod:um", v="41a:hexapod:vm", w="41a:hexapod:wm", th="41a:sample:thm",
               tth="41a:sample:tthm")
@@ -33,7 +33,7 @@ ccdict = dict(exposure="41a:ccd1:expot", start="41a:ccd1:start", stop="41a:ccd1:
 
 
 
-pvname_list = list(reading.values()) + list(moving.values()) + list(ccdict.values())
+pvname_list = list(reading.values()) + list(movingstat.values()) + list(ccdict.values())
 
 pv_list = [PV(name) for name in pvname_list] # generate PVs
 
@@ -42,7 +42,7 @@ def getVal(p):
     return (pv_list[i].get()) # get PV value
 
 def movStat(p):
-    i = pvname_list.index(moving[p])
+    i = pvname_list.index(movingstat[p])
     return (pv_list[i].get())
 
 def ccd(p, value=None):

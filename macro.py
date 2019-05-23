@@ -183,7 +183,7 @@ class MacroWindow(QWidget):
 
 
 # test running independently
-app = QApplication(sys.argv)
-macro = MacroWindow("a")
-macro.show()
-sys.exit(app.exec_())
+# app = QApplication(sys.argv)
+# macro = MacroWindow("a")
+# macro.show()
+# sys.exit(app.exec_())
