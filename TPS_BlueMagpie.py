@@ -1,4 +1,4 @@
-# Last edited:20190524 5pm
+# Last edited:20190524 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -1117,7 +1117,7 @@ class ImageWidget(QWidget):
 
         self.imv.scene.sigMouseMoved.connect(mouseMoved)
 
-    def getData(self, rixs=False):
+    def getData(self, rixs =False):
         if checkSafe('ccd'):
             raw_img = pvl.ccd("image")
             print(raw_img)
@@ -1285,13 +1285,14 @@ class SpectrumWidget(QWidget):
     def rixsPlot(self, x1=0, x2=2048):
         self.rixs_x = list(range(0, 2048))
         self.rixs_y = np.empty(2048)
+        self.rixs_n = 0
         self.clearplot()
         self.legenditems = ['rixs']
         self.plotWidget.plotItem.setTitle(title='RIXS {0}'.format(file_no))
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
         self.plotWidget.plotItem.setLabel('left', text='Intensity (arb. units)')
-        self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='r',style=1,width=1),name='rixs')
+        self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
 
     def liveplot(self, i, list_x, series_y):
         self.curve[i].setData(list_x, series_y)
@@ -1302,8 +1303,10 @@ class SpectrumWidget(QWidget):
 
     def setRIXSdata(self, array, x1=0, x2=2048):
         #data = spike.spikeRemoval(array, 0, 1024, 3)
-        data = array.mean(axis=0)
-        self.rixs_y += data
+        data = array.sum(axis=0)
+        if data != []:
+            self.rixs_y = ((self.rixs_y*self.rixs_n) + data) / (self.rixs_n+1)
+            self.rixs_n += 1
         self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
 
     def plotXAS(self):
