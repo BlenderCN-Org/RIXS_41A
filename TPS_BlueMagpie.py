@@ -1,6 +1,5 @@
-# Last edited:20190523 5pm
+# Last edited:20190524 5pm
 import os, sys, time, random
-from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
@@ -8,10 +7,9 @@ import pyqtgraph as pg
 from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
-import time, datetime, math, re
-import epics as e
-from epics import PV
+import datetime, re
 import pvlist as pvl
+from spike import spikeRemoval
 import macro
 
 # Global for connection
@@ -79,9 +77,9 @@ CountDOWN = 0
 
 # SETUP_parameters
 # TODO: img?
-param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph',
+param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph',
                'imager', 'Tccd', 'shutter', 'ccd', 'gain']
-param_value = [file_no, 0., 2.0, 50., 710., 720., 0., 0., 0., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0, 25, 0, 0, 10]
+param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0., 0, 25, 0, 0, 10]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
@@ -90,14 +88,13 @@ non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', '
 param_index0 = list(param_index)
 for elements in non_movables:
     param_index0.remove(elements)
-# movables: ['agm', 'ags', 'x', 'y', 'z', 'u', 'v', 'w','th', 'tth', 'ta','Tccd', 'gain']
+# movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [480, 1200],
-                         'ags': [480, 1200], 'x': [-10, 10], 'y': [-10, 10], 'z': [-6.5, 6.5], 'u': [-10, 10],
-                         'v': [-10, 10], 'w': [-10, 10], 'th': [-5, 185], 'tth': [-35, 0],
-                         'ta': [5, 350], 'tb': [5, 350], 'I0': [0, 1], 'Iph': [0, 1], 'Tccd': [-100, 30],
-                         'gain': [0, 100]})
+                         'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 8], 'th': [-5, 185],
+                         'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'I0': [0, 1], 'Iph': [0, 1],
+                         'Tccd': [-100, 30], 'gain': [0, 100]})
 
 # Individual device safety control
 Device = pd.Series({
@@ -112,7 +109,7 @@ Device = pd.Series({
 
 def checkSafe(p):  # Individual device safe check
     if SAFE:
-        if p in ['x', 'y', 'z', 'u', 'v', 'w']:
+        if p in ['x', 'y', 'z']:
             if Device["xyzstage"] == 1:
                 return True
         elif p in ["ccd", "gain", "Tccd"]:
@@ -139,7 +136,7 @@ def get_param(p):
     if checkSafe(p):
         v = pvl.getVal(p)
         if v == None:
-            if p in ['x','y','z','u','v','w']:
+            if p in ['x','y','z']:
                 Device["xyzstage"] = 0
             elif p in ["ccd", "gain", "Tccd"]:
                 Device['ccd'] = 0
@@ -147,7 +144,7 @@ def get_param(p):
                 Device[p] = 0
             v = param[p]
         else:
-            param[p] = v
+            param[p] = v #refresh parameter
     else:
         v = param[p]
     return v
@@ -262,20 +259,19 @@ class Panel(QWidget):
 
         # qtsignal/slot method
         command_widget.loadimage.connect(image_widget.loadImg)
+        image_widget.rixsplot.connect(spectrum_widget.setRIXSdata)
         self.show()
 
 
 class StatusWidget(QWidget):
-    global param, parameter_text
-
     def __init__(self, parent=None):
         super(StatusWidget, self).__init__(parent=parent)
         self.status_bar = QLabel(self)
         self.ring_current = QLabel(self)
-        self.ring_current.setFont(QtGui.QFont("UbuntuMono", 10))
+        self.ring_current.setFont(QFont("UbuntuMono", 10))
         self.status_box = QTextEdit(self)
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
-        self.status_box.setFont(QtGui.QFont("UbuntuMono", 10.5))
+        self.status_box.setFont(QFont("UbuntuMono", 10.5))
         self.status_box.setReadOnly(True)
         # Widget layout
         self.layoutVertical = QVBoxLayout(self)
@@ -285,6 +281,7 @@ class StatusWidget(QWidget):
         self.layoutVertical.addLayout(self.barhorizontal)
         self.layoutVertical.addWidget(self.status_box)
         self.t0 = 0  # for remaining time reference
+
 
     def show_bar(self):
         global param, file_no
@@ -317,11 +314,11 @@ class StatusWidget(QWidget):
                         " exit slit   s2= " + Read('s2', 'int') + " &micro;m<br>"
                         " shutter: " + Read('shutter', 'switch') + "<br>"
                         " <br>"
-                        " Sample:  <br>"
+                        " sample:  <br>"
                         " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm <br>"
-                        "   temperatures:  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
+                        " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
                         " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
-                        " th = " + Read('th', '.2f') + "&#176;, tth = " + Read('tth', '.2f') + "&#176;<br> <br>"
+                        " photodiode angle tth = " + Read('tth', '.2f') + "&#176;<br> <br>"
                         " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
                         " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp <br> <br>"
                         " RIXS imager:  <br>"
@@ -352,13 +349,11 @@ class Command(QWidget):
         super().__init__(parent)
         # message
         self.command_message = QTextEdit(self)
-        '''
-        Welcome message
-        '''
+        # welcome message
         time = QTime.currentTime()
         welcome_message = ('<font color=blue>' + time.toString() + ' >> Welcome to TPS Blue Magpie!</font>')
         self.command_message.setText(welcome_message)
-        self.command_message.setFont(QtGui.QFont("UbuntuMono", 10))
+        self.command_message.setFont(QFont("UbuntuMono", 10))
         self.command_message.setReadOnly(True)
 
         # user input
@@ -433,7 +428,7 @@ class Command(QWidget):
         ABORT = False
         txt = self.command_input.text()
         self.command_input.setText("")
-        self.command_message.moveCursor(QtGui.QTextCursor.End)
+        self.command_message.moveCursor(QTextCursor.End)
         self.inputext[str].emit(txt)
         '''
         Set global abort flag when button clicked
@@ -666,6 +661,7 @@ class Command(QWidget):
                     self.rixsthread = Rixs(t, n)
                     self.rixsthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.rixsthread.finished.connect(self.threadFinish)
+                    self.rixsthread.setplot.connect(spectrum_global.rixsPlot)
                     self.rixsthread.start()
                 else:
                     self.sysReturn(text, "iv")
@@ -675,15 +671,14 @@ class Command(QWidget):
                 self.sysReturn("input error. use:   rixs t n", "err")
 
         elif 'load' in text[:5]:
-            # All sequence below should be organized as function(text) which returns msg & log
             space = text.count(' ')
             sptext = text.split(' ')
             if space == 1 and text[4] == " ":  # e.g. load filename
                 self.sysReturn(text, "v", True)
                 file_name = img_dir + sptext[1]  # +'.txt'
                 self.loadimage[str].emit(file_name)
-                # spectrum_global.plotRixs(file_name)
                 self.sysReturn(sptext[1] + " has been loaded.")
+
         elif text == 'r':
             self.sysReturn(text, "v")
             msg = 'parameter ranges:\n'
@@ -1059,6 +1054,8 @@ class Command(QWidget):
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir), "err")
 
 class ImageWidget(QWidget):
+    rixsplot = pyqtSignal(np.ndarray)
+
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
         # Default Image
@@ -1120,8 +1117,8 @@ class ImageWidget(QWidget):
 
         self.imv.scene.sigMouseMoved.connect(mouseMoved)
 
-    def getData(self):
-        if SAFE:
+    def getData(self, rixs=False):
+        if checkSafe('ccd'):
             raw_img = pvl.ccd("image")
             print(raw_img)
             img_list = np.asarray(raw_img)  # convert raw image to 1d numpy array
@@ -1132,6 +1129,8 @@ class ImageWidget(QWidget):
             img_list = np.asarray(raw_img)
             img_np = np.reshape(img_list, (1024, 2048), order='F')
         self.imgdata = img_np
+        if rixs:
+            self.rixsplot.emit(self.imgdata)
 
     def saveImg(self, img_number):
         '''
@@ -1148,7 +1147,7 @@ class ImageWidget(QWidget):
         file_name0 = "rixs_%s_%s_img%s"%(datestamp, str(file_no), img_number)
         file_name = img_dir + file_name0  # for saving in correct dir
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',') # image data format
-        cmd_global.sysReturn('Image data saved: {}.txt'.format(file_name0))
+        cmd_global.sysReturn('image data saved: {}.txt'.format(file_name0))
 
     def showImg(self):
         self.imv.setImage(self.imgdata)
@@ -1250,26 +1249,18 @@ class SpectrumWidget(QWidget):
         :param x2_new: end point of scanning
         :param xas: specify XAS procedure or not
         '''
-
-        '''
-        title of plot 
-        '''
         if xas:
             title_plot = 'XAS {0}'.format(int(param['f']))
         else:
             title_plot = 'Scan {0} : scanning {1},  plotting {2}'.format(int(param['f']), scan_param, plot[0])
         for i in range(0, len(plot)):
             if i > 0: title_plot += ', ' + plot[i]
-
-        '''
-        setup plotItem
-        '''
         self.clearplot()
         self.legenditems = plot
         self.plotWidget.plotItem.setTitle(title=title_plot)
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', text=scan_param)
-        self.plotWidget.plotItem.setLabel('left', text='Intensity', units='A')
+        self.plotWidget.plotItem.setLabel('left', text='Intensity', units='A' if plot == 'Iph' else None)
         '''
         curve settings
         '''
@@ -1282,16 +1273,25 @@ class SpectrumWidget(QWidget):
 
     def tscanPlot(self, p, dt, n):
         self.clearplot()
-        self.legenditems.append(p)
+        self.legenditems = [p]
         title = 'time scan {0} : {1}'.format(int(param['f']), p)
         self.plotWidget.plotItem.setTitle(title=title)
-        t1 = 0
-        t2 = dt * n
-        self.plotWidget.plotItem.setXRange(t1, float(t2), padding=None, update=True)
+        self.plotWidget.plotItem.setXRange(0, float(dt * n), padding=None, update=True) #t1= 0, t2= dt*n
         self.plotWidget.plotItem.setLabel('bottom', text='time (sec)')
         self.plotWidget.plotItem.setLabel('left', text=p)
         color = ['g', 'b', 'w', 'r', 'y'] # extendable
         self.curve[0] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[0],style=1,width=1),name=p)
+
+    def rixsPlot(self, x1=0, x2=2048):
+        self.rixs_x = list(range(0, 2048))
+        self.rixs_y = np.empty(2048)
+        self.clearplot()
+        self.legenditems = ['rixs']
+        self.plotWidget.plotItem.setTitle(title='RIXS {0}'.format(file_no))
+        self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
+        self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
+        self.plotWidget.plotItem.setLabel('left', text='Intensity (arb. units)')
+        self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='r',style=1,width=1),name='rixs')
 
     def liveplot(self, i, list_x, series_y):
         self.curve[i].setData(list_x, series_y)
@@ -1300,30 +1300,18 @@ class SpectrumWidget(QWidget):
         self.xas_x = sum_x
         self.xas_y = sum_y
 
+    def setRIXSdata(self, array, x1=0, x2=2048):
+        #data = spike.spikeRemoval(array, 0, 1024, 3)
+        data = array.mean(axis=0)
+        self.rixs_y += data
+        self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
+
     def plotXAS(self):
         self.plotWidget.plotItem.clear()
         self.legend.removeItem('Iph')
         self.legenditems = ["mean I<sub>ph</sub>"]
         self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1)) #default pen = grey.
 
-    def plotRixs(self, filename):
-        global rixs_img
-        # self.plotWidget.plotItem.setTitle(title= title_plot)
-        x1 = 0
-        x2 = 2060
-
-        ##### spike removal along s for continusly changing t (0-2060)
-        # data: 2D numpy array
-        # x1 and x2: region of interest along the x-pixel
-        # d: discrimination factor; discriminator leve = data_avegera * d
-
-        # data_sp=spike.spikeRemoval(rixs_img, 400, 600, 3)
-
-        self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
-        self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
-        self.plotWidget.plotItem.setLabel('left', text='Intensity', units='arb. units')
-        self.plotWidget.addLegend((50, 30), offset=(450, 150))
-        self.plotWidget.plotItem.clear()
 
     def clearplot(self):
         if self.legenditems != []:
@@ -1331,6 +1319,7 @@ class SpectrumWidget(QWidget):
                 self.legend.removeItem(x)
         self.plotWidget.plotItem.clear() # legends not in viewbox
         self.legenditems = []
+        print(self.legenditems)
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
@@ -1616,9 +1605,9 @@ class Tscan(QThread):
         dt = round(time.time() - t1, 3)
         print('time span in senconds=', dt)
         if ABORT:
-            self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
+            self.cmd_msg.emit('scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
         else:
-            self.cmd_msg.emit('scan %s completed'%(self.p))
+            self.cmd_msg.emit('scan %s completed; time span  = %s'%(self.p, convertSeconds(dt)))
         self.saveSpec()
         self.quit()
 
@@ -1626,7 +1615,7 @@ class Tscan(QThread):
         filename0="tscan_{0}_{1}".format(dir_date, file_no)
         filename = data_dir + filename0
         self.data_matrix.to_csv(filename)
-        self.cmd_msg.emit('{0} data saved in {1}.txt'.format("Tscan" , filename0))
+        self.cmd_msg.emit('{0} data saved in {1}.txt'.format("tscan" , filename0))
 
 
 
@@ -1681,9 +1670,10 @@ class Xas(QThread):  # no dummy now
 
 class Rixs(QThread):  # no dummy now
     cmd_msg = pyqtSignal(str)
+    setplot = pyqtSignal()
 
     def __init__(self, t, n):
-        super(Rixs, self).__init__()
+        super().__init__()
         self.t = t
         self.n = n
         self.taken_i = 0
@@ -1692,10 +1682,10 @@ class Rixs(QThread):  # no dummy now
     def run(self):
         global param, WorkingSTATUS, cmd_global, img_global, CountDOWN, BUSY
         BUSY = True
+        self.setplot.emit()
         pvl.ccd('exposure', self.t)
         self.t0 = time.time()
         for i in range(self.n):
-
             if ABORT: break
             '''
             Estimate remaining time
@@ -1710,7 +1700,7 @@ class Rixs(QThread):  # no dummy now
             CountDOWN = dt
 
             self.img_number += 1
-            self.exposethread = Expose(self.t, self.img_number)
+            self.exposethread = Expose(self.t, self.img_number, True)
             self.exposethread.cmd_msg.connect(cmd_global.sysReturn)
             self.exposethread.get.connect(img_global.getData)
             self.exposethread.show.connect(img_global.showImg)
@@ -1728,15 +1718,16 @@ class Rixs(QThread):  # no dummy now
         self.cmd_msg.emit(string + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
 
 class Expose(QThread):
-    get = pyqtSignal()
+    get = pyqtSignal(bool)
     show = pyqtSignal()
     save = pyqtSignal(int)
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self, t, n):
+    def __init__(self, t, n, plot=False):
         super(Expose, self).__init__()
         self.t = t
         self.n = n
+        self.plot = plot
 
     def run(self):
         global WorkingSTATUS
@@ -1762,7 +1753,7 @@ class Expose(QThread):
 
             dt = round(time.time() - t1, 3)
             print('time span in seconds= %s' % dt)
-            self.get.emit()
+            self.get.emit(self.plot)
             self.show.emit()  # show image
             if self.n != 0: # img command doesn't save file
                 self.save[int].emit(self.n)
