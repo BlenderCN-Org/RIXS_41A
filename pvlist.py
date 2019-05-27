@@ -62,11 +62,11 @@ def ccd(p, value=None):
         return pv_list[pvname_list.index(keyvalue)].get()
 
 def putVal(p, value):
-    PV(putvalue[p]).put(value)
-    print('set {0} = {1}'.format(p, value))
+    e.caput(putvalue[p], value)
+    print('put {0} = {1}'.format(p, value))
     if p in ['x','y','z']:
         time.sleep(0.2)         # ensure value set correctly
-        PV(put_xyz[p]).put(1)   # for xyz stage: set target then move, put(1)= Move
+        e.caput(put_xyz[p],1)   # for xyz stage: set target then move, put(1)= Move
         print('start moving..')
 
 def moving(p):
@@ -77,3 +77,10 @@ def moving(p):
             return False
     else:
         return False
+
+def refresh(p): #called after moving
+    index = pvname_list.index(reading[p])
+    pv_list[index] = PV(reading[p])
+
+
+

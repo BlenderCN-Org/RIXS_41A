@@ -1,4 +1,4 @@
-# Last edited:20190524 6pm
+# Last edited:20190527 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -98,7 +98,7 @@ param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":0,
+    "hexapod": 0, "ccd": 0, "xyzstage":1,
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
@@ -135,7 +135,7 @@ def get_param(p):
     global param, Device
     if checkSafe(p):
         v = pvl.getVal(p)
-        if v == None:
+        if v == None: # turn off safe if get None by related PV
             if p in ['x','y','z']:
                 Device["xyzstage"] = 0
             elif p in ["ccd", "gain", "Tccd"]:
@@ -144,9 +144,10 @@ def get_param(p):
                 Device[p] = 0
             v = param[p]
         else:
-            param[p] = v #refresh parameter
+            param[p] = v # refresh parameter
     else:
         v = param[p]
+
     return v
 
 
@@ -493,7 +494,7 @@ class Command(QWidget):
 
         if v == "iv":
             # invalid command
-            self.command_message.append('<font color=gray>' + t + ' >> ' + x + '</font><font color=black> </font>')
+            self.command_message.append('<font color=gray>{0} >> {1}</font><font color=black> </font>'.format(t, x))
 
         elif v == "v":
             if log == True:
@@ -506,12 +507,12 @@ class Command(QWidget):
                 # =================== history log========================
 
             self.command_message.append(' ')
-            self.command_message.append('<font color=blue>' + t + ' >> ' + x + '</font><font color=black> </font>')
+            self.command_message.append('<font color=blue>{0} >> {1}</font><font color=black> </font>'.format(t, x))
 
         elif v == "err":
-            self.command_message.append('<font color=red> ' + x + '</font><font color=black> </font>')
+            self.command_message.append('<font color=red>{0}</font><font color=black> </font>'.format(x))
         else:
-            self.command_message.append('<font color= black>' + x + '</font>')
+            self.command_message.append('<font color= black>{0}</font>'.format(x))
 
     def preFormatting(self, text):
         # remove whitespace spaces ("  ") in the end of command input
@@ -564,7 +565,6 @@ class Command(QWidget):
                    "<br>\n"
                    "<b>s2</b>: set the opening of the exit slit.<br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
-                   # "<b>ccd</b>: turn on or turn off the CCD.<br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>")
             self.sysReturn(msg)
 
@@ -602,24 +602,6 @@ class Command(QWidget):
         #     else:
         #         self.sysReturn(text,"iv")
         #         self.sysReturn('input error. use:   shut  0 or 1', 'err')
-
-        # elif text == "ccd":
-        #     space = text.count(' ')
-        #     sptext = text.split(' ')
-        #     set_ccd = sptext[1]
-        #     if space == 1: # e.g. ccd 1
-        #         if set_ccd in ['0', '1']:
-        #             self.sysReturn(text,"v", True)
-        #             param['ccd'] = float(set_ccd) # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
-        #             if set_ccd=='0': shutt ='off'
-        #             if set_ccd=='1': shutt ='on'
-        #             self.sysReturn("The CCD is " + shutt)
-        #         else:
-        #             self.sysReturn(text,"iv")
-        #             self.sysReturn('ccd parameter has to be 0 ot 1 for off and on, respectively.', "err")
-        #     else:
-        #         self.sysReturn(text,"iv")
-        #         self.sysReturn('input error. use:   ccd  0 or 1', 'err')
 
         elif 'img' in text[:4]:
             space = text.count(' ')
@@ -1351,6 +1333,7 @@ class Statupdate(QThread):
 
 class Move(QThread):
     msg = pyqtSignal(str)
+    refresh = pyqtSignal()
 
     def __init__(self, p, v):
         super(Move, self).__init__()
@@ -1380,6 +1363,8 @@ class Move(QThread):
                 pvl.ccd(p, v)
         else:
             param[p] = v
+        if p in ['th', 'tth']:
+            pvl.refresh(p)
         self.quit()
 
     def transVal(self, p, v): #get correct target value
@@ -1401,6 +1386,7 @@ class Move(QThread):
             if ABORT:
                 break
             if not pvl.moving(p):
+                time.sleep(0.2)
                 if (abs(pvl.getVal(p) - v) >= 0.02) and (p not in ['x','y','z']):
                     error_message = ("<font color=red>" + p + " not moving correctly, value: "
                                      + str(pvl.getVal(p)) + "</font>")
@@ -1683,7 +1669,7 @@ class Rixs(QThread):  # no dummy now
         self.img_number = 0
 
     def run(self):
-        global param, WorkingSTATUS, cmd_global, img_global, CountDOWN, BUSY
+        global param, WorkingSTATUS, cmd_global, img_global, CountDOWN, BUSY, spectrum_global
         BUSY = True
         self.setplot.emit()
         pvl.ccd('exposure', self.t)
@@ -1755,9 +1741,9 @@ class Expose(QThread):
                     break
 
             dt = round(time.time() - t1, 3)
-            print('time span in seconds= %s' % dt)
-            self.get.emit(self.plot)
-            self.show.emit()  # show image
+            print('image taken, time span in seconds= %s' % dt)
+            self.get.emit(self.plot) # get data, if self.plot = True, also plot in Spectrum Widget.
+            self.show.emit()         # show image
             if self.n != 0: # img command doesn't save file
                 self.save[int].emit(self.n)
 
