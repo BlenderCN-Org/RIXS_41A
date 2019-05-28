@@ -1,4 +1,4 @@
-# Last edited:20190528 10am
+# Last edited:20190528 3pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -92,7 +92,7 @@ for elements in non_movables:
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [480, 1200],
-                         'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 8], 'th': [-5, 185],
+                         'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 8], 'th': [-10, 215],
                          'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'I0': [0, 1], 'Iph': [0, 1],
                          'Tccd': [-100, 30], 'gain': [0, 100]})
 
@@ -260,7 +260,9 @@ class Panel(QWidget):
 
         # qtsignal/slot method
         command_widget.loadimage.connect(image_widget.loadImg)
-        image_widget.rixsplot.connect(spectrum_widget.setRIXSdata)
+        command_widget.rixsplot.connect(spectrum_widget.rixsPlot)
+        command_widget.setrixsdata.connect(image_widget.plotSpectrum)
+        image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
         self.show()
 
 
@@ -282,7 +284,6 @@ class StatusWidget(QWidget):
         self.layoutVertical.addLayout(self.barhorizontal)
         self.layoutVertical.addWidget(self.status_box)
         self.t0 = 0  # for remaining time reference
-
 
     def show_bar(self):
         global param, file_no
@@ -345,6 +346,8 @@ class Command(QWidget):
     loadimage = pyqtSignal(str)
     plot_rixs = pyqtSignal(str)
     macrostarted = pyqtSignal(str)
+    rixsplot = pyqtSignal(str)
+    setrixsdata = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -652,14 +655,9 @@ class Command(QWidget):
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   rixs t n", "err")
 
-        elif 'load' in text[:5]:
-            space = text.count(' ')
-            sptext = text.split(' ')
-            if space == 1 and text[4] == " ":  # e.g. load filename
-                self.sysReturn(text, "v", True)
-                file_name = img_dir + sptext[1]  # +'.txt'
-                self.loadimage[str].emit(file_name)
-                self.sysReturn(sptext[1] + " has been loaded.")
+        elif text == 'load':
+            self.sysReturn(text, "v", True)
+            self.fileOpen()
 
         elif text == 'r':
             self.sysReturn(text, "v")
@@ -1035,8 +1033,22 @@ class Command(QWidget):
         else:
             self.sysReturn("macro file name: {0} not found in {1}.".format(name, macro_dir), "err")
 
+    def fileOpen(self):
+        filename = QFileDialog.getOpenFileName(self, 'Open image file',
+                                            directory=img_dir
+                                            , options=QFileDialog.ReadOnly)
+        if filename != ('', ''):
+            file = filename[0]
+        try:
+            self.loadimage.emit(file)
+            self.rixsplot.emit(os.path.basename(file))
+            self.setrixsdata.emit()
+            self.sysReturn("file opened: {0}".format(os.path.basename(file)))
+        except:
+            print('no file opened')
+
 class ImageWidget(QWidget):
-    rixsplot = pyqtSignal(np.ndarray)
+    setrixsdata = pyqtSignal(np.ndarray, bool)
 
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
@@ -1112,7 +1124,7 @@ class ImageWidget(QWidget):
             img_np = np.reshape(img_list, (1024, 2048), order='F')
         self.imgdata = img_np
         if rixs:
-            self.rixsplot.emit(self.imgdata)
+            self.plotSpectrum(True)
 
     def saveImg(self, img_number):
         '''
@@ -1133,27 +1145,12 @@ class ImageWidget(QWidget):
 
     def showImg(self):
         self.imv.setImage(self.imgdata)
-        # self.imgthread=ImagePlot(self.imgdata)
-        # self.imgthread.datasignal.connect(self.imv.setImage)
-        # self.imgthread.start()
 
     def loadImg(self, filename):
-        global rixs_img
-
         raw_data = np.genfromtxt(filename, delimiter=',')
         data = np.asarray(raw_data)
-        # print('data size = ', np.size(data))
-        # data = np.delete(data, 0)
         self.imgdata = np.reshape(data, (1024, 2048), order='F')
         self.showImg()
-
-        '''
-        raw_data=np.genfromtxt(filename, delimiter=',', usecols=1) # The type of data1 is <class 'numpy.ndarray'>
-        self.imgdata=np.transpose(raw_data[:,0:1024]) #convert raw image to 1d numpy array
-        print('data size = ', np.size(data))
-        data = np.delete(data, 0)
-        rixs_img = np.copy(self.imgdata)
-        '''
 
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
@@ -1163,6 +1160,9 @@ class ImageWidget(QWidget):
 
         print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
         print(rixs_tmp)
+
+    def plotSpectrum(self, accum=False):
+        self.setrixsdata.emit(self.imgdata, accum)
 
     def enterEvent(self, event):
         self.status_bar.show()
@@ -1181,56 +1181,61 @@ class SpectrumWidget(QWidget):
         super().__init__(parent=parent)
         self.data = [random.random() for i in range(2000)]
         self.plotWidget = PlotWidget(self)
-        self.spectrumPlot(self.data)
+        self.plotWidget.plot(self.data)
+        self.pos_bar, self.ref_bar = QLabel(self), QLabel(self)
         self.layoutVertical = QVBoxLayout(self)
+        self.layoutVertical.addWidget(self.pos_bar)
         self.layoutVertical.addWidget(self.plotWidget)
-        self.w = None
-
+        self.layoutVertical.addWidget(self.ref_bar)
         # cross hair
-        self.status_bar = QLabel(self)
-        self.layoutVertical.addWidget(self.status_bar)
-
         self.vLine = pg.InfiniteLine(angle=90, pen=pg.mkPen('w', width=0.5), movable=False)
         self.hLine = pg.InfiniteLine(angle=0, pen=pg.mkPen('w', width=0.5), movable=False)
         self.plotWidget.addItem(self.vLine, ignoreBounds=True)
         self.plotWidget.addItem(self.hLine, ignoreBounds=True)
-
+        # legend
         self.legend = self.plotWidget.addLegend((50, 30), offset=(450, 150))
-        self.curve = [None, None, None, None, None]
         self.legenditems = []
         self.legend.setParentItem(self.plotWidget.plotItem)
+        # parameters
+        self.curve = [None, None, None, None, None]
+        self.rixs_x = list(range(0, 2048))
+        self.rixs_y = np.empty(2048)
+        self.rixs_n = 0
+        self.ref_x = None
+        self.ref_y = None
 
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
             self.vLine.setPos(mousePoint.x())
             self.hLine.setPos(mousePoint.y())
-            self.status_bar.setText("pos = ({:.2f}, {:.2f})".format(mousePoint.x(), mousePoint.y()))
+            self.pos_bar.setText("pos = ({:.2f}, {:.2f})".format(mousePoint.x(), mousePoint.y()))
 
         self.plotWidget.scene().sigMouseMoved.connect(mouseMoved)
 
     def enterEvent(self, event):
-        self.status_bar.show()
+        self.pos_bar.show()
         self.vLine.show()
         self.hLine.show()
 
     def leaveEvent(self, event):
-        self.status_bar.clear()
+        self.pos_bar.clear()
         self.vLine.hide()
         self.hLine.hide()
 
-    def spectrumPlot(self, x):
-        # clear previous plot
-        self.plotWidget.plotItem.clear()
-        self.plotWidget.plot(x)
+    def clearplot(self):
+        if self.legenditems != []:
+            for x in self.legenditems:
+                self.legend.removeItem(x)
+        self.plotWidget.plotItem.clear() # legends not in viewbox
+        self.legenditems = []
+        print(self.legenditems)
 
+    #=================================================
+    #
+    # SCAN - related functions
+    #
+    #=================================================
     def scanPlot(self, plot, scan_param, x1, x2, xas):
-        '''
-        :param plot: list of detectors
-        :param scan_param: the scanning parameter
-        :param x1: start point of scanning
-        :param x2_new: end point of scanning
-        :param xas: specify XAS procedure or not
-        '''
         if xas:
             title_plot = 'XAS {0}'.format(int(param['f']))
         else:
@@ -1243,14 +1248,13 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', text=scan_param)
         self.plotWidget.plotItem.setLabel('left', text='Intensity', units='A' if plot == 'Iph' else None)
-        '''
-        curve settings
-        '''
         color = ['g', 'b', 'w', 'r', 'y']
         for i in range(0, len(plot)):
-            self.curve[i] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[i],style=1,width=1), name=plot[i])
+            self.curve[i] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[i], style=1, width=1),
+                                                 name=plot[i])
         if xas:
-            self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1), name="mean I<sub>ph</sub>")
+            self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width=1),
+                                                  name="mean I<sub>ph</sub>")
             self.legenditems.append("mean I<sub>ph</sub>")
 
     def tscanPlot(self, p, dt, n):
@@ -1258,23 +1262,11 @@ class SpectrumWidget(QWidget):
         self.legenditems = [p]
         title = 'time scan {0} : {1}'.format(int(param['f']), p)
         self.plotWidget.plotItem.setTitle(title=title)
-        self.plotWidget.plotItem.setXRange(0, float(dt * n), padding=None, update=True) #t1= 0, t2= dt*n
+        self.plotWidget.plotItem.setXRange(0, float(dt * n), padding=None, update=True)  # t1= 0, t2= dt*n
         self.plotWidget.plotItem.setLabel('bottom', text='time (sec)')
         self.plotWidget.plotItem.setLabel('left', text=p)
-        color = ['g', 'b', 'w', 'r', 'y'] # extendable
-        self.curve[0] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[0],style=1,width=1),name=p)
-
-    def rixsPlot(self, x1=0, x2=2048):
-        self.rixs_x = list(range(0, 2048))
-        self.rixs_y = np.empty(2048)
-        self.rixs_n = 0
-        self.clearplot()
-        self.legenditems = ['rixs']
-        self.plotWidget.plotItem.setTitle(title='RIXS {0}'.format(file_no))
-        self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
-        self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
-        self.plotWidget.plotItem.setLabel('left', text='Intensity (arb. units)')
-        self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
+        color = ['g', 'b', 'w', 'r', 'y']  # extendable
+        self.curve[0] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[0], style=1, width=1), name=p)
 
     def liveplot(self, i, list_x, series_y):
         self.curve[i].setData(list_x, series_y)
@@ -1283,28 +1275,48 @@ class SpectrumWidget(QWidget):
         self.xas_x = sum_x
         self.xas_y = sum_y
 
-    def setRIXSdata(self, array, x1=0, x2=2048):
-        #data = spike.spikeRemoval(array, 0, 1024, 3)
-        data = array.sum(axis=0)
-        if data != []:
-            self.rixs_y = ((self.rixs_y*self.rixs_n) + data) / (self.rixs_n+1)
-            self.rixs_n += 1
-        self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
-
     def plotXAS(self):
         self.plotWidget.plotItem.clear()
         self.legend.removeItem('Iph')
         self.legenditems = ["mean I<sub>ph</sub>"]
-        self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width = 1)) #default pen = grey.
+        self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width=1))  # default pen = grey.
 
+    # =================================================
+    #
+    # RIXS - related functions
+    #
+    # =================================================
 
-    def clearplot(self):
-        if self.legenditems != []:
-            for x in self.legenditems:
-                self.legend.removeItem(x)
-        self.plotWidget.plotItem.clear() # legends not in viewbox
-        self.legenditems = []
-        print(self.legenditems)
+    def rixsPlot(self, name=None, x1=0, x2=2048):
+        self.clearplot()
+        self.legenditems = ['rixs']
+        if name == None: name = "rixs {0}".format(file_no)
+        self.plotWidget.plotItem.setTitle(title=name)
+        self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
+        self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
+        self.plotWidget.plotItem.setLabel('left', text='Intensity (arb. units)')
+
+        self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
+
+    def setRIXSdata(self, array, accum=False, x1=0, x2=2048):
+        #data = spike.spikeRemoval(array, 0, 1024, 3)
+        print('input0 = ', array)
+        print('input1 = ', accum)
+        data = array.sum(axis=0) #sum along x-axis
+        if data != []:
+            if accum:
+                self.rixs_y = ((self.rixs_y*self.rixs_n) + data) / (self.rixs_n+1)
+                self.rixs_n += 1
+            else:
+                self.rixs_y = data
+        self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
+
+    def setRef(self, fname):
+        self.ref_x = self.rixs_x
+        self.ref_y = self.rixs_y
+        print('x = ', self.ref_x)
+        print('y = ', self.ref_y)
+        self.ref_bar.setText(fname)
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
