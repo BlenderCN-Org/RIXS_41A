@@ -689,26 +689,26 @@ class Command(QWidget):
                 self.sysReturn("input error. use:   s2 opening (5, 10, 20, 50, 100 or 150)", "err")
 
         # mv function
-        elif text == 'mv' or text[:3] == 'mv ':
-            # All sequence below should be organized as function(text) which returns msg & log
+        elif text[:3] == 'mv ':
             space = text.count(' ')
             sptext = text.split(' ')
-            # check format
             if space == 2:  # e.g. mv x 1234
-                # p as parameter ; v as value.
-                p = sptext[1]
-                v = sptext[2]
+                p, v= sptext[1], sptext[2]
                 if p in param_index0:
-                    check_param = self.check_param_range(p, v)
-                    if check_param == 'OK' and self.checkFloat(v):
-                        self.sysReturn(text, "v", True)
-                        self.movethread = Move(p, float(v))  # check if finished or not
-                        self.movethread.msg.connect(self.sysReturn)
-                        self.movethread.finished.connect(self.threadFinish)
-                        self.movethread.start()
-                    else:
+                    try:
+                        v = eval(v)
+                        if self.check_param_range(p, v) == 'OK' and self.checkFloat(v):
+                            self.sysReturn('mv {0} {1}'.format(p, v), "v", True)
+                            self.movethread = Move(p, float(v))  # check if finished or not
+                            self.movethread.msg.connect(self.sysReturn)
+                            self.movethread.finished.connect(self.threadFinish)
+                            self.movethread.start()
+                        else:
+                            self.sysReturn(text, "iv")
+                            self.sysReturn(check_param, "err")
+                    except:
                         self.sysReturn(text, "iv")
-                        self.sysReturn(check_param, "err")
+                        self.sysReturn("failed to evaluate target position {0}.".format(sptext[2]), 'err')
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("parameter \'" + p + "\' is invalid; type \'p\' to list valid parameters", "err")
