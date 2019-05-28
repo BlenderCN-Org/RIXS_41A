@@ -40,13 +40,24 @@ pv_list = [PV(name) for name in pvname_list] # generate PVs
 def getVal(p):
     i = pvname_list.index(reading[p]) # from key(param_index) find pvname
     v = pv_list[i].get()
+    if p in ['x','y','z']:
+        v = xyz(p, v)
+    return v # get PV value
+
+def caget(p):
+    v = e.caget(reading[p])  # from key(param_index) find pvname
+    if p in ['x', 'y', 'z']:
+        v = xyz(p, v)
+    return v  # get PV value
+
+def xyz(p, v):
     if p == 'z':
         if v != None:
             v = float(v/32000)
     elif p in ['x','y']:
         if v!= None:
             v = float(v/8000)
-    return v # get PV value
+    return v
 
 def movStat(p):
     i = pvname_list.index(movingstat[p])
@@ -81,6 +92,5 @@ def moving(p):
 def refresh(p): #called after moving
     index = pvname_list.index(reading[p])
     pv_list[index] = PV(reading[p])
-
 
 

@@ -1,4 +1,4 @@
-# Last edited:20190527 5pm
+# Last edited:20190528 10am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -1363,8 +1363,7 @@ class Move(QThread):
                 pvl.ccd(p, v)
         else:
             param[p] = v
-        if p in ['th', 'tth']:
-            pvl.refresh(p)
+
         self.quit()
 
     def transVal(self, p, v): #get correct target value
@@ -1387,12 +1386,15 @@ class Move(QThread):
                 break
             if not pvl.moving(p):
                 time.sleep(0.2)
+                if p in ['th', 'tth']: #for th, tth PV.get() will not get correct number, need this to refresh
+                   pvl.caget(p)
                 if (abs(pvl.getVal(p) - v) >= 0.02) and (p not in ['x','y','z']):
                     error_message = ("<font color=red>" + p + " not moving correctly, value: "
                                      + str(pvl.getVal(p)) + "</font>")
                     self.msg.emit(error_message)
                 break
         print('{0} finished moving'.format(p))
+
 
 
 class Scan(QThread):
