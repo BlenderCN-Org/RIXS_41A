@@ -1,4 +1,4 @@
-# Last edited:20190528 3pm
+# Last edited:20190528 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -395,7 +395,7 @@ class Command(QWidget):
         global file_no
         if os.path.exists(self.fullog_name):
             data = pd.read_csv(self.fullog_name, header=0, delimiter="|")
-            if len(data)-1 >= 0 :
+            if len(data) > 0 :
                 file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
             self.fullog = data[data['Text'] != "APP_CLOSED"].reset_index(drop=True)
             self.fullog_i = len(self.fullog) # removed APP_CLOSED for keyboard calling
@@ -1300,8 +1300,6 @@ class SpectrumWidget(QWidget):
 
     def setRIXSdata(self, array, accum=False, x1=0, x2=2048):
         #data = spike.spikeRemoval(array, 0, 1024, 3)
-        print('input0 = ', array)
-        print('input1 = ', accum)
         data = array.sum(axis=0) #sum along x-axis
         if data != []:
             if accum:
