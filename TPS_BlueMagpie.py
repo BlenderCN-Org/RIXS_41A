@@ -1,4 +1,4 @@
-# Last edited:20190528 5pm
+# Last edited:20190529 3pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -98,7 +98,7 @@ param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":1,
+    "hexapod": 0, "ccd": 1, "xyzstage":1,
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
@@ -259,9 +259,12 @@ class Panel(QWidget):
         status_global = status_widget
 
         # qtsignal/slot method
+        spectrum_widget.errmsg.connect(command_widget.sysReturn)
+        spectrum_widget.msg.connect(command_widget.sysReturn)
         command_widget.loadimage.connect(image_widget.loadImg)
         command_widget.rixsplot.connect(spectrum_widget.rixsPlot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
+        command_widget.setref.connect(spectrum_widget.setRef)
         image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
         self.show()
 
@@ -348,6 +351,7 @@ class Command(QWidget):
     macrostarted = pyqtSignal(str)
     rixsplot = pyqtSignal(str)
     setrixsdata = pyqtSignal()
+    setref = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -659,39 +663,43 @@ class Command(QWidget):
             self.sysReturn(text, "v", True)
             self.fileOpen()
 
+        elif text == 'setref':
+            self.sysReturn(text, "v", True)
+            self.setref.emit()
+
         elif text == 'r':
             self.sysReturn(text, "v")
             msg = 'parameter ranges:\n'
             for i in range(param_range.size):
                 msg += str(param_range.index[i]) + ' = ' + str(param_range[i]) + '\n'
             self.sysReturn(msg)
+        #
+        # elif text == 'u':
+        #     self.sysReturn(text, "v")
+        #     self.sysReturn("Parameter values have been updated.")
 
-        elif text == 'u':
-            self.sysReturn(text, "v")
-            self.sysReturn("Parameter values have been updated.")
-
-        elif "s2" in text[:3]:
-            space = text.count(' ')
-            sptext = text.split(' ')
-            if space == 1:  # e.g. s1 5
-                if sptext[1] in ['5', '10', '20', '50', '100', '150']:
-                    self.sysReturn(text, "v", True)
-                    param['s2'] = float(
-                        sptext[1])  # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
-                    self.sysReturn("The exit slit opening has been set to " + sptext[1])
-                else:
-                    self.sysReturn(text, "iv")
-                    self.sysReturn('s2 opening is discrete, 5, 10, 20, 50, 100 & 150', "err")
-            else:
-                self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   s2 opening (5, 10, 20, 50, 100 or 150)", "err")
+        # elif "s2" in text[:3]:
+        #     space = text.count(' ')
+        #     sptext = text.split(' ')
+        #     if space == 1:  # e.g. s1 5
+        #         if sptext[1] in ['5', '10', '20', '50', '100', '150']:
+        #             self.sysReturn(text, "v", True)
+        #             param['s2'] = float(
+        #                 sptext[1])  # sptext[1] is the parameter to be moved; sptext[2] is value to moved.
+        #             self.sysReturn("The exit slit opening has been set to " + sptext[1])
+        #         else:
+        #             self.sysReturn(text, "iv")
+        #             self.sysReturn('s2 opening is discrete, 5, 10, 20, 50, 100 & 150', "err")
+        #     else:
+        #         self.sysReturn(text, "iv")
+        #         self.sysReturn("input error. use:   s2 opening (5, 10, 20, 50, 100 or 150)", "err")
 
         # mv function
         elif text[:3] == 'mv ':
             space = text.count(' ')
             sptext = text.split(' ')
             if space == 2:  # e.g. mv x 1234
-                p, v= sptext[1], sptext[2]
+                p, v = sptext[1], sptext[2]
                 if p in param_index0:
                     try:
                         v = eval(v)
@@ -713,6 +721,7 @@ class Command(QWidget):
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   mv parameter value", "err")
+
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
         elif text[:5] == 'scan ':
@@ -1138,10 +1147,10 @@ class ImageWidget(QWidget):
             img_number = str(img_number)
 
         datestamp = datetime.datetime.today().strftime("%Y%m%d")  # Format : YYYYMMDD
-        file_name0 = "rixs_%s_%s_img%s"%(datestamp, str(file_no), img_number)
+        file_name0 = "rixs_%s_%s_img%s.img"%(datestamp, str(file_no), img_number)
         file_name = img_dir + file_name0  # for saving in correct dir
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',') # image data format
-        cmd_global.sysReturn('image data saved: {}.txt'.format(file_name0))
+        cmd_global.sysReturn('image data saved: {}'.format(file_name0))
 
     def showImg(self):
         self.imv.setImage(self.imgdata)
@@ -1176,7 +1185,8 @@ class ImageWidget(QWidget):
 
 
 class SpectrumWidget(QWidget):
-
+    errmsg = pyqtSignal(str,str)
+    msg = pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.data = [random.random() for i in range(2000)]
@@ -1201,8 +1211,10 @@ class SpectrumWidget(QWidget):
         self.rixs_x = list(range(0, 2048))
         self.rixs_y = np.empty(2048)
         self.rixs_n = 0
-        self.ref_x = None
-        self.ref_y = None
+        self.rixs_name = None
+        self.ref_x = list(range(0, 2048))
+        self.ref_y = np.empty(2048)
+        self.ref_name = None
 
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
@@ -1290,7 +1302,9 @@ class SpectrumWidget(QWidget):
     def rixsPlot(self, name=None, x1=0, x2=2048):
         self.clearplot()
         self.legenditems = ['rixs']
-        if name == None: name = "rixs {0}".format(file_no)
+        if name == None:
+            name = "rixs {0}".format(file_no)
+        self.rixs_name = name
         self.plotWidget.plotItem.setTitle(title=name)
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
@@ -1299,22 +1313,40 @@ class SpectrumWidget(QWidget):
         self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
 
     def setRIXSdata(self, array, accum=False, x1=0, x2=2048):
-        #data = spike.spikeRemoval(array, 0, 1024, 3)
-        data = array.sum(axis=0) #sum along x-axis
-        if data != []:
+        try:
+            #===========processing==========================
+            #data = spike.spikeRemoval(array, 0, 1024, 3)
+            data = array.sum(axis=0)                # sum along x-axis
+            data = np.subtract(data, self.ref_y)    # default ref_y = array of 0
             if accum:
-                self.rixs_y = ((self.rixs_y*self.rixs_n) + data) / (self.rixs_n+1)
+                #self.rixs_y = ((self.rixs_y * self.rixs_n) + data) / (self.rixs_n + 1)
+                self.rixs_y = np.average([self.rixs_y, data], weights=[self.rixs_n, 1])
                 self.rixs_n += 1
             else:
                 self.rixs_y = data
-        self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
+            #===========plotting============================
+            self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
+            #===============================================
+        except:
+            self.errmsg.emit('failed to process data, check CCD status...')
 
-    def setRef(self, fname):
-        self.ref_x = self.rixs_x
-        self.ref_y = self.rixs_y
-        print('x = ', self.ref_x)
-        print('y = ', self.ref_y)
-        self.ref_bar.setText(fname)
+    def setRef(self):
+        if self.rixs_name != None:
+            self.ref_name = self.rixs_name
+            self.msg.emit('reference data set: {0}'.format(self.ref_name))
+            self.ref_x = self.rixs_x
+            self.ref_y = self.rixs_y
+            print('x = ', self.ref_x)
+            print('y = ', self.ref_y)
+            self.ref_bar.setText('reference: {0}'.format(self.ref_name))
+        else:
+            self.errmsg.emit('no valid spectrum to set reference.','err')
+
+    def saveSpec(self):
+        filename0="rixs_{0}_{1}_{2:D3}".format(dir_date, file_no, n)
+        filename = data_dir + filename0
+        np.savetxt(filename, self.rixs_y, fmt='%2d', delimiter=' ') # image data format
+        self.msg.emit('{0} data saved in {1}.txt'.format("rixs" ,filename0))
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
@@ -1327,7 +1359,6 @@ class Barupdate(QThread):
             self.refresh.emit()
             time.sleep(0.5)
 
-
 class Statupdate(QThread):
     refresh = pyqtSignal()
 
@@ -1338,8 +1369,6 @@ class Statupdate(QThread):
         while True:
             self.refresh.emit()
             time.sleep(1)
-
-
 
 class Move(QThread):
     msg = pyqtSignal(str)
