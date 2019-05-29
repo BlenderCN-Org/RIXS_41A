@@ -98,11 +98,11 @@ param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "th": 1, "tth": 1,
+    "hexapod": 0, "ccd": 1, "xyzstage":0,
+    "th": 0, "tth": 0,
     "agm": 1, "ags": 1,
-    "ta": 1, "tb": 1,
-    "I0": 1, "Iph": 1,
+    "ta": 0, "tb": 0,
+    "I0": 0, "Iph": 0,
     "s1": 0, "s2": 0, "shutter": 0
 })
 
@@ -1058,7 +1058,7 @@ class Command(QWidget):
             print('no file opened')
 
 class ImageWidget(QWidget):
-    setrixsdata = pyqtSignal(np.ndarray, bool)
+    setrixsdata = pyqtSignal(np.ndarray, bool, bool)
 
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
@@ -1134,7 +1134,7 @@ class ImageWidget(QWidget):
             img_np = np.reshape(img_list, (1024, 2048), order='F')
         self.imgdata = img_np
         if rixs:
-            self.plotSpectrum(True)
+            self.plotSpectrum(True, True)
 
     def saveImg(self, img_number):
         '''
@@ -1171,8 +1171,8 @@ class ImageWidget(QWidget):
         print(rixs_tmp.ndim, rixs_tmp.shape, rixs_tmp.dtype)
         print(rixs_tmp)
 
-    def plotSpectrum(self, accum=False):
-        self.setrixsdata.emit(self.imgdata, accum)
+    def plotSpectrum(self, accum=False, save=False):
+        self.setrixsdata.emit(self.imgdata, accum, save)
 
     def enterEvent(self, event):
         self.status_bar.show()
@@ -1241,7 +1241,6 @@ class SpectrumWidget(QWidget):
                 self.legend.removeItem(x)
         self.plotWidget.plotItem.clear() # legends not in viewbox
         self.legenditems = []
-        print(self.legenditems)
 
     #=================================================
     #
@@ -1299,6 +1298,9 @@ class SpectrumWidget(QWidget):
     #
     # =================================================
     def rixsPlot(self, name=None, x1=0, x2=2048):
+        self.rixs_x = list(range(0, 2048))
+        self.rixs_y = np.empty(2048)
+        self.rixs_n = 0
         self.clearplot()
         self.legenditems = ['rixs']
         if name == None:
@@ -1308,27 +1310,27 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
         self.plotWidget.plotItem.setLabel('left', text='Intensity (arb. units)')
-
         self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
 
-    def setRIXSdata(self, array, accum=False, x1=0, x2=2048):
-        try:
-            #===========processing==========================
-            #data = spike.spikeRemoval(array, 0, 1024, 3)
-            data = array.sum(axis=0)                # sum along x-axis
-            data = np.subtract(data, self.ref_y)    # default ref_y = array of 0
-            self.saveSpec()
-            if accum:
-                #self.rixs_y = ((self.rixs_y * self.rixs_n) + data) / (self.rixs_n + 1)
-                self.rixs_y = np.average([self.rixs_y, data], weights=[self.rixs_n, 1])
-                self.rixs_n += 1
-            else:
-                self.rixs_y = data
-            #===========plotting============================
-            self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
-            #===============================================
-        except:
-            self.errmsg.emit('failed to process data, check CCD status...')
+    def setRIXSdata(self, array, accum=False, save=False, x1=0, x2=2047):
+        #===========processing==========================
+        data = array.sum(axis=0)                    # sum along x-axis
+        #data = spikeRemoval(data, x1, x2, 3)  # spike removal
+        data = np.subtract(data, self.ref_y)        # default ref_y = array of 0
+        print('data = ', data)
+        print('rixs_y = ', self.rixs_y)
+        if save: self.saveSpec()
+        if accum:
+            #self.rixs_y = ((self.rixs_y * self.rixs_n) + data) / (self.rixs_n + 1)
+            self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
+            self.rixs_n += 1
+        else:
+            self.rixs_y = data
+        #===========plotting============================
+        self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
+        #===============================================
+        # except:
+        #     self.errmsg.emit('failed to process data, check CCD status...', 'err')
 
     def setRef(self):
         if self.rixs_name != None:
@@ -1344,12 +1346,12 @@ class SpectrumWidget(QWidget):
 
     def saveSpec(self, final=False):
         if not final:
-            filename0="rixs_{0}_{1}_{2:D3}".format(dir_date, file_no, n)
+            filename0="rixs_{0}_{1}_{2}".format(dir_date, file_no, str(1+self.rixs_n).zfill(3)) #self.n start from 0
         else:
             filename0="rixs_{0}_{1}".format(dir_date, file_no)
         filename = data_dir + filename0
-        np.savetxt(filename, self.rixs_y, fmt='%2d', delimiter=' ') # image data format
-        self.msg.emit('{0} data saved in {1}.txt'.format("rixs" ,filename0))
+        np.savetxt(filename, self.rixs_y, fmt='%.2f', delimiter=' ')
+        self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
@@ -1566,14 +1568,10 @@ class Scan(QThread):
         self.quit()
 
     def saveSpec(self, spec_number, xas):
-        if spec_number//100 == 0:
-            spec_number = "00" + str(spec_number) if spec_number // 10 == 0 else "0" + str(spec_number)
-        else:
-            spec_number = str(spec_number)
         if xas == False:
-            filename0="scan_%s_%s_%s" % (dir_date, str(file_no), spec_number)
+            filename0="scan_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
         else:
-            filename0="xas_%s_%s_%s" % (dir_date, str(file_no), spec_number)
+            filename0="xas_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
         filename = data_dir + filename0
         self.data_matrix.to_csv(filename)
         self.cmd_msg.emit('{0} data saved in {1}.txt'.format("XAS" if self.xas else "scan" ,filename0))
@@ -1746,7 +1744,7 @@ class Rixs(QThread):  # no dummy now
         '''
         Loop finished
         '''
-        self.savespec.emit(True)
+        if self.n != 1: self.savespec.emit(True)
         WorkingSTATUS = " "
         CountDOWN = 0
         string = str(self.taken_i) + " images" if self.taken_i != 1 else str(self.taken_i) + " image"
