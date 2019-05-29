@@ -87,11 +87,14 @@ def moving(p):
         else:  # including gain
             return False
     if p in ['ta']:
-        val = float(getVal(p))
-        dval = float(e.caget(putvalue[p]))-val
-        if (dval/val) < 0.03:
-            return True
-        else:
+        try:
+            val = float(getVal(p))
+            dval = float(e.caget(putvalue[p]))-val
+            if (dval/val) < 0.03:
+                return True
+            else:
+                return False
+        except: #get None
             return False
     else:
         return False
