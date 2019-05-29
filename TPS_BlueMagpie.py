@@ -651,6 +651,7 @@ class Command(QWidget):
                     self.rixsthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.rixsthread.finished.connect(self.threadFinish)
                     self.rixsthread.setplot.connect(spectrum_global.rixsPlot)
+                    self.rixsthread.savespec.connect(spectrum_global.saveSpec)
                     self.rixsthread.start()
                 else:
                     self.sysReturn(text, "iv")
@@ -1292,13 +1293,11 @@ class SpectrumWidget(QWidget):
         self.legend.removeItem('Iph')
         self.legenditems = ["mean I<sub>ph</sub>"]
         self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width=1))  # default pen = grey.
-
     # =================================================
     #
     # RIXS - related functions
     #
     # =================================================
-
     def rixsPlot(self, name=None, x1=0, x2=2048):
         self.clearplot()
         self.legenditems = ['rixs']
@@ -1318,6 +1317,7 @@ class SpectrumWidget(QWidget):
             #data = spike.spikeRemoval(array, 0, 1024, 3)
             data = array.sum(axis=0)                # sum along x-axis
             data = np.subtract(data, self.ref_y)    # default ref_y = array of 0
+            self.saveSpec()
             if accum:
                 #self.rixs_y = ((self.rixs_y * self.rixs_n) + data) / (self.rixs_n + 1)
                 self.rixs_y = np.average([self.rixs_y, data], weights=[self.rixs_n, 1])
@@ -1342,8 +1342,11 @@ class SpectrumWidget(QWidget):
         else:
             self.errmsg.emit('no valid spectrum to set reference.','err')
 
-    def saveSpec(self):
-        filename0="rixs_{0}_{1}_{2:D3}".format(dir_date, file_no, n)
+    def saveSpec(self, final=False):
+        if not final:
+            filename0="rixs_{0}_{1}_{2:D3}".format(dir_date, file_no, n)
+        else:
+            filename0="rixs_{0}_{1}".format(dir_date, file_no)
         filename = data_dir + filename0
         np.savetxt(filename, self.rixs_y, fmt='%2d', delimiter=' ') # image data format
         self.msg.emit('{0} data saved in {1}.txt'.format("rixs" ,filename0))
@@ -1701,6 +1704,7 @@ class Xas(QThread):  # no dummy now
 class Rixs(QThread):  # no dummy now
     cmd_msg = pyqtSignal(str)
     setplot = pyqtSignal()
+    savespec = pyqtSignal(bool)
 
     def __init__(self, t, n):
         super().__init__()
@@ -1742,6 +1746,7 @@ class Rixs(QThread):  # no dummy now
         '''
         Loop finished
         '''
+        self.savespec.emit(True)
         WorkingSTATUS = " "
         CountDOWN = 0
         string = str(self.taken_i) + " images" if self.taken_i != 1 else str(self.taken_i) + " image"
