@@ -1,4 +1,4 @@
-# Last edited:20190529 3pm
+# Last edited:20190530 11am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -92,17 +92,17 @@ for elements in non_movables:
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [480, 1200],
-                         'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 8], 'th': [-10, 215],
+                         'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 12], 'th': [-10, 215],
                          'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'I0': [0, 1], 'Iph': [0, 1],
                          'Tccd': [-100, 30], 'gain': [0, 100]})
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":0,
-    "th": 0, "tth": 0,
+    "hexapod": 0, "ccd": 1, "xyzstage":1,
+    "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
-    "ta": 0, "tb": 0,
-    "I0": 0, "Iph": 0,
+    "ta": 1, "tb": 1,
+    "I0": 1, "Iph": 1,
     "s1": 0, "s2": 0, "shutter": 0
 })
 
@@ -147,7 +147,6 @@ def get_param(p):
             param[p] = v # refresh parameter
     else:
         v = param[p]
-
     return v
 
 
@@ -704,12 +703,16 @@ class Command(QWidget):
                 if p in param_index0:
                     try:
                         v = eval(v)
-                        if self.check_param_range(p, v) == 'OK' and self.checkFloat(v):
-                            self.sysReturn('mv {0} {1}'.format(p, v), "v", True)
-                            self.movethread = Move(p, float(v))  # check if finished or not
-                            self.movethread.msg.connect(self.sysReturn)
-                            self.movethread.finished.connect(self.threadFinish)
-                            self.movethread.start()
+                        if self.checkFloat(v):
+                            if self.check_param_range(p, v) != 'OK':
+                                self.sysReturn(text,'iv')
+                                self.sysReturn(self.check_param_range(p, v), 'err')
+                            else:
+                                self.sysReturn('mv {0} {1}'.format(p, v), "v", True)
+                                self.movethread = Move(p, float(v))  # check if finished or not
+                                self.movethread.msg.connect(self.sysReturn)
+                                self.movethread.finished.connect(self.threadFinish)
+                                self.movethread.start()
                         else:
                             self.sysReturn(text, "iv")
                             self.sysReturn(check_param, "err")
@@ -1347,11 +1350,16 @@ class SpectrumWidget(QWidget):
     def saveSpec(self, final=False):
         if not final:
             filename0="rixs_{0}_{1}_{2}".format(dir_date, file_no, str(1+self.rixs_n).zfill(3)) #self.n start from 0
+            np.savetxt(data_dir+filename, self.rixs_y, fmt='%.2f', delimiter=' ')
+            self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
         else:
             filename0="rixs_{0}_{1}".format(dir_date, file_no)
-        filename = data_dir + filename0
-        np.savetxt(filename, self.rixs_y, fmt='%.2f', delimiter=' ')
-        self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
+            filename1="rixs_{0}_{1}ref".format(dir_date,file_no)
+            np.savetxt(data_dir + filename0, self.rixs_y, fmt='%.2f', delimiter=' ')
+            np.savetxt(data_dir + filename1, self.ref_y, fmt='%.2f', delimiter=' ')
+            self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
+            self.msg.emit('rixs ref data saved in {0}.txt'.format(filename1))
+
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
