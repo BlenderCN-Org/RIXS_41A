@@ -91,15 +91,13 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'t': [0, 1000], 's1': [1, 30], 's2': [5, 200], 'agm': [480, 1200],
-                         'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 12], 'th': [-10, 215],
-                         'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'I0': [0, 1], 'Iph': [0, 1],
-                         'Tccd': [-100, 30], 'gain': [0, 100]})
+param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 12], 'th': [-10, 215],
+                         'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30], 'gain': [0, 100]})
 
 # Individual device safety control
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "th": 1, "tth": 1,
+    "th": 0, "tth": 0,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
     "I0": 1, "Iph": 1,
@@ -670,6 +668,7 @@ class Command(QWidget):
         elif text == 'r':
             self.sysReturn(text, "v")
             msg = 'parameter ranges:\n'
+
             for i in range(param_range.size):
                 msg += str(param_range.index[i]) + ' = ' + str(param_range[i]) + '\n'
             self.sysReturn(msg)
@@ -1318,13 +1317,12 @@ class SpectrumWidget(QWidget):
     def setRIXSdata(self, array, accum=False, save=False, x1=0, x2=2047):
         #===========processing==========================
         data = array.sum(axis=0)                    # sum along x-axis
-        #data = spikeRemoval(data, x1, x2, 3)  # spike removal
+        data = np.reshape(data, (2048,1), order= 'F')
+        data = spikeRemoval(data, x1, x2, 3)
+        data = data.flatten()
         data = np.subtract(data, self.ref_y)        # default ref_y = array of 0
-        print('data = ', data)
-        print('rixs_y = ', self.rixs_y)
         if save: self.saveSpec()
         if accum:
-            #self.rixs_y = ((self.rixs_y * self.rixs_n) + data) / (self.rixs_n + 1)
             self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
             self.rixs_n += 1
         else:
@@ -1332,8 +1330,6 @@ class SpectrumWidget(QWidget):
         #===========plotting============================
         self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
         #===============================================
-        # except:
-        #     self.errmsg.emit('failed to process data, check CCD status...', 'err')
 
     def setRef(self):
         if self.rixs_name != None:
@@ -1350,7 +1346,7 @@ class SpectrumWidget(QWidget):
     def saveSpec(self, final=False):
         if not final:
             filename0="rixs_{0}_{1}_{2}".format(dir_date, file_no, str(1+self.rixs_n).zfill(3)) #self.n start from 0
-            np.savetxt(data_dir+filename, self.rixs_y, fmt='%.2f', delimiter=' ')
+            np.savetxt(data_dir+filename0, self.rixs_y, fmt='%.2f', delimiter=' ')
             self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
         else:
             filename0="rixs_{0}_{1}".format(dir_date, file_no)
