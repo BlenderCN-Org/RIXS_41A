@@ -1,4 +1,4 @@
-# Last edited:20190530 2pm
+# Last edited:20190603 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -91,7 +91,7 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 12], 'th': [-10, 215],
+param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 13], 'th': [-10, 215],
                          'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30], 'gain': [0, 100]})
 
 # Individual device safety control
@@ -125,7 +125,8 @@ SAFE = True
 if SAFE:
     pvl.ccd("exposure", 2)
     pvl.ccd("gain", 10)
-    pvl.ccd("acqmode", 2)  # 0: video; 1: single (obsolete); 2: accumulation
+    pvl.ccd("acqmode", 2)   # 0: video; 1: single (obsolete); 2: accumulation
+    pvl.ccd("accunum", 1)   # accunum to 1
     pvl.ccd("accutype", 0)  # 0: raw image; 2: differnece image
 
 #TODO: restart PV while get None
@@ -1431,6 +1432,8 @@ class Move(QThread):
         while pvl.moving(p) and not ABORT:
             time.sleep(0.2)  # hold here for BUSY flag
             if ABORT:
+                if p in ['x','y','z','th','tth']:
+                    pvl.stopMove(p)
                 break
             if not pvl.moving(p):
                 time.sleep(0.2)

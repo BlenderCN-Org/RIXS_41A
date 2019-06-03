@@ -29,8 +29,11 @@ put_xyz = dict(x="41a:RIXS:xyz:x:Move", y="41a:RIXS:xyz:y:Move", z="41a:RIXS:xyz
 #Get/Put Value for CCD
 ccdict = dict(exposure="41a:ccd1:expot", start="41a:ccd1:start", stop="41a:ccd1:stop", dataok="41a:ccd1:dataok",
               acqmode="41a:ccd1:acqmode", cooler="41a:ccd1:tmpw", accutype="41a:ccd1:imgtype", Tccd="41a:ccd1:tmpw",
-              image="41a:ccd1:image")
+              image="41a:ccd1:image", accunum="41a:ccd1:accunum")
 
+stop = dict(x="41a:RIXS:xyz:xs", y="41a:RIXS:xyz:ys", z="41a:RIXS:xyz:zs", hex_x="41a:hexapod:xs",
+            hex_y="41a:hexapod:ys", hex_z="41a:hexapod:zs", u="41a:hexapod:us", v="41a:hexapod:vs",
+            w="41a:hexapod:ws", th="41a:sample:ths", tth="41a:sample:tths")
 
 
 pvname_list = list(reading.values()) + list(movingstat.values()) + list(ccdict.values())
@@ -103,4 +106,9 @@ def refresh(p): #called after moving
     index = pvname_list.index(reading[p])
     pv_list[index] = PV(reading[p])
 
+def stopMove(p):
+    try:
+        e.caput(stop[p],1)
+    except:
+        print('not stoppable parameter.')
 
