@@ -106,23 +106,18 @@ Device = pd.Series({
 
 
 def checkSafe(p):  # Individual device safe check
-    if SAFE:
-        if p in ['x', 'y', 'z']:
-            if Device["xyzstage"] == 1:
-                return True
-        elif p in ["ccd", "gain", "Tccd"]:
-            if Device['ccd'] == 1:
-                return True
-        elif Device[p] == 1:
+    if p in ['x', 'y', 'z']:
+        if Device["xyzstage"] == 1:
             return True
+    elif p in ["ccd", "gain", "Tccd"]:
+        if Device['ccd'] == 1:
+            return True
+    elif Device[p] == 1:
+        return True
     else:
         return False
 
-
-# SAFE = False
-SAFE = True
-
-if SAFE:
+if Device['ccd']==1:
     pvl.ccd("exposure", 2)
     pvl.ccd("gain", 10)
     pvl.ccd("acqmode", 2)   # 0: video; 1: single (obsolete); 2: accumulation
@@ -147,7 +142,6 @@ def get_param(p):
     else:
         v = param[p]
     return v
-
 
 def convertSeconds(seconds):
     m = str(int(seconds // 60)) + ' mins '
@@ -178,21 +172,13 @@ def Read(p, form='.3f'):
                 string = '<font color=blue>' + string + '</font>'
 
     return string
-
-
 '''
 Start GUI construction
 '''
-
-
-class BlueMagpie(QMainWindow):
-
+class MainWindow(QMainWindow):
     def __init__(self):
-        global status_global
         QMainWindow.__init__(self)
-        # Window attributes
         self.setFixedSize(1300, 780)
-        #        self.setFixedSize(1900, 1600)
         self.setWindowTitle('TPS blue magpie')
 
         exitAct = QAction(QIcon('exit.png'), ' &Quit',  self)
@@ -200,17 +186,11 @@ class BlueMagpie(QMainWindow):
         exitAct.setStatusTip('Exit application')
         exitAct.triggered.connect(self.quitApplication)
 
-
         menubar = self.menuBar()
         menubar.setNativeMenuBar(False)
 
         fileMenu = menubar.addMenu('&File')
         fileMenu.addAction(exitAct)
-
-        #emccdMenu = menubar.addMenu("EMCCD")
-        #emccdMenu.addAction("cooling on")
-        #emccdMenu.addAction("cooling off")
-
         # Import panel
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
@@ -264,6 +244,15 @@ class Panel(QWidget):
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
         command_widget.setref.connect(spectrum_widget.setRef)
         image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
+
+        self.bar_update = Barupdate()  # bar 0.5 sec
+        self.bar_update.refresh.connect(status_global.show_bar)
+        self.bar_update.start()
+
+        self.text_update = Statupdate()  # status 1 sec
+        self.text_update.refresh.connect(status_global.show_text)
+        self.text_update.start()
+
         self.show()
 
 
@@ -1893,14 +1882,5 @@ class Macroloop(QThread):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    display_gui = BlueMagpie()
-
-    bar_update = Barupdate()  # bar 0.5 sec
-    bar_update.refresh.connect(status_global.show_bar)
-    bar_update.start()
-
-    text_update = Statupdate()  # status 1 sec
-    text_update.refresh.connect(status_global.show_text)
-    text_update.start()
-
+    BlueMagpie = MainWindow()
     sys.exit(app.exec_())
