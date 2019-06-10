@@ -3,6 +3,8 @@ from epics import PV, ca
 import time
 import numpy as np
 
+cta = None
+
 #Get Value
 reading = dict(agm="41a:AGM:Energy.RBV", ags="41a:AGS:Energy.RBV", x= "41a:RIXS:xyz:xr", y= "41a:RIXS:xyz:yr",
                z= "41a:RIXS:xyz:zr", hex_x="41a:hexapod:x", hex_y="41a:hexapod:y", hex_z="41a:hexapod:z",
@@ -84,6 +86,7 @@ def putVal(p, value):
         print('start moving..')
 
 def moving(p):
+    global cta
     if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'tth', 'agm', 'ags']:
         if movStat(p) == 1:  # 1: moving, 0: stop
             return True
@@ -92,12 +95,13 @@ def moving(p):
     if p in ['ta']:
         try:
             val = float(getVal(p))
-            dval = abs(float(e.caget(putvalue[p]))-val)
-            if (dval/val) > 0.03:
+            dval = abs(cta-val) if cta != None else 0
+            if (dval/val) > 0.05:
+                cta = val
                 return True
             else:
                 return False
-        except: #get None
+        except: #get None and failed calculating val, dval
             return False
     else:
         return False
@@ -111,4 +115,3 @@ def stopMove(p):
         e.caput(stop[p],1)
     except:
         print('not stoppable parameter.')
-

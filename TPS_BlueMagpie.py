@@ -96,8 +96,8 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "th": 0, "tth": 0,
+    "hexapod": 0, "ccd": 0, "xyzstage":0,
+    "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
     "I0": 1, "Iph": 1,
