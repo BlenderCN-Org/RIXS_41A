@@ -92,8 +92,8 @@ def moving(p):
     if p in ['ta']:
         try:
             val = float(getVal(p))
-            dval = float(e.caget(putvalue[p]))-val
-            if (dval/val) < 0.03:
+            dval = abs(float(e.caget(putvalue[p]))-val)
+            if (dval/val) > 0.03:
                 return True
             else:
                 return False
