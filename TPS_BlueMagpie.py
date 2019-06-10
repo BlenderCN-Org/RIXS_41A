@@ -1,4 +1,4 @@
-# Last edited:20190603 4pm
+# Last edited:20190610 3pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -91,7 +91,7 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-8, 13], 'th': [-10, 215],
+param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-1, 10], 'th': [-10, 215],
                          'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30], 'gain': [0, 100]})
 
 # Individual device safety control
@@ -270,6 +270,7 @@ class Panel(QWidget):
 class StatusWidget(QWidget):
     def __init__(self, parent=None):
         super(StatusWidget, self).__init__(parent=parent)
+        self.today = datetime.date.today() #for date change detection
         self.status_bar = QLabel(self)
         self.ring_current = QLabel(self)
         self.ring_current.setFont(QFont("UbuntuMono", 10))
@@ -715,7 +716,38 @@ class Command(QWidget):
                                 self.movethread.start()
                         else:
                             self.sysReturn(text, "iv")
-                            self.sysReturn(check_param, "err")
+                            self.sysReturn("{0} is not float.".format(v), "err")
+                    except:
+                        self.sysReturn(text, "iv")
+                        self.sysReturn("failed to evaluate target position {0}.".format(sptext[2]), 'err')
+                else:
+                    self.sysReturn(text, "iv")
+                    self.sysReturn("parameter \'" + p + "\' is invalid; type \'p\' to list valid parameters", "err")
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   mv parameter value", "err")
+
+        elif text[:4] == 'mvr ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            if space == 2:  # e.g. mvr x 1234
+                p, vr = sptext[1], sptext[2]
+                if p in param_index0:
+                    try:
+                        if self.checkFloat(eval(vr)):
+                            v = get_param(p)+vr
+                            if self.check_param_range(p, v) != 'OK':
+                                self.sysReturn(text,'iv')
+                                self.sysReturn(self.check_param_range(p, v), 'err')
+                            else:
+                                self.sysReturn('mvr {0} {1}'.format(p, eval(vr)), "v", True)
+                                self.movethread = Move(p, float(v))  # check if finished or not
+                                self.movethread.msg.connect(self.sysReturn)
+                                self.movethread.finished.connect(self.threadFinish)
+                                self.movethread.start()
+                        else:
+                            self.sysReturn(text, "iv")
+                            self.sysReturn("{0} is not float.".format(vr), "err")
                     except:
                         self.sysReturn(text, "iv")
                         self.sysReturn("failed to evaluate target position {0}.".format(sptext[2]), 'err')
@@ -1317,9 +1349,8 @@ class SpectrumWidget(QWidget):
 
     def setRIXSdata(self, array, accum=False, save=False, x1=0, x2=2047):
         #===========processing==========================
+        data = spikeRemoval(array, x1, x2, 1.5)
         data = array.sum(axis=0)                    # sum along x-axis
-        data = np.reshape(data, (2048,1), order= 'F')
-        data = spikeRemoval(data, x1, x2, 3)
         data = data.flatten()
         data = np.subtract(data, self.ref_y)        # default ref_y = array of 0
         if save: self.saveSpec()
@@ -1401,8 +1432,11 @@ class Move(QThread):
             elif p in ['x','y','z']:
                 v = self.transVal(p, v)
                 print('target pulse = ', v)
-                pvl.putVal(p,v-500) #considering backlash, put v-500 first
-                self.moveCheck(p, v-500)
+                if get_param(p) > v:
+                    print('target position {0} smaller than current position {1}, considering backlash'
+                          .format(get_param(p),v))
+                    pvl.putVal(p,v-500) #considering backlash, put v-500 first
+                    self.moveCheck(p, v-500)
                 pvl.putVal(p,v)
                 self.moveCheck(p, v)
             elif p == 'ta':
