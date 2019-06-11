@@ -1,4 +1,4 @@
-# Last edited:20190610 3pm
+# Last edited:20190611 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -96,7 +96,7 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":0,
+    "hexapod": 0, "ccd": 0, "xyzstage":1,
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
@@ -243,7 +243,9 @@ class Panel(QWidget):
         command_widget.rixsplot.connect(spectrum_widget.rixsPlot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
         command_widget.setref.connect(spectrum_widget.setRef)
+        command_widget.spikefactor.connect(spectrum_widget.setSpikefactor)
         image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
+        image_widget.errmsg.connect(command_widget.sysReturn)
 
         self.bar_update = Barupdate()  # bar 0.5 sec
         self.bar_update.refresh.connect(status_global.show_bar)
@@ -339,7 +341,8 @@ class Command(QWidget):
     macrostarted = pyqtSignal(str)
     rixsplot = pyqtSignal(str)
     setrixsdata = pyqtSignal()
-    setref = pyqtSignal()
+    setref = pyqtSignal(bool)
+    spikefactor = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -654,7 +657,12 @@ class Command(QWidget):
 
         elif text == 'setref':
             self.sysReturn(text, "v", True)
-            self.setref.emit()
+            self.setref.emit(True)
+
+        elif text == 'resetref':
+            self.sysReturn(text, "v", True)
+            self.setref.emit(False)
+
 
         elif text == 'r':
             self.sysReturn(text, "v")
@@ -746,7 +754,15 @@ class Command(QWidget):
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   mv parameter value", "err")
-
+        elif text[:6] == 'spike ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            if space == 1:
+                v = sptext[1]
+                if self.checkFloat(v):
+                    self.spikefactor.emit(float(v))
+                    self.sysReturn(text, "v", True)
+                    self.sysReturn('spike factor set to {}'.format(v))
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
         elif text[:5] == 'scan ':
@@ -1073,7 +1089,7 @@ class Command(QWidget):
                                             , options=QFileDialog.ReadOnly)
         if filename != ('', ''):
             file = filename[0]
-        try:
+        try:#send directory
             self.loadimage.emit(file)
             self.rixsplot.emit(os.path.basename(file))
             self.setrixsdata.emit()
@@ -1083,6 +1099,7 @@ class Command(QWidget):
 
 class ImageWidget(QWidget):
     setrixsdata = pyqtSignal(np.ndarray, bool, bool)
+    errmsg = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
@@ -1181,10 +1198,22 @@ class ImageWidget(QWidget):
         self.imv.setImage(self.imgdata)
 
     def loadImg(self, filename):
-        raw_data = np.genfromtxt(filename, delimiter=',')
-        data = np.asarray(raw_data)
-        self.imgdata = np.reshape(data, (1024, 2048), order='F')
-        self.showImg()
+        try:
+            raw_data = np.genfromtxt(filename, delimiter=',')
+            data = np.asarray(raw_data)
+            print('size = ', data.size)
+            print(data)
+            if data.size > 2097152:
+                data = data[np.logical_not(np.isnan(data))]
+                print(data, data.size)
+                data = np.take(data, list(range(0, 2097152))) #take 1024*2048 only
+                print(data, data.size)
+            print('size = ', data.size)
+            print(data)
+            self.imgdata = np.reshape(data, (1024, 2048), order='F')
+            self.showImg()
+        except:
+            self.errmsg.emit('failed to load data, might be a datashape problem.','err')
 
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
@@ -1240,6 +1269,7 @@ class SpectrumWidget(QWidget):
         self.ref_x = list(range(0, 2048))
         self.ref_y = np.empty(2048)
         self.ref_name = None
+        self.spikefactor=3
 
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
@@ -1338,10 +1368,12 @@ class SpectrumWidget(QWidget):
 
     def setRIXSdata(self, array, accum=False, save=False, x1=0, x2=2047):
         #===========processing==========================
-        data = spikeRemoval(array, x1, x2, 1.5)
-        data = array.sum(axis=0)                    # sum along x-axis
-        data = data.flatten()
-        data = np.subtract(data, self.ref_y)        # default ref_y = array of 0
+        data = array
+        if self.spikefactor > 0:
+            data = spikeRemoval(data, x1, x2, self.spikefactor)
+        data = data.sum(axis=0)                    # sum along x-axis
+        data = data.flatten()                      # nd to 1d array
+        data = np.subtract(data, self.ref_y)       # default ref_y = array of 0
         if save: self.saveSpec()
         if accum:
             self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
@@ -1349,20 +1381,23 @@ class SpectrumWidget(QWidget):
         else:
             self.rixs_y = data
         #===========plotting============================
-        self.rixs.setData(x=self.rixs_x,y=self.rixs_y)
+        self.rixs.setData(x=self.rixs_x[117:],y=self.rixs_y[117:])
         #===============================================
 
-    def setRef(self):
-        if self.rixs_name != None:
-            self.ref_name = self.rixs_name
-            self.msg.emit('reference data set: {0}'.format(self.ref_name))
-            self.ref_x = self.rixs_x
-            self.ref_y = self.rixs_y
-            print('x = ', self.ref_x)
-            print('y = ', self.ref_y)
-            self.ref_bar.setText('reference: {0}'.format(self.ref_name))
+    def setRef(self, bool):
+        if bool:
+            if self.rixs_name != None:
+                self.ref_name = self.rixs_name
+                self.msg.emit('reference data set: {0}'.format(self.ref_name))
+                self.ref_x = self.rixs_x
+                self.ref_y = self.rixs_y
+                self.ref_bar.setText('reference: {0}'.format(self.ref_name))
+            else:
+                self.errmsg.emit('no valid spectrum to set reference.','err')
         else:
-            self.errmsg.emit('no valid spectrum to set reference.','err')
+            self.ref_x, self.ref_y = list(range(0, 2048)), np.empty(2048)
+            self.ref_bar.setText('')
+
 
     def saveSpec(self, final=False):
         if not final:
@@ -1376,7 +1411,8 @@ class SpectrumWidget(QWidget):
             np.savetxt(data_dir + filename1, self.ref_y, fmt='%.2f', delimiter=' ')
             self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
             self.msg.emit('rixs ref data saved in {0}.txt'.format(filename1))
-
+    def setSpikefactor(self, v):
+        self.spikefactor = v
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
