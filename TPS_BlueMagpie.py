@@ -96,12 +96,13 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":1,
-    "th": 1, "tth": 1,
-    "agm": 1, "ags": 1,
-    "ta": 1, "tb": 1,
-    "I0": 1, "Iph": 1,
-    "s1": 0, "s2": 0, "shutter": 0
+    "hexapod": 0, "ccd": 0, "xyzstage":0,
+    "th": 0, "tth": 0,
+    "agm": 0, "ags": 0,
+    "ta": 0, "tb": 0,
+    "I0": 0, "Iph": 0,
+    "s1": 0, "s2": 0, "shutter": 0,
+    "Iring":0
 })
 
 
@@ -285,7 +286,8 @@ class StatusWidget(QWidget):
         param['f'] = file_no
         self.status_bar.setText("%s  Project #0;   PI: Testing; file number: %s;"
                                 %(time_str, int(file_no)))
-        self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format(pvl.getVal('ring')))
+        self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format
+                                  (pvl.getVal('ring') if Device['Iring']==1 else 0))
 
     def show_text(self):
         # called every 1 sec
@@ -561,7 +563,8 @@ class Command(QWidget):
                    "<b>rixs</b>:  take a series of RIXS images with a fixed exposure time (t).<br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>rixs t n </font> <br>\n"
                    "<br>\n"
-                   "<b>s2</b>: set the opening of the exit slit.<br>\n"
+                   "<b>setref</b>: set current spectrum as reference spectrum.<br>\n"
+                   "<b>resetref</b>: remove reference spectrum.<br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>")
             self.sysReturn(msg)

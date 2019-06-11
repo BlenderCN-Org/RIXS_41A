@@ -40,7 +40,10 @@ stop = dict(x="41a:RIXS:xyz:xs", y="41a:RIXS:xyz:ys", z="41a:RIXS:xyz:zs", hex_x
 
 pvname_list = list(reading.values()) + list(movingstat.values()) + list(ccdict.values())
 
-pv_list = [PV(name) for name in pvname_list] # generate PVs
+try:
+    pv_list = [PV(name) for name in pvname_list] # generate PVs
+except:
+    print('failed to initialize PVs, lost hardware connection.')
 
 def getVal(p):
     i = pvname_list.index(reading[p]) # from key(param_index) find pvname
