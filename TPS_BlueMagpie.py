@@ -1,4 +1,4 @@
-# Last edited:20190611 4pm
+# Last edited:20190613 1am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -195,6 +195,7 @@ class MainWindow(QMainWindow):
         # Import panel
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
+        #self.setFixedSize(self.layout)
         self.show()
 
     def closeEvent(self, event):
