@@ -1374,8 +1374,8 @@ class SpectrumWidget(QWidget):
         #===========processing==========================
         data = array
         if self.spikefactor > 0:
-            data = spikeRemoval(data, x1, x2, self.spikefactor)
-        data = data.sum(axis=0)                    # sum along x-axis
+            data = spikeRemoval(data, x1, x2, self.spikefactor)[0]
+        data = np.sum(data, axis=0)                    # sum along x-axis
         data = data.flatten()                      # nd to 1d array
         data = np.subtract(data, self.ref_y)       # default ref_y = array of 0
         if save: self.saveSpec()
