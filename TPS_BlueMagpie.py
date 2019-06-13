@@ -1,4 +1,4 @@
-# Last edited:20190613 1am
+# Last edited:20190613 3pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -242,7 +242,7 @@ class Panel(QWidget):
         spectrum_widget.errmsg.connect(command_widget.sysReturn)
         spectrum_widget.msg.connect(command_widget.sysReturn)
         command_widget.loadimage.connect(image_widget.loadImg)
-        command_widget.rixsplot.connect(spectrum_widget.rixsPlot)
+        command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
         command_widget.setref.connect(spectrum_widget.setRef)
         command_widget.spikefactor.connect(spectrum_widget.setSpikefactor)
@@ -342,7 +342,7 @@ class Command(QWidget):
     loadimage = pyqtSignal(str)
     plot_rixs = pyqtSignal(str)
     macrostarted = pyqtSignal(str)
-    rixsplot = pyqtSignal(str)
+    setrixsplot = pyqtSignal(str)
     setrixsdata = pyqtSignal()
     setref = pyqtSignal(bool)
     spikefactor = pyqtSignal(float)
@@ -645,7 +645,7 @@ class Command(QWidget):
                     self.rixsthread = Rixs(t, n)
                     self.rixsthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.rixsthread.finished.connect(self.threadFinish)
-                    self.rixsthread.setplot.connect(spectrum_global.rixsPlot)
+                    self.rixsthread.setplot.connect(spectrum_global.setRIXSplot)
                     self.rixsthread.savespec.connect(spectrum_global.saveSpec)
                     self.rixsthread.start()
                 else:
@@ -1095,7 +1095,7 @@ class Command(QWidget):
             file = filename[0]
         try:#send directory
             self.loadimage.emit(file)
-            self.rixsplot.emit(os.path.basename(file))
+            self.setrixsplot.emit(os.path.basename(file))
             self.setrixsdata.emit()
             self.sysReturn("file opened: {0}".format(os.path.basename(file)))
         except:
@@ -1247,14 +1247,8 @@ class SpectrumWidget(QWidget):
     msg = pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.data = [random.random() for i in range(2000)]
-        self.plotWidget = PlotWidget(self)
-        self.plotWidget.plot(self.data)
-        self.pos_bar, self.ref_bar = QLabel(self), QLabel(self)
-        self.layoutVertical = QVBoxLayout(self)
-        self.layoutVertical.addWidget(self.pos_bar)
-        self.layoutVertical.addWidget(self.plotWidget)
-        self.layoutVertical.addWidget(self.ref_bar)
+        self.__widgets__()
+        self.__layout__()
         # cross hair
         self.vLine = pg.InfiniteLine(angle=90, pen=pg.mkPen('w', width=0.5), movable=False)
         self.hLine = pg.InfiniteLine(angle=0, pen=pg.mkPen('w', width=0.5), movable=False)
@@ -1264,7 +1258,8 @@ class SpectrumWidget(QWidget):
         self.legend = self.plotWidget.addLegend((50, 30), offset=(450, 150))
         self.legenditems = []
         self.legend.setParentItem(self.plotWidget.plotItem)
-        # parameters
+        # rixs parameters
+        self.data = [random.random() for i in range(2000)]
         self.curve = [None, None, None, None, None]
         self.rixs_x = list(range(0, 2048))
         self.rixs_y = np.empty(2048)
@@ -1274,7 +1269,8 @@ class SpectrumWidget(QWidget):
         self.ref_y = np.empty(2048)
         self.ref_name = None
         self.spikefactor=3
-
+        self.x1, self.x2 = 0, 1023
+        
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
             self.vLine.setPos(mousePoint.x())
@@ -1282,6 +1278,24 @@ class SpectrumWidget(QWidget):
             self.pos_bar.setText("pos = ({:.2f}, {:.2f})".format(mousePoint.x(), mousePoint.y()))
 
         self.plotWidget.scene().sigMouseMoved.connect(mouseMoved)
+        self.plotWidget.plot(self.data)
+
+    def __widgets__(self):
+        self.plotWidget = PlotWidget(self)
+        self.pos_bar = QLabel(self)
+        self.refinfo = QLabel(self)
+        self.xval = QLabel(self)
+        self.spikeinfo = QLabel(self) 
+
+    def __layout__(self):
+        self.layoutHorizontal = QHBoxLayout(self)
+        self.layoutHorizontal.addWidget(self.xval)
+        self.layoutHorizontal.addWidget(self.spikeinfo)
+        self.layoutVertical = QVBoxLayout(self)
+        self.layoutVertical.addWidget(self.pos_bar)
+        self.layoutVertical.addWidget(self.plotWidget)
+        self.layoutVertical.addLayout(self.layoutHorizontal)
+        self.layoutVertical.addWidget(self.refinfo)
 
     def enterEvent(self, event):
         self.pos_bar.show()
@@ -1355,7 +1369,7 @@ class SpectrumWidget(QWidget):
     # RIXS - related functions
     #
     # =================================================
-    def rixsPlot(self, name=None, x1=0, x2=2048):
+    def setRIXSplot(self, name=None, y1=0, y2=2048):
         self.rixs_x = list(range(0, 2048))
         self.rixs_y = np.empty(2048)
         self.rixs_n = 0
@@ -1365,18 +1379,21 @@ class SpectrumWidget(QWidget):
             name = "rixs {0}".format(file_no)
         self.rixs_name = name
         self.plotWidget.plotItem.setTitle(title=name)
-        self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
+        self.plotWidget.plotItem.setXRange(float(y1), float(y2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
         self.plotWidget.plotItem.setLabel('left', text='Intensity (arb. units)')
         self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
 
-    def setRIXSdata(self, array, accum=False, save=False, x1=0, x2=2047):
-        #===========processing==========================
-        data = array
+    def setRIXSdata(self, array, accum=False, save=False):
+        self.data = array
+        self.plotRIXS(accum, save)
+
+    def plotRIXS(self, accum=False, save=False): 
+        #===========processing=================================================
         if self.spikefactor > 0:
-            data = spikeRemoval(data, x1, x2, self.spikefactor)[0]
-        data = np.sum(data, axis=0)                    # sum along x-axis
-        data = data.flatten()                      # nd to 1d array
+            data = spikeRemoval(self.data, self.x1, self.x2, self.spikefactor)[0]
+        data = np.sum(data, axis=0)                # sum along x-axis
+        data = data.flatten()                      # nd to 1d array format
         data = np.subtract(data, self.ref_y)       # default ref_y = array of 0
         if save: self.saveSpec()
         if accum:
@@ -1384,24 +1401,9 @@ class SpectrumWidget(QWidget):
             self.rixs_n += 1
         else:
             self.rixs_y = data
-        #===========plotting============================
-        self.rixs.setData(x=self.rixs_x[117:],y=self.rixs_y[117:])
-        #===============================================
-
-    def setRef(self, bool):
-        if bool:
-            if self.rixs_name != None:
-                self.ref_name = self.rixs_name
-                self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                self.ref_x = self.rixs_x
-                self.ref_y = self.rixs_y
-                self.ref_bar.setText('reference: {0}'.format(self.ref_name))
-            else:
-                self.errmsg.emit('no valid spectrum to set reference.','err')
-        else:
-            self.ref_x, self.ref_y = list(range(0, 2048)), np.empty(2048)
-            self.ref_bar.setText('')
-
+        self.xval.setText('x1 = {0}, x2 = {1}'.format(self.x1, self.x2))
+        self.spikeinfo.setText('; spike factor = {}'.format(self.spikefactor))
+        self.rixs.setData(x=self.rixs_x[117:], y=self.rixs_y[117:]) # cut 0-117
 
     def saveSpec(self, final=False):
         if not final:
@@ -1415,8 +1417,25 @@ class SpectrumWidget(QWidget):
             np.savetxt(data_dir + filename1, self.ref_y, fmt='%.2f', delimiter=' ')
             self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
             self.msg.emit('rixs ref data saved in {0}.txt'.format(filename1))
+
+    def setRef(self, bool):
+        if bool:
+            if self.rixs_name != None:
+                self.ref_name = self.rixs_name
+                self.msg.emit('reference data set: {0}'.format(self.ref_name))
+                self.ref_x = self.rixs_x
+                self.ref_y = self.rixs_y
+                self.refinfo.setText('reference: {0}'.format(self.ref_name))
+            else:
+                self.errmsg.emit('no valid spectrum to set reference.','err')
+        else:
+            self.ref_x, self.ref_y = list(range(0, 2048)), np.empty(2048)
+            self.refinfo.setText('')
+
     def setSpikefactor(self, v):
+        #self.factors = {'x1':0, 'x2':1023, 'spikefactor':3}
         self.spikefactor = v
+
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
