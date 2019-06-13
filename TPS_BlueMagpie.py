@@ -1,4 +1,4 @@
-# Last edited:20190613 3pm
+# Last edited:20190613 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -10,6 +10,7 @@ import pandas as pd
 import datetime, re
 import pvlist as pvl
 from spike import spikeRemoval
+from scipy.ndimage import gaussian_filter
 import macro
 
 # Global for connection
@@ -245,7 +246,8 @@ class Panel(QWidget):
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
         command_widget.setref.connect(spectrum_widget.setRef)
-        command_widget.spikefactor.connect(spectrum_widget.setSpikefactor)
+        command_widget.specfactor.connect(spectrum_widget.setFactor)
+        command_widget.specxval.connect(spectrum_widget.setFactor)
         image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
         image_widget.errmsg.connect(command_widget.sysReturn)
 
@@ -345,7 +347,8 @@ class Command(QWidget):
     setrixsplot = pyqtSignal(str)
     setrixsdata = pyqtSignal()
     setref = pyqtSignal(bool)
-    spikefactor = pyqtSignal(float)
+    specxval = pyqtSignal(str,int)
+    specfactor = pyqtSignal(str,float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -758,15 +761,32 @@ class Command(QWidget):
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   mv parameter value", "err")
-        elif text[:6] == 'spike ':
-            space = text.count(' ')
-            sptext = text.split(' ')
-            if space == 1:
-                v = sptext[1]
-                if self.checkFloat(v):
-                    self.spikefactor.emit(float(v))
-                    self.sysReturn(text, "v", True)
-                    self.sysReturn('spike factor set to {}'.format(v))
+
+        elif text[:5] == 'spec ':
+            space, sptext = text.count(' '), text.split(' ')
+            if space == 2:
+                p, v = sptext[1], sptext[2]
+                if p in ['x1', 'x2']:
+                    if self.checkInt(v) and 1023 >= int(v) >= 0:
+                            self.specxval.emit(str(p), int(v))
+                            self.sysReturn(text, "v", True)
+                            self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
+                    else:
+                        self.sysReturn(text, "iv")
+                        self.sysReturn("{} should be integer or in range(0, 1023)".format(v), "err")
+                elif p == 'f':
+                    if self.checkFloat(v):
+                        self.specfactor.emit(str(p), float(v))
+                        self.sysReturn(text, "v", True)
+                        self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
+                else:
+                    self.sysReturn(text, "iv")
+                    self.sysReturn("invalid parameter.  try: x1/x2/spike", "err")
+
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   spec x1/x2/spike value", "err")
+
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
         elif text[:5] == 'scan ':
@@ -1270,6 +1290,7 @@ class SpectrumWidget(QWidget):
         self.ref_name = None
         self.spikefactor=3
         self.x1, self.x2 = 0, 1023
+        self.analyze = False
         
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
@@ -1288,7 +1309,7 @@ class SpectrumWidget(QWidget):
         self.spikeinfo = QLabel(self) 
 
     def __layout__(self):
-        self.layoutHorizontal = QHBoxLayout(self)
+        self.layoutHorizontal = QHBoxLayout()
         self.layoutHorizontal.addWidget(self.xval)
         self.layoutHorizontal.addWidget(self.spikeinfo)
         self.layoutVertical = QVBoxLayout(self)
@@ -1320,6 +1341,8 @@ class SpectrumWidget(QWidget):
     #
     #=================================================
     def scanPlot(self, plot, scan_param, x1, x2, xas):
+        self.analyze = False
+        self.factorsinfo(False)
         if xas:
             title_plot = 'XAS {0}'.format(int(param['f']))
         else:
@@ -1342,6 +1365,8 @@ class SpectrumWidget(QWidget):
             self.legenditems.append("mean I<sub>ph</sub>")
 
     def tscanPlot(self, p, dt, n):
+        self.analyze = False
+        self.factorsinfo(False)
         self.clearplot()
         self.legenditems = [p]
         title = 'time scan {0} : {1}'.format(int(param['f']), p)
@@ -1351,6 +1376,7 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setLabel('left', text=p)
         color = ['g', 'b', 'w', 'r', 'y']  # extendable
         self.curve[0] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[0], style=1, width=1), name=p)
+
 
     def liveplot(self, i, list_x, series_y):
         self.curve[i].setData(list_x, series_y)
@@ -1370,6 +1396,8 @@ class SpectrumWidget(QWidget):
     #
     # =================================================
     def setRIXSplot(self, name=None, y1=0, y2=2048):
+        self.analyze = True
+        self.factorsinfo()
         self.rixs_x = list(range(0, 2048))
         self.rixs_y = np.empty(2048)
         self.rixs_n = 0
@@ -1388,22 +1416,23 @@ class SpectrumWidget(QWidget):
         self.data = array
         self.plotRIXS(accum, save)
 
-    def plotRIXS(self, accum=False, save=False): 
-        #===========processing=================================================
-        if self.spikefactor > 0:
-            data = spikeRemoval(self.data, self.x1, self.x2, self.spikefactor)[0]
-        data = np.sum(data, axis=0)                # sum along x-axis
-        data = data.flatten()                      # nd to 1d array format
-        data = np.subtract(data, self.ref_y)       # default ref_y = array of 0
-        if save: self.saveSpec()
-        if accum:
-            self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
-            self.rixs_n += 1
-        else:
-            self.rixs_y = data
-        self.xval.setText('x1 = {0}, x2 = {1}'.format(self.x1, self.x2))
-        self.spikeinfo.setText('; spike factor = {}'.format(self.spikefactor))
-        self.rixs.setData(x=self.rixs_x[117:], y=self.rixs_y[117:]) # cut 0-117
+    def plotRIXS(self, accum=False, save=False):  #processing
+        if self.analyze:
+            print(self.x1, self.x2)
+            if self.spikefactor > 0:
+                data = spikeRemoval(self.data, self.x1, self.x2, self.spikefactor)[0] # save setref 2d image file
+            else:
+                data = self.data
+            data = np.sum(data, axis=0)                # sum along x-axis
+            data = data.flatten()                      # nd to 1d array format
+            data = np.subtract(data, self.ref_y)       # default ref_y = array of 0
+            if save: self.saveSpec()
+            if accum:
+                self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
+                self.rixs_n += 1
+            else:
+                self.rixs_y = data
+            self.rixs.setData(x=self.rixs_x[117:], y=self.rixs_y[117:]) # cut 0-117
 
     def saveSpec(self, final=False):
         if not final:
@@ -1432,10 +1461,23 @@ class SpectrumWidget(QWidget):
             self.ref_x, self.ref_y = list(range(0, 2048)), np.empty(2048)
             self.refinfo.setText('')
 
-    def setSpikefactor(self, v):
-        #self.factors = {'x1':0, 'x2':1023, 'spikefactor':3}
-        self.spikefactor = v
+    def setFactor(self, p, v):
+        if p == 'x1':
+            self.x1 = v
+        elif p == 'x2':
+            self.x2 = v
+        else:
+            self.spikefactor = v
+        self.factorsinfo()
+        self.plotRIXS()
 
+    def factorsinfo(self, set=True):
+        if set:
+            self.xval.setText('x1 = {0}, x2 = {1}'.format(self.x1, self.x2))
+            self.spikeinfo.setText('spike factor = {}'.format(self.spikefactor))
+        else:
+            self.xval.setText('')
+            self.spikeinfo.setText('')
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
