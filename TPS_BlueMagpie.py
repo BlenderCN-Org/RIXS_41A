@@ -1,4 +1,4 @@
-# Last edited:20190613 5pm
+# Last edited:20190614 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -246,8 +246,7 @@ class Panel(QWidget):
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
         command_widget.setref.connect(spectrum_widget.setRef)
-        command_widget.specfactor.connect(spectrum_widget.setFactor)
-        command_widget.specxval.connect(spectrum_widget.setFactor)
+        command_widget.setfactor.connect(spectrum_widget.setFactor)
         image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
         image_widget.errmsg.connect(command_widget.sysReturn)
 
@@ -347,8 +346,7 @@ class Command(QWidget):
     setrixsplot = pyqtSignal(str)
     setrixsdata = pyqtSignal()
     setref = pyqtSignal(bool)
-    specxval = pyqtSignal(str,int)
-    specfactor = pyqtSignal(str,float)
+    setfactor = pyqtSignal(str, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -569,6 +567,10 @@ class Command(QWidget):
                    "<br>\n"
                    "<b>setref</b>: set current spectrum as reference spectrum.<br>\n"
                    "<b>resetref</b>: remove reference spectrum.<br>\n"
+                   "<b>spec</b>: set processing parameters including x1, x2, f (spike factor). <br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/f value </font> <br>\n"
+                   "<b>spike</b>: turn on/off spike removal for data processing.<br>\n"
+                   "<b>bkgd</b>: turn on/off background subtraction for data processing.<br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>")
             self.sysReturn(msg)
@@ -613,7 +615,7 @@ class Command(QWidget):
             sptext = text.split(' ')
             t = sptext[1] if text != 'img' else 2 # default exposure time = 2
 
-            if self.checkFloat(t):  # e.g. img t
+            if space == 1 and self.checkFloat(t):  # e.g. img t
                 BUSY = True
                 self.sysReturn(text, "v", True)
                 WorkingSTATUS = "Taking image... "
@@ -678,10 +680,6 @@ class Command(QWidget):
             for i in range(param_range.size):
                 msg += str(param_range.index[i]) + ' = ' + str(param_range[i]) + '\n'
             self.sysReturn(msg)
-        #
-        # elif text == 'u':
-        #     self.sysReturn(text, "v")
-        #     self.sysReturn("Parameter values have been updated.")
 
         # elif "s2" in text[:3]:
         #     space = text.count(' ')
@@ -768,7 +766,7 @@ class Command(QWidget):
                 p, v = sptext[1], sptext[2]
                 if p in ['x1', 'x2']:
                     if self.checkInt(v) and 1023 >= int(v) >= 0:
-                            self.specxval.emit(str(p), int(v))
+                            self.setfactor.emit(str(p), int(v))
                             self.sysReturn(text, "v", True)
                             self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
                     else:
@@ -776,16 +774,41 @@ class Command(QWidget):
                         self.sysReturn("{} should be integer or in range(0, 1023)".format(v), "err")
                 elif p == 'f':
                     if self.checkFloat(v):
-                        self.specfactor.emit(str(p), float(v))
+                        self.setfactor.emit(str(p), float(v))
                         self.sysReturn(text, "v", True)
                         self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("invalid parameter.  try: x1/x2/spike", "err")
-
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   spec x1/x2/spike value", "err")
+
+        elif text[:5] == 'bkgd ':
+            space, sptext = text.count(' '), text.split(' ')
+            if space == 1 and sptext[1] in ['on', 'off']:
+                self.sysReturn(text, "v", True)
+                self.sysReturn("background subtraction turned {}".format(sptext[1]))
+                if sptext[1] == 'on':
+                    self.setfactor.emit('bkgd', True)
+                elif sptext[1] == 'off':
+                    self.setfactor.emit('bkgd', False)
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   bkgd on/off", "err")
+
+        elif text[:6] == 'spike ':
+            space, sptext = text.count(' '), text.split(' ')
+            if space == 1 and sptext[1] in ['on', 'off']:
+                self.sysReturn(text, "v", True)
+                self.sysReturn("spike removal turned {}".format(sptext[1]))
+                if sptext[1] == 'on':
+                    self.setfactor.emit('spike', True)
+                elif sptext[1] == 'off':
+                    self.setfactor.emit('spike', False)
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   spike on/off", "err")
 
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
@@ -1291,6 +1314,8 @@ class SpectrumWidget(QWidget):
         self.spikefactor=3
         self.x1, self.x2 = 0, 1023
         self.analyze = False
+        self.spikeremove = True
+        self.bkgdsubstract = False
         
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
@@ -1417,22 +1442,24 @@ class SpectrumWidget(QWidget):
         self.plotRIXS(accum, save)
 
     def plotRIXS(self, accum=False, save=False):  #processing
-        if self.analyze:
-            print(self.x1, self.x2)
-            if self.spikefactor > 0:
+        if self.spikeremove:
+            if self.spikefactor > 1.1:
                 data = spikeRemoval(self.data, self.x1, self.x2, self.spikefactor)[0] # save setref 2d image file
             else:
                 data = self.data
-            data = np.sum(data, axis=0)                # sum along x-axis
-            data = data.flatten()                      # nd to 1d array format
-            data = np.subtract(data, self.ref_y)       # default ref_y = array of 0
-            if save: self.saveSpec()
-            if accum:
-                self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
-                self.rixs_n += 1
-            else:
-                self.rixs_y = data
-            self.rixs.setData(x=self.rixs_x[117:], y=self.rixs_y[117:]) # cut 0-117
+                self.errmsg.emit('spike factor should be bigger than 1.1','err')
+        else:
+            data = self.data
+        data = np.sum(data, axis=0)                # sum along x-axis
+        data = data.flatten()                      # nd to 1d array format
+        if self.bkgdsubstract: data = np.subtract(data, self.ref_y)  # default ref_y = array of 0
+        if save: self.saveSpec() # save = True only in Rixs(QThread), could be extended in another commandt
+        if accum: # accum = True only in Rixs(QThread)
+            self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
+            self.rixs_n += 1
+        else:
+            self.rixs_y = data
+        self.rixs.setData(x=self.rixs_x[117:], y=self.rixs_y[117:]) # cut 0-117
 
     def saveSpec(self, final=False):
         if not final:
@@ -1454,30 +1481,35 @@ class SpectrumWidget(QWidget):
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
                 self.ref_x = self.rixs_x
                 self.ref_y = self.rixs_y
-                self.refinfo.setText('reference: {0}'.format(self.ref_name))
             else:
                 self.errmsg.emit('no valid spectrum to set reference.','err')
         else:
             self.ref_x, self.ref_y = list(range(0, 2048)), np.empty(2048)
-            self.refinfo.setText('')
+            self.ref_name = 'None'
+        self.factorsinfo()
 
     def setFactor(self, p, v):
-        if p == 'x1':
-            self.x1 = v
-        elif p == 'x2':
-            self.x2 = v
-        else:
-            self.spikefactor = v
-        self.factorsinfo()
-        self.plotRIXS()
+        if p == 'x1': self.x1 = v
+        elif p == 'x2': self.x2 = v
+        elif p == 'f': self.spikefactor = v
+        elif p == 'spike': self.spikeremove = v
+        elif p == 'bkgd': self.bkgdsubstract = v
+        else: print('invalid factor for setFactor function.')
+        self.factorsinfo() # refresh parameter display
+        if self.analyze : self.plotRIXS()
+        # trigger processing if last plot is not scan/tscan/xas
 
     def factorsinfo(self, set=True):
+        spikeflag = "<font color=green>ON</font>" if self.spikeremove else "<font color=red>OFF</font>"
+        bkgdflag = "<font color=green>ON</font>" if self.bkgdsubstract else "<font color=red>OFF</font>"
         if set:
             self.xval.setText('x1 = {0}, x2 = {1}'.format(self.x1, self.x2))
-            self.spikeinfo.setText('spike factor = {}'.format(self.spikefactor))
+            self.spikeinfo.setText('spike factor [{}] = {} '.format(spikeflag, self.spikefactor))
+            self.refinfo.setText('background [{}] = {}'.format(bkgdflag, self.ref_name))
         else:
             self.xval.setText('')
             self.spikeinfo.setText('')
+            self.refinfo.setText('')
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
