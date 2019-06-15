@@ -1,4 +1,4 @@
-# Last edited:20190614 5pm
+# Last edited:20190616 0am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -242,6 +242,7 @@ class Panel(QWidget):
         # qtsignal/slot method
         spectrum_widget.errmsg.connect(command_widget.sysReturn)
         spectrum_widget.msg.connect(command_widget.sysReturn)
+        spectrum_widget.showImg.connect(image_widget.showImg)
         command_widget.loadimage.connect(image_widget.loadImg)
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
@@ -571,6 +572,7 @@ class Command(QWidget):
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/f value </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.<br>\n"
                    "<b>bkgd</b>: turn on/off background subtraction for data processing.<br>\n"
+                   "<b>d</b>: set discrimination value for background substraction, signals below will be removed.<br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>")
             self.sysReturn(msg)
@@ -809,6 +811,17 @@ class Command(QWidget):
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   spike on/off", "err")
+
+        elif text[:2] == 'd ':
+            space, sptext = text.count(' '), text.split(' ')
+            if space == 1 and self.checkFloat(sptext[1]) :
+                v= float(sptext[1])
+                self.sysReturn(text, "v", True)
+                self.sysReturn("discrimination factor set as {}".format(v))
+                self.setfactor.emit('d', v)
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   d v", "err")
 
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
@@ -1241,8 +1254,15 @@ class ImageWidget(QWidget):
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',') # image data format
         cmd_global.sysReturn('image data saved: {}'.format(file_name0))
 
-    def showImg(self):
-        self.imv.setImage(self.imgdata)
+    def showImg(self, data=None):
+        if data == None:
+            self.imv.setImage(self.imgdata)
+        else:
+            try:
+                self.imgdata = data
+                self.imv.setImage(self.imgdata)
+            except:
+                print('failed to show image')
 
     def loadImg(self, filename):
         try:
@@ -1288,6 +1308,7 @@ class ImageWidget(QWidget):
 class SpectrumWidget(QWidget):
     errmsg = pyqtSignal(str,str)
     msg = pyqtSignal(str)
+    showImg = pyqtSignal(object)
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.__widgets__()
@@ -1306,16 +1327,19 @@ class SpectrumWidget(QWidget):
         self.curve = [None, None, None, None, None]
         self.rixs_x = list(range(0, 2048))
         self.rixs_y = np.empty(2048)
+        self.ref_2d = np.zeros([1024,2048])
         self.rixs_n = 0
         self.rixs_name = None
         self.ref_x = list(range(0, 2048))
         self.ref_y = np.empty(2048)
         self.ref_name = None
-        self.spikefactor=3
+        self.spikefactor= 3 #spike removal function discrimination factor
+        self.dfactor = 0 # discrimination factor for setref
         self.x1, self.x2 = 0, 1023
-        self.analyze = False
-        self.spikeremove = True
-        self.bkgdsubstract = False
+        self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
+        self.spikeremove = True #flag to apply spike removal while data processing 
+        self.bkgdsubstract = False #flag to apply background substraction while data processing
+
         
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
@@ -1332,16 +1356,20 @@ class SpectrumWidget(QWidget):
         self.refinfo = QLabel(self)
         self.xval = QLabel(self)
         self.spikeinfo = QLabel(self) 
+        self.dinfo = QLabel(self)
 
     def __layout__(self):
         self.layoutHorizontal = QHBoxLayout()
         self.layoutHorizontal.addWidget(self.xval)
         self.layoutHorizontal.addWidget(self.spikeinfo)
+        self.layoutHorizontal2 = QHBoxLayout()
+        self.layoutHorizontal2.addWidget(self.refinfo)
+        self.layoutHorizontal2.addWidget(self.dinfo)
         self.layoutVertical = QVBoxLayout(self)
         self.layoutVertical.addWidget(self.pos_bar)
         self.layoutVertical.addWidget(self.plotWidget)
         self.layoutVertical.addLayout(self.layoutHorizontal)
-        self.layoutVertical.addWidget(self.refinfo)
+        self.layoutVertical.addLayout(self.layoutHorizontal2)
 
     def enterEvent(self, event):
         self.pos_bar.show()
@@ -1450,9 +1478,12 @@ class SpectrumWidget(QWidget):
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
         else:
             data = self.data
-        data = np.sum(data, axis=0)                # sum along x-axis
-        data = data.flatten()                      # nd to 1d array format
-        if self.bkgdsubstract: data = np.subtract(data, self.ref_y)  # default ref_y = array of 0
+        data[data<self.dfactor] = 0   # discrimination  
+        #self.showImg.emit(data)
+        data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
+        data = data.flatten()                           # nd to 1d array format
+        if self.bkgdsubstract: 
+            data = np.subtract(data, self.ref_y)  # default ref_y = array of 0     
         if save: self.saveSpec() # save = True only in Rixs(QThread), could be extended in another commandt
         if accum: # accum = True only in Rixs(QThread)
             self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
@@ -1470,7 +1501,7 @@ class SpectrumWidget(QWidget):
             filename0="rixs_{0}_{1}".format(dir_date, file_no)
             filename1="rixs_{0}_{1}ref".format(dir_date,file_no)
             np.savetxt(data_dir + filename0, self.rixs_y, fmt='%.2f', delimiter=' ')
-            np.savetxt(data_dir + filename1, self.ref_y, fmt='%.2f', delimiter=' ')
+            np.savetxt(data_dir + filename1, self.ref_2d, fmt='%.2f', delimiter=' ')
             self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
             self.msg.emit('rixs ref data saved in {0}.txt'.format(filename1))
 
@@ -1479,12 +1510,16 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                self.ref_x = self.rixs_x
-                self.ref_y = self.rixs_y
+                data = spikeRemoval(self.data, self.x1, self.x2, 1.2)[0]
+                self.ref_2d = gaussian_filter(data, sigma = 5)
+                self.showImg.emit(self.ref_2d)
+                data = np.sum(self.ref_2d[self.x1:self.x2,:], axis=0) 
+                self.ref_y = data.flatten()
+                self.rixs.setData(x=self.rixs_x[117:], y=self.ref_y[117:])
             else:
                 self.errmsg.emit('no valid spectrum to set reference.','err')
-        else:
-            self.ref_x, self.ref_y = list(range(0, 2048)), np.empty(2048)
+        else: #clear ref by command : resetref
+            self.ref_2d = np.zeros([1024,2048]) #get zero 2d array
             self.ref_name = 'None'
         self.factorsinfo()
 
@@ -1494,6 +1529,7 @@ class SpectrumWidget(QWidget):
         elif p == 'f': self.spikefactor = v
         elif p == 'spike': self.spikeremove = v
         elif p == 'bkgd': self.bkgdsubstract = v
+        elif p == 'd': self.dfactor = v
         else: print('invalid factor for setFactor function.')
         self.factorsinfo() # refresh parameter display
         if self.analyze : self.plotRIXS()
@@ -1506,10 +1542,12 @@ class SpectrumWidget(QWidget):
             self.xval.setText('x1 = {0}, x2 = {1}'.format(self.x1, self.x2))
             self.spikeinfo.setText('spike factor [{}] = {} '.format(spikeflag, self.spikefactor))
             self.refinfo.setText('background [{}] = {}'.format(bkgdflag, self.ref_name))
+            self.dinfo.setText('discrimination value = {}'.format(self.dfactor))
         else:
             self.xval.setText('')
             self.spikeinfo.setText('')
             self.refinfo.setText('')
+            self.dinfo.setText('')
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
