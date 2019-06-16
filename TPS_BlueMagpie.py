@@ -242,7 +242,7 @@ class Panel(QWidget):
         # qtsignal/slot method
         spectrum_widget.errmsg.connect(command_widget.sysReturn)
         spectrum_widget.msg.connect(command_widget.sysReturn)
-        spectrum_widget.showImg.connect(image_widget.showImg)
+        spectrum_widget.setbkgd.connect(image_widget.setBkgd)
         command_widget.loadimage.connect(image_widget.loadImg)
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
@@ -774,7 +774,7 @@ class Command(QWidget):
                     else:
                         self.sysReturn(text, "iv")
                         self.sysReturn("{} should be integer or in range(0, 1023)".format(v), "err")
-                elif p == 'f':
+                elif p in ['f', 'g']:
                     if self.checkFloat(v):
                         self.setfactor.emit(str(p), float(v))
                         self.sysReturn(text, "v", True)
@@ -1254,15 +1254,15 @@ class ImageWidget(QWidget):
         np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',') # image data format
         cmd_global.sysReturn('image data saved: {}'.format(file_name0))
 
-    def showImg(self, data=None):
-        if data == None:
-            self.imv.setImage(self.imgdata)
-        else:
-            try:
-                self.imgdata = data
-                self.imv.setImage(self.imgdata)
-            except:
-                print('failed to show image')
+    def showImg(self):
+        self.imv.setImage(self.imgdata)
+
+    def setBkgd(self, data):
+        try:
+            self.imgdata = data
+        except:
+            print('failed to set background.')
+        self.showImg()
 
     def loadImg(self, filename):
         try:
@@ -1308,7 +1308,8 @@ class ImageWidget(QWidget):
 class SpectrumWidget(QWidget):
     errmsg = pyqtSignal(str,str)
     msg = pyqtSignal(str)
-    showImg = pyqtSignal(object)
+    setbkgd = pyqtSignal(np.ndarray)
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.__widgets__()
@@ -1335,6 +1336,7 @@ class SpectrumWidget(QWidget):
         self.ref_name = None
         self.spikefactor= 3 #spike removal function discrimination factor
         self.dfactor = 0 # discrimination factor for setref
+        self.gfactor = 5 # gaussian factor
         self.x1, self.x2 = 0, 1023
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
@@ -1472,18 +1474,18 @@ class SpectrumWidget(QWidget):
     def plotRIXS(self, accum=False, save=False):  #processing
         if self.spikeremove:
             if self.spikefactor > 1.1:
-                data = spikeRemoval(self.data, self.x1, self.x2, self.spikefactor)[0] # save setref 2d image file
+                data = spikeRemoval(self.data, 0, 1023, self.spikefactor)[0] # save setref 2d image file
             else:
                 data = self.data
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
         else:
             data = self.data
+        if self.bkgdsubstract: 
+            data = np.subtract(data, self.ref_2d)  # default ref_2d = array of 0
         data[data<self.dfactor] = 0   # discrimination  
-        #self.showImg.emit(data)
+        self.setbkgd.emit(data)
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
         data = data.flatten()                           # nd to 1d array format
-        if self.bkgdsubstract: 
-            data = np.subtract(data, self.ref_y)  # default ref_y = array of 0     
         if save: self.saveSpec() # save = True only in Rixs(QThread), could be extended in another commandt
         if accum: # accum = True only in Rixs(QThread)
             self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
@@ -1510,9 +1512,9 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval(self.data, self.x1, self.x2, 1.2)[0]
-                self.ref_2d = gaussian_filter(data, sigma = 5)
-                #self.showImg.emit(self.ref_2d)
+                data = spikeRemoval(self.data, 0, 1023, 1.2)[0]
+                self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
+                self.setbkgd.emit(self.ref_2d)
                 data = np.sum(self.ref_2d[self.x1:self.x2,:], axis=0) 
                 self.ref_y = data.flatten()
                 self.rixs.setData(x=self.rixs_x[117:], y=self.ref_y[117:])
@@ -1530,6 +1532,7 @@ class SpectrumWidget(QWidget):
         elif p == 'spike': self.spikeremove = v
         elif p == 'bkgd': self.bkgdsubstract = v
         elif p == 'd': self.dfactor = v
+        elif p == 'g': self.gfactor = v
         else: print('invalid factor for setFactor function.')
         self.factorsinfo() # refresh parameter display
         if self.analyze : self.plotRIXS()
