@@ -1,4 +1,4 @@
-# Last edited:20190616 0am
+# Last edited:20190616 1pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -1512,7 +1512,7 @@ class SpectrumWidget(QWidget):
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
                 data = spikeRemoval(self.data, self.x1, self.x2, 1.2)[0]
                 self.ref_2d = gaussian_filter(data, sigma = 5)
-                self.showImg.emit(self.ref_2d)
+                #self.showImg.emit(self.ref_2d)
                 data = np.sum(self.ref_2d[self.x1:self.x2,:], axis=0) 
                 self.ref_y = data.flatten()
                 self.rixs.setData(x=self.rixs_x[117:], y=self.ref_y[117:])
