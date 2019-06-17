@@ -567,12 +567,11 @@ class Command(QWidget):
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>rixs t n </font> <br>\n"
                    "<br>\n"
                    "<b>setref</b>: set current spectrum as reference spectrum.<br>\n"
-                   "<b>resetref</b>: remove reference spectrum.<br>\n"
-                   "<b>spec</b>: set processing parameters including x1, x2, f(spike factor), g(gaussian factor). <br>\n"
-                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/f value </font> <br>\n"
+                   "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor). <br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g value </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.<br>\n"
                    "<b>bkgd</b>: turn on/off background subtraction for data processing.<br>\n"
-                   "<b>d</b>: set discrimination value for background substraction, signals below will be removed.<br>\n"
+                   "<b>d</b>: turn on/off discrimination after background substraction.<br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>")
             self.sysReturn(msg)
@@ -669,11 +668,6 @@ class Command(QWidget):
         elif text == 'setref':
             self.sysReturn(text, "v", True)
             self.setref.emit(True)
-
-        elif text == 'resetref':
-            self.sysReturn(text, "v", True)
-            self.setref.emit(False)
-
 
         elif text == 'r':
             self.sysReturn(text, "v")
@@ -786,10 +780,10 @@ class Command(QWidget):
                         self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
                 else:
                     self.sysReturn(text, "iv")
-                    self.sysReturn("invalid parameter.  try: x1/x2/spike", "err")
+                    self.sysReturn("invalid parameter.  try: x1/x2/d1/d2/f/g", "err")
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   spec x1/x2/spike value", "err")
+                self.sysReturn("input error. use:   spec x1/x2/d1/d2/f/g value", "err")
 
         elif text[:5] == 'bkgd ':
             space, sptext = text.count(' '), text.split(' ')
@@ -1524,7 +1518,7 @@ class SpectrumWidget(QWidget):
             self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
             self.msg.emit('rixs ref data saved in {0}.txt'.format(filename1))
 
-    def setRef(self, bool):
+    def setRef(self, bool= True):
         if bool:
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
@@ -1537,9 +1531,6 @@ class SpectrumWidget(QWidget):
                 self.rixs.setData(x=self.rixs_x[117:], y=self.ref_y[117:])
             else:
                 self.errmsg.emit('no valid spectrum to set reference.','err')
-        else: #clear ref by command : resetref
-            self.ref_2d = np.zeros([1024,2048]) #get zero 2d array
-            self.ref_name = 'None'
         self.factorsinfo()
 
     def setFactor(self, p, v):
