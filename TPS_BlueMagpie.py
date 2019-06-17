@@ -1,4 +1,4 @@
-# Last edited:20190617 3pm
+# Last edited:20190617 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -1349,7 +1349,7 @@ class SpectrumWidget(QWidget):
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
         self.bkgdsubstract = True #flag to apply background substraction while data processing
-        self.discriminate = True
+        self.discriminate = False
 
         
         def mouseMoved(pos):
@@ -1481,23 +1481,21 @@ class SpectrumWidget(QWidget):
         self.plotRIXS(accum, save)
 
     def plotRIXS(self, accum=False, save=False):  #processing
+        data = self.data
         if self.spikeremove:
             if self.spikefactor >= 1.05:
                 data = spikeRemoval(self.data, 0, 1023, self.spikefactor)[0] # save setref 2d image file
             else:
-                data = self.data
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
-        else:
-            data = self.data
         if self.bkgdsubstract: 
             data = np.subtract(data, self.ref_2d)  # default ref_2d = array of 0
-            if self.discriminate:
-                data[data < self.d1] = 0  # discrimination in Spectrum Widget
-                data[data > self.d2] = 0
-        self.setbkgd.emit(data)                    # show 2d in ImageWidget
+        if self.discriminate:
+            data[data < self.d1] = 0  # discrimination in Spectrum Widget
+            data[data > self.d2] = 0
+        senddata = np.array(data)
+        self.setbkgd.emit(senddata)                    # show 2d in ImageWidget
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
-        data = data.flatten()
-        data = self.jointRemoval(data)
+        data = self.jointRemoval(data.flatten())
         if save: self.saveSpec()   # save = True only in Rixs(QThread), could be extended in another commandt
         if accum: # accum = True only in Rixs(QThread)
             self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
@@ -1533,7 +1531,6 @@ class SpectrumWidget(QWidget):
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
                 data = spikeRemoval(self.data, 0, 1023, 1.05)[0]
                 self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
-                #self.ref_2d = np.subtract(data, gaussian_filter(data, sigma = self.gfactor))
                 self.setbkgd.emit(self.ref_2d)
                 data = np.sum(self.ref_2d, axis=0)
                 self.ref_y = data.flatten()
@@ -1550,7 +1547,10 @@ class SpectrumWidget(QWidget):
         elif p == 'x2': self.x2 = v
         elif p == 'f': self.spikefactor = v
         elif p == 'spike': self.spikeremove = v
-        elif p == 'bkgd': self.bkgdsubstract = v
+        elif p == 'bkgd':
+            self.bkgdsubstract = v
+            if self.bkgdsubstract == False and self.discriminate == True:
+                self.discriminate = False # close d when turn off bkgd
         elif p == 'd': self.discriminate = v
         elif p == 'd1': self.d1 = v
         elif p == 'd2': self.d2 = v
