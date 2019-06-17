@@ -1,4 +1,4 @@
-# Last edited:20190616 11pm
+# Last edited:20190617 3pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -568,7 +568,7 @@ class Command(QWidget):
                    "<br>\n"
                    "<b>setref</b>: set current spectrum as reference spectrum.<br>\n"
                    "<b>resetref</b>: remove reference spectrum.<br>\n"
-                   "<b>spec</b>: set processing parameters including x1, x2, f (spike factor). <br>\n"
+                   "<b>spec</b>: set processing parameters including x1, x2, f(spike factor), g(gaussian factor). <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/f value </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.<br>\n"
                    "<b>bkgd</b>: turn on/off background subtraction for data processing.<br>\n"
@@ -779,6 +779,11 @@ class Command(QWidget):
                         self.setfactor.emit(str(p), float(v))
                         self.sysReturn(text, "v", True)
                         self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
+                elif p in ['d1', 'd2']:
+                    if self.checkFloat(v):
+                        self.setfactor.emit(str(p), float(v))
+                        self.sysReturn(text, "v", True)
+                        self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("invalid parameter.  try: x1/x2/spike", "err")
@@ -814,14 +819,16 @@ class Command(QWidget):
 
         elif text[:2] == 'd ':
             space, sptext = text.count(' '), text.split(' ')
-            if space == 1 and self.checkFloat(sptext[1]) :
-                v= float(sptext[1])
+            if space == 1 and sptext[1] in ['on', 'off']:
                 self.sysReturn(text, "v", True)
-                self.sysReturn("discrimination factor set as {}".format(v))
-                self.setfactor.emit('d', v)
+                self.sysReturn("discrimination turned {}".format(sptext[1]))
+                if sptext[1] == 'on':
+                    self.setfactor.emit('d', True)
+                elif sptext[1] == 'off':
+                    self.setfactor.emit('d', False)
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   d v", "err")
+                self.sysReturn("input error. use:   d on/off", "err")
 
         # scan function
         # command format: scan [plot1 plot2 ...:] scan_param begin end step dwell
@@ -1334,13 +1341,15 @@ class SpectrumWidget(QWidget):
         self.ref_x = list(range(0, 2048))
         self.ref_y = np.empty(2048)
         self.ref_name = None
-        self.spikefactor= 3 #spike removal function discrimination factor
-        self.dfactor = 0 # discrimination factor for setref
-        self.gfactor = 5 # gaussian factor
+        self.spikefactor= 1.5 #spike removal function discrimination factor
+        self.d1 = 20 # discrimination factor for setref
+        self.d2 = 200
+        self.gfactor = 20 # gaussian factor
         self.x1, self.x2 = 0, 1023
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
-        self.bkgdsubstract = False #flag to apply background substraction while data processing
+        self.bkgdsubstract = True #flag to apply background substraction while data processing
+        self.discriminate = True
 
         
         def mouseMoved(pos):
@@ -1473,7 +1482,7 @@ class SpectrumWidget(QWidget):
 
     def plotRIXS(self, accum=False, save=False):  #processing
         if self.spikeremove:
-            if self.spikefactor > 1.1:
+            if self.spikefactor >= 1.05:
                 data = spikeRemoval(self.data, 0, 1023, self.spikefactor)[0] # save setref 2d image file
             else:
                 data = self.data
@@ -1482,17 +1491,27 @@ class SpectrumWidget(QWidget):
             data = self.data
         if self.bkgdsubstract: 
             data = np.subtract(data, self.ref_2d)  # default ref_2d = array of 0
-        data[data<self.dfactor] = 0   # discrimination  
-        self.setbkgd.emit(data)
+            if self.discriminate:
+                data[data < self.d1] = 0  # discrimination in Spectrum Widget
+                data[data > self.d2] = 0
+        self.setbkgd.emit(data)                    # show 2d in ImageWidget
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
-        data = data.flatten()                           # nd to 1d array format
-        if save: self.saveSpec() # save = True only in Rixs(QThread), could be extended in another commandt
+        data = data.flatten()
+        data = self.jointRemoval(data)
+        if save: self.saveSpec()   # save = True only in Rixs(QThread), could be extended in another commandt
         if accum: # accum = True only in Rixs(QThread)
             self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
             self.rixs_n += 1
         else:
             self.rixs_y = data
         self.rixs.setData(x=self.rixs_x[117:], y=self.rixs_y[117:]) # cut 0-117
+
+    def jointRemoval(self, data):
+        avg = np.mean(data) #data  = 1d array
+        h = (data[1035] - avg)*0.80
+        for i in range(1030, 1040):
+            data[i] = data[i] - (h * np.exp(-((i - 1035) ** 2) / 2))
+        return data
 
     def saveSpec(self, final=False):
         if not final:
@@ -1503,7 +1522,7 @@ class SpectrumWidget(QWidget):
             filename0="rixs_{0}_{1}".format(dir_date, file_no)
             filename1="rixs_{0}_{1}ref".format(dir_date,file_no)
             np.savetxt(data_dir + filename0, self.rixs_y, fmt='%.2f', delimiter=' ')
-            np.savetxt(data_dir + filename1, self.ref_2d, fmt='%.2f', delimiter=' ')
+            np.savetxt(data_dir + filename1, self.ref_y, fmt='%.2f', delimiter=' ')
             self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
             self.msg.emit('rixs ref data saved in {0}.txt'.format(filename1))
 
@@ -1512,10 +1531,11 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval(self.data, 0, 1023, 1.2)[0]
+                data = spikeRemoval(self.data, 0, 1023, 1.05)[0]
                 self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
+                #self.ref_2d = np.subtract(data, gaussian_filter(data, sigma = self.gfactor))
                 self.setbkgd.emit(self.ref_2d)
-                data = np.sum(self.ref_2d[self.x1:self.x2,:], axis=0) 
+                data = np.sum(self.ref_2d, axis=0)
                 self.ref_y = data.flatten()
                 self.rixs.setData(x=self.rixs_x[117:], y=self.ref_y[117:])
             else:
@@ -1531,7 +1551,9 @@ class SpectrumWidget(QWidget):
         elif p == 'f': self.spikefactor = v
         elif p == 'spike': self.spikeremove = v
         elif p == 'bkgd': self.bkgdsubstract = v
-        elif p == 'd': self.dfactor = v
+        elif p == 'd': self.discriminate = v
+        elif p == 'd1': self.d1 = v
+        elif p == 'd2': self.d2 = v
         elif p == 'g': self.gfactor = v
         else: print('invalid factor for setFactor function.')
         self.factorsinfo() # refresh parameter display
@@ -1541,11 +1563,12 @@ class SpectrumWidget(QWidget):
     def factorsinfo(self, set=True):
         spikeflag = "<font color=green>ON</font>" if self.spikeremove else "<font color=red>OFF</font>"
         bkgdflag = "<font color=green>ON</font>" if self.bkgdsubstract else "<font color=red>OFF</font>"
+        dflag = "<font color=green>ON</font>" if self.discriminate else "<font color=red>OFF</font>"
         if set:
             self.xval.setText('x1 = {0}, x2 = {1}'.format(self.x1, self.x2))
             self.spikeinfo.setText('spike factor [{}] = {} '.format(spikeflag, self.spikefactor))
             self.refinfo.setText('background [{}] = {}'.format(bkgdflag, self.ref_name))
-            self.dinfo.setText('discrimination value = {}'.format(self.dfactor))
+            self.dinfo.setText('d1 = {}, d2 = {} [{}]'.format(self.d1, self.d2, dflag))
         else:
             self.xval.setText('')
             self.spikeinfo.setText('')
