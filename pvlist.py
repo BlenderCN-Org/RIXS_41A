@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 cta = None
+THoffset = 0
 
 #Get Value
 reading = dict(agm="41a:AGM:Energy.RBV", ags="41a:AGS:Energy.RBV", x= "41a:RIXS:xyz:xr", y= "41a:RIXS:xyz:yr",
@@ -33,7 +34,7 @@ ccdict = dict(exposure="41a:ccd1:expot", start="41a:ccd1:start", stop="41a:ccd1:
               acqmode="41a:ccd1:acqmode", cooler="41a:ccd1:tmpw", accutype="41a:ccd1:imgtype", Tccd="41a:ccd1:tmpw",
               image="41a:ccd1:image", accunum="41a:ccd1:accunum")
 
-stop = dict(x="41a:RIXS:xyz:xs", y="41a:RIXS:xyz:ys", z="41a:RIXS:xyz:zs", hex_x="41a:hexapod:xs",
+stop = dict(x="41a:RIXS:xyz:x:Stop", y="41a:RIXS:xyz:y:Stop", z="41a:RIXS:xyz:z:Stop", hex_x="41a:hexapod:xs",
             hex_y="41a:hexapod:ys", hex_z="41a:hexapod:zs", u="41a:hexapod:us", v="41a:hexapod:vs",
             w="41a:hexapod:ws", th="41a:sample:ths", tth="41a:sample:tths")
 
@@ -50,6 +51,7 @@ def getVal(p):
     v = pv_list[i].get()
     if p in ['x','y','z']:
         v = xyz(p, v)
+
     return v # get PV value
 
 def caget(p):
@@ -81,12 +83,15 @@ def ccd(p, value=None):
         return pv_list[pvname_list.index(keyvalue)].get()
 
 def putVal(p, value):
-    e.caput(putvalue[p], value)
-    print('put {0} = {1}'.format(p, value))
-    if p in ['x','y','z']:
-        time.sleep(0.2)         # ensure value set correctly
-        e.caput(put_xyz[p],1)   # for xyz stage: set target then move, put(1)= Move
-        print('start moving..')
+    if e.caget(putvalue[p]) != value:
+        e.caput(putvalue[p], value)
+        print('put {0} = {1}'.format(p, value))
+        if p in ['x','y','z']:
+            time.sleep(0.2)         # ensure value set correctly
+            e.caput(put_xyz[p],1)   # for xyz stage: set target then move, put(1)= Move
+            print('start moving..')
+    else:
+        print('{0} is already at position :{1},  move aborted.'.format(p, value))
 
 def moving(p):
     global cta
@@ -116,5 +121,13 @@ def refresh(p): #called after moving
 def stopMove(p):
     try:
         e.caput(stop[p],1)
+        print('stop signal emitted')
     except:
         print('not stoppable parameter.')
+
+def thOffset(flag = False, v= 0):
+    global THoffset
+    if flag:
+        THoffset = v
+    else:
+        return THoffset

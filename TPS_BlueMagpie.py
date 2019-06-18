@@ -1,4 +1,4 @@
-# Last edited:20190617 6pm
+# Last edited:20190618 2pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import datetime, re
 import pvlist as pvl
+import math
 from spike import spikeRemoval
 from scipy.ndimage import gaussian_filter
 import macro
@@ -79,8 +80,8 @@ CountDOWN = 0
 # SETUP_parameters
 # TODO: img?
 param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph',
-               'imager', 'Tccd', 'shutter', 'ccd', 'gain']
-param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0., 0, 25, 0, 0, 10]
+               'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset']
+param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0., 0, 25, 0, 0, 10, 0]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
@@ -92,18 +93,19 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-1, 10], 'th': [-10, 215],
-                         'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30], 'gain': [0, 100]})
+param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-2, 10],
+                         'th': [-10, 215], 'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
+                         'gain': [0, 100], 'thoffset':[-70, 70]})
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":0,
-    "th": 0, "tth": 0,
-    "agm": 0, "ags": 0,
-    "ta": 0, "tb": 0,
-    "I0": 0, "Iph": 0,
+    "hexapod": 0, "ccd": 0, "xyzstage":1,
+    "th": 1, "tth": 1,
+    "agm": 1, "ags": 1,
+    "ta": 1, "tb": 1,
+    "I0": 1, "Iph": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "Iring":0
+    "thoffset":1 , "Iring":0
 })
 
 
@@ -315,7 +317,8 @@ class StatusWidget(QWidget):
                         " shutter: " + Read('shutter', 'switch') + "<br>"
                         " <br>"
                         " sample:  <br>"
-                        " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm <br>"
+                        " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm,  "
+                        " thoffset = " + str(pvl.thOffset()) + "&#176; <br>"
                         " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
                         " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
                         " photodiode angle tth = " + Read('tth', '.2f') + "&#176;<br> <br>"
@@ -390,7 +393,7 @@ class Command(QWidget):
         Full log (for KeyPressEvent function and file number)
          - inherit all log from same day.
         '''
-        self.fullog_name = log_dir + str(dir_date) + "_fullog.txt"  # Example: 20190509_fullog.txt
+        self.fullog_name = log_dir + str(dir_date) + "_fullog1.txt"  # Example: 20190509_fullog.txt
         self.fullog_col = ['Time', 'Text'] + param_index
         global file_no
         if os.path.exists(self.fullog_name):
@@ -569,9 +572,9 @@ class Command(QWidget):
                    "<b>setref</b>: set current spectrum as reference spectrum.<br>\n"
                    "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor). <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g value </font> <br>\n"
-                   "<b>spike</b>: turn on/off spike removal for data processing.<br>\n"
-                   "<b>bkgd</b>: turn on/off background subtraction for data processing.<br>\n"
-                   "<b>d</b>: turn on/off discrimination after background substraction.<br>\n"
+                   "<b>spike</b>: turn on/off spike removal for data processing.  <font color=blue>e.g. spike on </font> <br>\n"
+                   "<b>bkgd</b>: turn on/off background subtraction for data processing. <font color=blue>e.g. bkgd on </font> <br>\n"
+                   "<b>d</b>: turn on/off discrimination after background substraction. <font color=blue>e.g. d on </font> <br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>")
             self.sysReturn(msg)
@@ -1339,7 +1342,7 @@ class SpectrumWidget(QWidget):
         self.d1 = 20 # discrimination factor for setref
         self.d2 = 200
         self.gfactor = 20 # gaussian factor
-        self.x1, self.x2 = 0, 1023
+        self.x1, self.x2 = 520, 850
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
         self.bkgdsubstract = True #flag to apply background substraction while data processing
@@ -1603,34 +1606,61 @@ class Move(QThread):
         # p : index(name) of parameter, should be a string; v : range-checked value
         p, v, BUSY= self.p, self.v, True
         if checkSafe(p):  # check device safety
-            if (p in param_index0) and (p not in ['x','y','z','Tccd', 'gain','ta']):
+            if (p in param_index0) and (p not in ['x','y','z','Tccd', 'gain','ta','thoffset']):
                 pvl.putVal(p, v)
                 self.moveCheck(p, v)
-            elif p in ['x','y','z']:
-                v = self.transVal(p, v)
-                print('target pulse = ', v)
-                if get_param(p) > v:
-                    print('target position {0} smaller than current position {1}, considering backlash'
-                          .format(get_param(p),v))
-                    pvl.putVal(p,v-500) #considering backlash, put v-500 first
-                    self.moveCheck(p, v-500)
-                pvl.putVal(p,v)
-                self.moveCheck(p, v)
+            elif p in ['x', 'y']:
+                # calculate new x, y
+                if p == 'x':
+                    xval, yval = self.rotation(x=v)
+                else:
+                    xval, yval = self.rotation(y=v)
+                print('Calculated x, y = {0}, {1}'.format(xval, yval))
+                self.xyzMotor('x', xval)
+                print('x moved to {}'.format(pvl.getVal('x')))
+                self.xyzMotor('y', yval)
+                print('y moved to {}'.format(pvl.getVal('y')))
+
+            elif p == 'z':
+                self.xyzMotor('z', v)
+
             elif p == 'ta':
                 pvl.putVal('heater', 1)
                 pvl.putVal(p, v)
             elif p in ['Tccd', 'gain']:
                 pvl.ccd(p, v)
+            elif p == 'thoffset':
+                pvl.thOffset(True, v)
         else:
             param[p] = v
 
         self.quit()
+
+    def xyzMotor(self, p, v): # move with x, y, z with backlash
+        v = self.transVal(p, v)
+        print('target pulse = ', v)
+        if get_param(p) > v:
+            print('target position {0} smaller than current position {1}, considering backlash'
+                    .format(get_param(p), v))
+            pvl.putVal(p, v - 500)  # considering backlash, put v-500 first
+            self.moveCheck(p, v - 500)
+        pvl.putVal(p, v)
+        self.moveCheck(p, v)
 
     def transVal(self, p, v): #get correct target value
         if p=="z":
             return int(v*32000)
         else:
             return int(v*8000)
+
+    def rotation(self, x=0, y=0):
+        #global parameter = THoffset (default = 0)
+        th = pvl.thOffset()*math.pi/180 # rad
+        x_new = x*math.cos(th) - y*math.sin(th)
+        y_new = x*math.sin(th) + y*math.cos(th)
+
+        return (x_new, y_new)
+
 
     def moveCheck(self, p, v):
         t1 = time.time()
@@ -1656,8 +1686,6 @@ class Move(QThread):
                     self.msg.emit(error_message)
                 break
         print('{0} finished moving'.format(p))
-
-
 
 class Scan(QThread):
     scan_plot = pyqtSignal(list, str, float, float, bool)
