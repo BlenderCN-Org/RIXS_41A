@@ -93,7 +93,7 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-7, 10],
+param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-7, 10],
                          'th': [-10, 215], 'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
                          'gain': [0, 100], 'thoffset':[-70, 70]})
 
@@ -142,14 +142,13 @@ def get_param(p):
                 Device[p] = 0
             v = param[p]
         else:
-            param[p] = v # refresh parameter
-
-        if p in ['x', 'y']:  # for x, y, z display
-            th = -(pvl.thOffset() * math.pi / 180)  # rad
-            if p == 'x':
-                v = v * math.cos(th) - pvl.getVal('y') * math.sin(th)
-            if p == 'y':
-                v = pvl.getVal('x') * math.sin(th) + v * math.cos(th)
+            if p in ['x', 'y']:  # for x, y, z display
+                th = -(pvl.thOffset() * math.pi / 180)  # rad
+                if p == 'x':
+                    v = v * math.cos(th) - pvl.getVal('y') * math.sin(th)
+                if p == 'y':
+                    v = pvl.getVal('x') * math.sin(th) + v * math.cos(th)
+                param[p] = v
     else:
         v = param[p]
     return v
