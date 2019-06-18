@@ -1,4 +1,4 @@
-# Last edited:20190618 4pm
+# Last edited:20190618 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -143,6 +143,13 @@ def get_param(p):
             v = param[p]
         else:
             param[p] = v # refresh parameter
+
+        if p in ['x', 'y']:  # for x, y, z display
+            th = -(pvl.thOffset() * math.pi / 180)  # rad
+            if p == 'x':
+                v = v * math.cos(th) - pvl.getVal('y') * math.sin(th)
+            if p == 'y':
+                v = pvl.getVal('x') * math.sin(th) + v * math.cos(th)
     else:
         v = param[p]
     return v
@@ -158,12 +165,6 @@ def Read(p, form='.3f'):
     # get value by param_list index
     value = get_param(p)
     real = 1 if checkSafe(p) else 0
-    if p in ['x', 'y']: # for x, y, z display
-        th = -(pvl.thOffset() * math.pi / 180)  # rad
-        if p =='x':
-            value = value * math.cos(th) - get_param('y') * math.sin(th)
-        if p =='y':
-            value = get_param('x') * math.sin(th) + value * math.cos(th)
     if isinstance(value, str):  # got None from device
         string = "<font color= red>none</font><font color = black> </font>"
     else:
@@ -1621,10 +1622,10 @@ class Move(QThread):
             elif p in ['x', 'y']:
                 # calculate new x, y
                 if p == 'x':
-                    y0= pvl.getVal('y')
+                    y0= get_param('y')
                     xval, yval = self.rotation(x=v, y=y0)
                 else:
-                    x0= pvl.getVal('x')
+                    x0= get_param('x')
                     xval, yval = self.rotation(x=x0, y=v)
                 print('Calculated x, y = {0}, {1}'.format(xval, yval))
                 self.xyzMotor('x', xval)
@@ -1668,12 +1669,13 @@ class Move(QThread):
             return int(v*8000)
 
     def rotation(self, x, y):
-        #global parameter = THoffset (default = 0)
+        print('sample :({0}, {1})'.format(x,y))
         th = pvl.thOffset()*math.pi/180 # rad
         x_new = x*math.cos(th) - y*math.sin(th)
         y_new = x*math.sin(th) + y*math.cos(th)
-
+        print('motor : ({0}, {1})'.format(x_new,y_new))
         return (x_new, y_new)
+
 
 
     def moveCheck(self, p, v):
