@@ -1,4 +1,4 @@
-# Last edited:20190618 2pm
+# Last edited:20190618 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -93,7 +93,7 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-2, 10],
+param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-5, 5], 'y': [-5, 5], 'z': [-7, 10],
                          'th': [-10, 215], 'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
                          'gain': [0, 100], 'thoffset':[-70, 70]})
 
@@ -158,6 +158,12 @@ def Read(p, form='.3f'):
     # get value by param_list index
     value = get_param(p)
     real = 1 if checkSafe(p) else 0
+    if p in ['x', 'y']: # for x, y, z display
+        th = -(pvl.thOffset() * math.pi / 180)  # rad
+        if p =='x':
+            value = value * math.cos(th) - get_param('y') * math.sin(th)
+        if p =='y':
+            value = get_param('x') * math.sin(th) + value * math.cos(th)
     if isinstance(value, str):  # got None from device
         string = "<font color= red>none</font><font color = black> </font>"
     else:
@@ -564,7 +570,10 @@ class Command(QWidget):
                    "<br>\n"
                    "<b>mv</b>: set a parameter to its absolute value.<br>\n"
                    "<b>scan</b>: stepwise scan a parameter and plot selected parameters with some dwell time.<br>\n"
-                   "<b>xas</b>:  <br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> "
+                   "<font color=blue>scan <b>det,</b> (optional) param x1 x2 dx dt n </font> <br>\n"
+                   "<b>xas</b>:  execute X-ray absorption.<br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>xas Ei Ef dE dt n </font> <br>\n"
                    "<b>img</b>:  take one RIXS image with an exposure time (default exposure time= 2). <br>\n"
                    "<b>rixs</b>:  take a series of RIXS images with a fixed exposure time (t).<br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>rixs t n </font> <br>\n"
@@ -1612,14 +1621,16 @@ class Move(QThread):
             elif p in ['x', 'y']:
                 # calculate new x, y
                 if p == 'x':
-                    xval, yval = self.rotation(x=v)
+                    y0= pvl.getVal('y')
+                    xval, yval = self.rotation(x=v, y=y0)
                 else:
-                    xval, yval = self.rotation(y=v)
+                    x0= pvl.getVal('x')
+                    xval, yval = self.rotation(x=x0, y=v)
                 print('Calculated x, y = {0}, {1}'.format(xval, yval))
                 self.xyzMotor('x', xval)
-                print('x moved to {}'.format(pvl.getVal('x')))
+                print('x(motor) moved to {}'.format(pvl.getVal('x')))
                 self.xyzMotor('y', yval)
-                print('y moved to {}'.format(pvl.getVal('y')))
+                print('y(motor) moved to {}'.format(pvl.getVal('y')))
 
             elif p == 'z':
                 self.xyzMotor('z', v)
@@ -1639,13 +1650,16 @@ class Move(QThread):
     def xyzMotor(self, p, v): # move with x, y, z with backlash
         v = self.transVal(p, v)
         print('target pulse = ', v)
-        if get_param(p) > v:
-            print('target position {0} smaller than current position {1}, considering backlash'
-                    .format(get_param(p), v))
+        #if get_param(p) > v:
+        #print('target position {0} smaller than current position {1}, considering backlash'
+        #        .format(get_param(p), v))
+        if get_param(p) != v:
             pvl.putVal(p, v - 500)  # considering backlash, put v-500 first
             self.moveCheck(p, v - 500)
-        pvl.putVal(p, v)
-        self.moveCheck(p, v)
+            pvl.putVal(p, v)
+            self.moveCheck(p, v)
+        else:
+            print('{0} is already at position :{1},  move aborted.'.format(p, v))
 
     def transVal(self, p, v): #get correct target value
         if p=="z":
@@ -1653,7 +1667,7 @@ class Move(QThread):
         else:
             return int(v*8000)
 
-    def rotation(self, x=0, y=0):
+    def rotation(self, x, y):
         #global parameter = THoffset (default = 0)
         th = pvl.thOffset()*math.pi/180 # rad
         x_new = x*math.cos(th) - y*math.sin(th)
