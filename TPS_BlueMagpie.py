@@ -1628,9 +1628,9 @@ class Move(QThread):
                     xval, yval = self.rotation(x=x0, y=v)
                 print('Calculated x, y = {0}, {1}'.format(xval, yval))
                 self.xyzMotor('x', xval)
-                print('x(motor) moved to {}'.format(pvl.getVal('x')))
+                print('x(motor) is now at {}'.format(pvl.getVal('x')))
                 self.xyzMotor('y', yval)
-                print('y(motor) moved to {}'.format(pvl.getVal('y')))
+                print('y(motor) is now at {}'.format(pvl.getVal('y')))
 
             elif p == 'z':
                 self.xyzMotor('z', v)
@@ -1648,18 +1648,18 @@ class Move(QThread):
         self.quit()
 
     def xyzMotor(self, p, v): # move with x, y, z with backlash
-        v = self.transVal(p, v)
+        v = self.transVal(p, v) # motor step
         print('target pulse = ', v)
-        #if get_param(p) > v:
-        #print('target position {0} smaller than current position {1}, considering backlash'
-        #        .format(get_param(p), v))
-        if get_param(p) != v:
-            pvl.putVal(p, v - 500)  # considering backlash, put v-500 first
-            self.moveCheck(p, v - 500)
+        if abs(pvl.getVal(p)-v) > 16: # error 0.002
+            if pvl.getVal(p) > v:
+                print('target position {0} smaller than current position {1}, considering backlash'
+                      .format(pvl.getVal(p), v))
+                pvl.putVal(p, v - 500)  # considering backlash, put v-500 first
+                self.moveCheck(p, v - 500)
             pvl.putVal(p, v)
             self.moveCheck(p, v)
         else:
-            print('{0} is already at position :{1},  move aborted.'.format(p, v))
+            print('{0} is close to target :{1},  move aborted.'.format(p, v))
 
     def transVal(self, p, v): #get correct target value
         if p=="z":
