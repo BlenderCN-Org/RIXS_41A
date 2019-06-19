@@ -1,4 +1,4 @@
-# Last edited:20190618 5pm
+# Last edited:20190619 11am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -1648,9 +1648,11 @@ class Move(QThread):
         self.quit()
 
     def xyzMotor(self, p, v): # move with x, y, z with backlash
-        v = self.transVal(p, v) # motor step
+        v = self.transVal(p, v) # target pulse
         print('target pulse = ', v)
-        if abs(pvl.getVal(p)-v) > 16: # error 0.002
+        current_pulse = self.transVal(p, pvl.getVal(p))
+        print('current pulse = ', current_pulse)
+        if abs(v - current_pulse) > 16: # delta pulse > 16
             if pvl.getVal(p) > v:
                 print('target position {0} smaller than current position {1}, considering backlash'
                       .format(pvl.getVal(p), v))
