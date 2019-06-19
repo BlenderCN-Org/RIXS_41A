@@ -105,7 +105,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1,
     "I0": 1, "Iph": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":0
+    "thoffset":1 , "Iring":1
 })
 
 
@@ -129,6 +129,7 @@ if Device['ccd']==1:
     pvl.ccd("accutype", 0)  # 0: raw image; 2: differnece image
 
 #TODO: restart PV while get None
+#refresh param(pd.Series)
 def get_param(p):
     global param, Device
     if checkSafe(p):
@@ -148,7 +149,7 @@ def get_param(p):
                     v = v * math.cos(th) - pvl.getVal('y') * math.sin(th)
                 if p == 'y':
                     v = pvl.getVal('x') * math.sin(th) + v * math.cos(th)
-                param[p] = v
+        param[p] = v
     else:
         v = param[p]
     return v
