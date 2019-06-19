@@ -1,4 +1,4 @@
-# Last edited:20190619 11am
+# Last edited:20190619 2pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -582,7 +582,7 @@ class Command(QWidget):
                    "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor). <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g value </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.  <font color=blue>e.g. spike on </font> <br>\n"
-                   "<b>bkgd</b>: turn on/off background subtraction for data processing. <font color=blue>e.g. bkgd on </font> <br>\n"
+                   "<b>bkrm</b>: turn on/off background subtraction for data processing. <font color=blue>e.g. bkrm on </font> <br>\n"
                    "<b>d</b>: turn on/off discrimination after background substraction. <font color=blue>e.g. d on </font> <br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>")
@@ -797,18 +797,18 @@ class Command(QWidget):
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   spec x1/x2/d1/d2/f/g value", "err")
 
-        elif text[:5] == 'bkgd ':
+        elif text[:5] == 'bkrm ':
             space, sptext = text.count(' '), text.split(' ')
             if space == 1 and sptext[1] in ['on', 'off']:
                 self.sysReturn(text, "v", True)
                 self.sysReturn("background subtraction turned {}".format(sptext[1]))
                 if sptext[1] == 'on':
-                    self.setfactor.emit('bkgd', True)
+                    self.setfactor.emit('bkrm', True)
                 elif sptext[1] == 'off':
-                    self.setfactor.emit('bkgd', False)
+                    self.setfactor.emit('bkrm', False)
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   bkgd on/off", "err")
+                self.sysReturn("input error. use:   bkrm on/off", "err")
 
         elif text[:6] == 'spike ':
             space, sptext = text.count(' '), text.split(' ')
@@ -1488,13 +1488,13 @@ class SpectrumWidget(QWidget):
 
     def plotRIXS(self, accum=False, save=False):  #processing
         data = self.data
+        if self.bkgdsubstract:
+            data = np.subtract(data, self.ref_2d)  # default ref_2d = array of 0
         if self.spikeremove:
             if self.spikefactor >= 1.05:
                 data = spikeRemoval(self.data, 0, 1023, self.spikefactor)[0] # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
-        if self.bkgdsubstract: 
-            data = np.subtract(data, self.ref_2d)  # default ref_2d = array of 0
         if self.discriminate:
             data[data < self.d1] = 0  # discrimination in Spectrum Widget
             data[data > self.d2] = 0
@@ -1550,7 +1550,7 @@ class SpectrumWidget(QWidget):
         elif p == 'x2': self.x2 = v
         elif p == 'f': self.spikefactor = v
         elif p == 'spike': self.spikeremove = v
-        elif p == 'bkgd':
+        elif p == 'bkrm':
             self.bkgdsubstract = v
             if self.bkgdsubstract == False and self.discriminate == True:
                 self.discriminate = False # close d when turn off bkgd
