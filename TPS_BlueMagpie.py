@@ -1,4 +1,4 @@
-# Last edited:20190619 2pm
+# Last edited:20190620 1am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -99,13 +99,13 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":1,
-    "th": 1, "tth": 1,
-    "agm": 1, "ags": 1,
-    "ta": 1, "tb": 1,
-    "I0": 1, "Iph": 1,
+    "hexapod": 0, "ccd": 0, "xyzstage":0,
+    "th": 0, "tth": 0,
+    "agm": 0, "ags": 0,
+    "ta": 0, "tb": 0,
+    "I0": 0, "Iph": 0,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1
+    "thoffset":0 , "Iring":0
 })
 
 
@@ -1493,7 +1493,7 @@ class SpectrumWidget(QWidget):
             data = np.subtract(data, self.ref_2d)  # default ref_2d = array of 0
         if self.spikeremove:
             if self.spikefactor >= 1.05:
-                data = spikeRemoval(self.data, 0, 1023, self.spikefactor)[0] # save setref 2d image file
+                data = spikeRemoval(self.data)[0] # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
         if self.discriminate:
@@ -1536,7 +1536,7 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval(self.data, 0, 1023, 1.05)[0]
+                data = spikeRemoval(self.data)[0]
                 self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
                 self.setbkgd.emit(self.ref_2d)
                 data = np.sum(self.ref_2d, axis=0)
