@@ -93,19 +93,19 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-7, 10],
+param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-7, 12],
                          'th': [-10, 215], 'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
                          'gain': [0, 100], 'thoffset':[-70, 70]})
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":0,
+    "hexapod": 0, "ccd": 0, "xyzstage":1,
     "th": 0, "tth": 0,
     "agm": 0, "ags": 0,
     "ta": 0, "tb": 0,
     "I0": 0, "Iph": 0,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":0 , "Iring":0
+    "thoffset":1 , "Iring":0
 })
 
 
