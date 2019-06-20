@@ -1,4 +1,4 @@
-# Last edited:20190620 1am
+# Last edited:20190620 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -105,7 +105,7 @@ Device = pd.Series({
     "ta": 0, "tb": 0,
     "I0": 0, "Iph": 0,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":0
+    "thoffset":1 , "Iring":1
 })
 
 
@@ -1351,8 +1351,8 @@ class SpectrumWidget(QWidget):
         self.spikefactor= 1.5 #spike removal function discrimination factor
         self.d1 = 20 # discrimination factor for setref
         self.d2 = 200
-        self.gfactor = 20 # gaussian factor
-        self.x1, self.x2 = 520, 850
+        self.gfactor = 40 # gaussian factor
+        self.x1, self.x2 = 0, 1023
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
         self.bkgdsubstract = True #flag to apply background substraction while data processing
@@ -1489,13 +1489,13 @@ class SpectrumWidget(QWidget):
 
     def plotRIXS(self, accum=False, save=False):  #processing
         data = self.data
-        if self.bkgdsubstract:
-            data = np.subtract(data, self.ref_2d)  # default ref_2d = array of 0
         if self.spikeremove:
             if self.spikefactor >= 1.05:
-                data = spikeRemoval(self.data)[0] # save setref 2d image file
+                data = spikeRemoval(data, self.x1, self.x2, self.spikefactor)[0] # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
+        if self.bkgdsubstract:
+            data = np.subtract(data, self.ref_2d) # default ref_2d = array of 0
         if self.discriminate:
             data[data < self.d1] = 0  # discrimination in Spectrum Widget
             data[data > self.d2] = 0
@@ -1509,7 +1509,7 @@ class SpectrumWidget(QWidget):
             self.rixs_n += 1
         else:
             self.rixs_y = data
-        self.rixs.setData(x=self.rixs_x[117:], y=self.rixs_y[117:]) # cut 0-117
+        self.rixs.setData(x=self.rixs_x[100:], y=self.rixs_y[100:]) # cut 0-117
 
     def jointRemoval(self, data):
         avg = np.mean(data) #data  = 1d array
@@ -1536,12 +1536,14 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval(self.data)[0]
+                data = spikeRemoval(self.data, self.x1, self.x2, self.spikefactor)[0]
                 self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
+                print('bkgd')
+                print(self.ref_2d)
                 self.setbkgd.emit(self.ref_2d)
                 data = np.sum(self.ref_2d, axis=0)
                 self.ref_y = data.flatten()
-                self.rixs.setData(x=self.rixs_x[117:], y=self.ref_y[117:])
+                self.rixs.setData(x=self.rixs_x[100:], y=self.ref_y[100:])
             else:
                 self.errmsg.emit('no valid spectrum to set reference.','err')
         self.factorsinfo()
@@ -1795,6 +1797,7 @@ class Scan(QThread):
                 data_ave = np.mean(data_array)
                 current_param[plot[i]] = float(data_ave)  # replace param['Iph'] by averaged data
 
+            current_param[scan_param] = get_param(scan_param) # for datasaving
             current_param['t'] = round(loop_time, 2)
             self.data_matrix.loc[len(self.data_matrix), :] = current_param.tolist()  # appending param to data_matrix
             '''
