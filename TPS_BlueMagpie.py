@@ -99,13 +99,13 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":1,
+    "hexapod": 0, "ccd": 0, "xyzstage":0,
     "th": 0, "tth": 0,
     "agm": 0, "ags": 0,
     "ta": 0, "tb": 0,
     "I0": 0, "Iph": 0,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1
+    "thoffset":0 , "Iring":0
 })
 
 
@@ -189,7 +189,7 @@ Start GUI construction
 class MainWindow(QMainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
-        self.setFixedSize(1300, 780)
+        self.setFixedSize(2400, 1600)
         self.setWindowTitle('TPS blue magpie')
 
         exitAct = QAction(QIcon('exit.png'), ' &Quit',  self)
@@ -1484,23 +1484,23 @@ class SpectrumWidget(QWidget):
         self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
 
     def setRIXSdata(self, array, accum=False, save=False):
-        self.data = array
+        self.data = np.copy(array)
         self.plotRIXS(accum, save)
 
     def plotRIXS(self, accum=False, save=False):  #processing
-        data = self.data
+        data = np.copy(self.data) #avoid removing raw data
+        if self.bkgdsubstract:
+            data = np.subtract(data, self.ref_2d) # default ref_2d = array of 0
         if self.spikeremove:
             if self.spikefactor >= 1.05:
                 data = spikeRemoval(data, self.x1, self.x2, self.spikefactor)[0] # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
-        if self.bkgdsubstract:
-            data = np.subtract(data, self.ref_2d) # default ref_2d = array of 0
         if self.discriminate:
             data[data < self.d1] = 0  # discrimination in Spectrum Widget
             data[data > self.d2] = 0
-        senddata = np.array(data)
-        self.setbkgd.emit(senddata)                    # show 2d in ImageWidget
+        senddata = np.array(data)     # avoid inconsistency between data and 2D-image
+        self.setbkgd.emit(senddata)                     # show 2D in ImageWidget
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
         data = self.jointRemoval(data.flatten())
         if save: self.saveSpec()   # save = True only in Rixs(QThread), could be extended in another commandt
