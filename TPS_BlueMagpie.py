@@ -1,4 +1,4 @@
-# Last edited:20190620 5pm
+# Last edited:20190621 2pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -102,10 +102,10 @@ Device = pd.Series({
     "hexapod": 0, "ccd": 0, "xyzstage":0,
     "th": 0, "tth": 0,
     "agm": 0, "ags": 0,
-    "ta": 0, "tb": 0,
-    "I0": 0, "Iph": 0,
+    "ta": 1, "tb": 1,
+    "I0": 1, "Iph": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":0 , "Iring":0
+    "thoffset":1 , "Iring":1
 })
 
 
@@ -189,7 +189,7 @@ Start GUI construction
 class MainWindow(QMainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
-        self.setFixedSize(2400, 1600)
+        self.setFixedSize(1300, 780)
         self.setWindowTitle('TPS blue magpie')
 
         exitAct = QAction(QIcon('exit.png'), ' &Quit',  self)
@@ -1489,13 +1489,13 @@ class SpectrumWidget(QWidget):
 
     def plotRIXS(self, accum=False, save=False):  #processing
         data = np.copy(self.data) #avoid removing raw data
-        if self.bkgdsubstract:
-            data = np.subtract(data, self.ref_2d) # default ref_2d = array of 0
         if self.spikeremove:
             if self.spikefactor >= 1.05:
                 data = spikeRemoval(data, self.x1, self.x2, self.spikefactor)[0] # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
+        if self.bkgdsubstract:
+            data = np.subtract(data, self.ref_2d) # default ref_2d = array of 0
         if self.discriminate:
             data[data < self.d1] = 0  # discrimination in Spectrum Widget
             data[data > self.d2] = 0
