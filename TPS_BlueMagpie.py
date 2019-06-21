@@ -1,4 +1,4 @@
-# Last edited:20190621 5pm
+# Last edited:20190621 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -102,10 +102,10 @@ Device = pd.Series({
     "hexapod": 0, "ccd": 0, "xyzstage":0,
     "th": 0, "tth": 0,
     "agm": 0, "ags": 0,
-    "ta": 1, "tb": 1,
-    "I0": 1, "Iph": 1,
+    "ta": 0, "tb": 0,
+    "I0": 0, "Iph": 0,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1
+    "thoffset":0 , "Iring":0
 })
 
 
@@ -505,21 +505,18 @@ class Command(QWidget):
         # time stamp
         timestamp = QTime.currentTime()
         t = timestamp.toString()
-
         if v == "iv":
             # invalid command
+            self.command_message.append(' ')
             self.command_message.append('<font color=gray>{0} >> {1}</font><font color=black> </font>'.format(t, x))
 
         elif v == "v":
             if log == True:
                 self.abort_button.setEnabled(True)
-                # =================== history log=======================
                 i = (self.history_log.size) / 2 # current_size
                 self.history_loc = int(i + 1)
                 row = pd.Series([t, x], index=self.history_index, name=self.history_loc) # append valid command to history
                 self.history_log = self.history_log.append(row)
-                # =================== history log========================
-
             self.command_message.append(' ')
             self.command_message.append('<font color=blue>{0} >> {1}</font><font color=black> </font>'.format(t, x))
 
@@ -1303,6 +1300,7 @@ class ImageWidget(QWidget):
             self.imgdata = np.reshape(data, (1024, 2048), order='F')
             self.showImg()
         except:
+            print('failed')
             self.errmsg.emit('failed to load data, might be a datashape problem.','err')
 
     def rixs_sum(self, image_data):
@@ -1365,7 +1363,7 @@ class SpectrumWidget(QWidget):
         self.x1, self.x2 = 0, 1023
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
-        self.bkgdsubstract = True #flag to apply background substraction while data processing
+        self.bkgdsubstract = False #flag to apply background substraction while data processing
         self.discriminate = False
 
         
@@ -1541,7 +1539,7 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval(self.data, self.x1, self.x2, self.spikefactor)[0]
+                data = spikeRemoval(self.data, self.x1, self.x2, 1.05)[0]
                 self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
                 print('bkgd')
                 print(self.ref_2d)
@@ -1549,6 +1547,7 @@ class SpectrumWidget(QWidget):
                 data = np.sum(self.ref_2d, axis=0)
                 self.ref_y = data.flatten()
                 self.rixs.setData(x=self.rixs_x[100:], y=self.ref_y[100:])
+                self.bkgdsubstract = False
             else:
                 self.errmsg.emit('no valid spectrum to set reference.','err')
         self.factorsinfo()
