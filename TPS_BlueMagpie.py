@@ -1,4 +1,4 @@
-# Last edited:20190621 2pm
+# Last edited:20190621 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -252,6 +252,7 @@ class Panel(QWidget):
         spectrum_widget.errmsg.connect(command_widget.sysReturn)
         spectrum_widget.msg.connect(command_widget.sysReturn)
         spectrum_widget.setbkgd.connect(image_widget.setBkgd)
+        spectrum_widget.saveRef.connect(image_widget.saveImg)
         command_widget.loadimage.connect(image_widget.loadImg)
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
@@ -1251,22 +1252,29 @@ class ImageWidget(QWidget):
         if rixs:
             self.plotSpectrum(True, True)
 
-    def saveImg(self, img_number):
+    def saveImg(self, img_number, ref=False):
         '''
-        save file as .txt
-        name format example: 20190508_img001(Hr/Min/Sec)
-        optional serial timestamp: %H%M%S 
+        img_number = int
+        save file as txt with header of parameters
+        name format example: rixs_20190508_img001.img
         '''
-        if img_number//100 == 0:
-            img_number = "00" + str(img_number) if img_number // 10 == 0 else "0" + str(img_number)
-        else:
-            img_number = str(img_number)
+        header = self.getHeader()                           # string of current parameter series
+        data = self.imgdata if not ref else self.refimage   # 2d image
+        # fill img_number string with 3 digits in normal(not ref) case
+        tail = 'img{}'.format(str(img_number).zfill(3)) if not ref else 'ref'
 
-        datestamp = datetime.datetime.today().strftime("%Y%m%d")  # Format : YYYYMMDD
-        file_name0 = "rixs_%s_%s_img%s.img"%(datestamp, str(file_no), img_number)
-        file_name = img_dir + file_name0  # for saving in correct dir
-        np.savetxt(file_name, self.imgdata, fmt='%9d', delimiter=',') # image data format
+        file_name0 = "rixs_{}_{}_{}.img".format(dir_date, file_no, tail)
+        file_name = img_dir + file_name0                    # for saving in correct dir
+        # append parameters as header
+        np.savetxt(file_name, data, fmt='%9d', delimiter=',', header=header) # image data format
         cmd_global.sysReturn('image data saved: {}'.format(file_name0))
+
+    def getHeader(self):
+        # record param from global pd.Series
+        index = ','.join(param.index.tolist())
+        value = ','.join(['{:.2f}'.format(x) for x in param.tolist()])
+        header_text = '{}\n{}'.format(index, value)
+        return header_text
 
     def showImg(self):
         self.imv.setImage(self.imgdata)
@@ -1274,13 +1282,14 @@ class ImageWidget(QWidget):
     def setBkgd(self, data):
         try:
             self.imgdata = data
+            self.refimage = np.copy(data)
         except:
             print('failed to set background.')
         self.showImg()
 
     def loadImg(self, filename):
         try:
-            raw_data = np.genfromtxt(filename, delimiter=',')
+            raw_data = np.genfromtxt(filename, delimiter=',', skip_header=2)
             data = np.asarray(raw_data)
             print('size = ', data.size)
             print(data)
@@ -1323,6 +1332,7 @@ class SpectrumWidget(QWidget):
     errmsg = pyqtSignal(str,str)
     msg = pyqtSignal(str)
     setbkgd = pyqtSignal(np.ndarray)
+    saveRef = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -1519,17 +1529,12 @@ class SpectrumWidget(QWidget):
         return data
 
     def saveSpec(self, final=False):
-        if not final:
-            filename0="rixs_{0}_{1}_{2}".format(dir_date, file_no, str(1+self.rixs_n).zfill(3)) #self.n start from 0
-            np.savetxt(data_dir+filename0, self.rixs_y, fmt='%.2f', delimiter=' ')
-            self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
-        else:
-            filename0="rixs_{0}_{1}".format(dir_date, file_no)
-            filename1="rixs_{0}_{1}ref".format(dir_date,file_no)
-            np.savetxt(data_dir + filename0, self.rixs_y, fmt='%.2f', delimiter=' ')
-            np.savetxt(data_dir + filename1, self.ref_y, fmt='%.2f', delimiter=' ')
-            self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
-            self.msg.emit('rixs ref data saved in {0}.txt'.format(filename1))
+        # self.n start from 0
+        spec_number = str(1+self.rixs_n).zfill(3) if not final else ""
+        filename="rixs_{0}_{1}_{2}".format(dir_date, file_no, spec_number)
+        np.savetxt(data_dir + filename, self.rixs_y, fmt='%.2f', delimiter=' ')
+        self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
+        if final: self.saveRef.emit(True)
 
     def setRef(self, bool= True):
         if bool:
