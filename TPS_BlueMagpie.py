@@ -1,4 +1,4 @@
-# Last edited:20190621 6pm
+# Last edited:20190624 11am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -99,13 +99,13 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":0,
-    "th": 0, "tth": 0,
-    "agm": 0, "ags": 0,
-    "ta": 0, "tb": 0,
-    "I0": 0, "Iph": 0,
+    "hexapod": 0, "ccd": 1, "xyzstage":1,
+    "th": 1, "tth": 1,
+    "agm": 1, "ags": 1,
+    "ta": 1, "tb": 1,
+    "I0": 1, "Iph": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":0 , "Iring":0
+    "thoffset":1 , "Iring":1
 })
 
 
@@ -252,6 +252,7 @@ class Panel(QWidget):
         spectrum_widget.errmsg.connect(command_widget.sysReturn)
         spectrum_widget.msg.connect(command_widget.sysReturn)
         spectrum_widget.setbkgd.connect(image_widget.setBkgd)
+        spectrum_widget.showimg.connect(image_widget.setBkgd)
         spectrum_widget.saveRef.connect(image_widget.saveImg)
         command_widget.loadimage.connect(image_widget.loadImg)
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
@@ -625,8 +626,11 @@ class Command(QWidget):
         elif 'img' in text[:4]:
             space = text.count(' ')
             sptext = text.split(' ')
-            t = sptext[1] if text != 'img' else 2 # default exposure time = 2
-
+            if text != 'img':
+                t = sptext[1]
+            else:
+                t = 2 # default exposure time = 2
+                space = 1
             if space == 1 and self.checkFloat(t):  # e.g. img t
                 BUSY = True
                 self.sysReturn(text, "v", True)
@@ -1234,7 +1238,7 @@ class ImageWidget(QWidget):
 
         self.imv.scene.sigMouseMoved.connect(mouseMoved)
 
-    def getData(self, rixs =False):
+    def getData(self, rixs =False, num=0):
         if checkSafe('ccd'):
             raw_img = pvl.ccd("image")
             print(raw_img)
@@ -1247,9 +1251,10 @@ class ImageWidget(QWidget):
             img_np = np.reshape(img_list, (1024, 2048), order='F')
         self.imgdata = img_np
         if rixs:
+            self.saveImg(num)
             self.plotSpectrum(True, True)
 
-    def saveImg(self, img_number, ref=False):
+    def saveImg(self, img_number=0, ref=False):
         '''
         img_number = int
         save file as txt with header of parameters
@@ -1258,7 +1263,10 @@ class ImageWidget(QWidget):
         header = self.getHeader()                           # string of current parameter series
         data = self.imgdata if not ref else self.refimage   # 2d image
         # fill img_number string with 3 digits in normal(not ref) case
-        tail = 'img{}'.format(str(img_number).zfill(3)) if not ref else 'ref'
+        if not ref:
+            tail = 'img{}'.format(str(img_number).zfill(3))
+        else:
+            tail = 'ref'
 
         file_name0 = "rixs_{}_{}_{}.img".format(dir_date, file_no, tail)
         file_name = img_dir + file_name0                    # for saving in correct dir
@@ -1276,10 +1284,11 @@ class ImageWidget(QWidget):
     def showImg(self):
         self.imv.setImage(self.imgdata)
 
-    def setBkgd(self, data):
+    def setBkgd(self, data, bkgd=True):
         try:
             self.imgdata = data
-            self.refimage = np.copy(data)
+            if bkgd:
+                self.refimage = np.copy(data)
         except:
             print('failed to set background.')
         self.showImg()
@@ -1313,7 +1322,8 @@ class ImageWidget(QWidget):
         print(rixs_tmp)
 
     def plotSpectrum(self, accum=False, save=False):
-        self.setrixsdata.emit(self.imgdata, accum, save)
+        data = np.copy(self.imgdata)
+        self.setrixsdata.emit(data, accum, save)
 
     def enterEvent(self, event):
         self.status_bar.show()
@@ -1330,6 +1340,7 @@ class SpectrumWidget(QWidget):
     errmsg = pyqtSignal(str,str)
     msg = pyqtSignal(str)
     setbkgd = pyqtSignal(np.ndarray)
+    showimg = pyqtSignal(np.ndarray, bool)
     saveRef = pyqtSignal(bool)
 
     def __init__(self, parent=None):
@@ -1507,8 +1518,8 @@ class SpectrumWidget(QWidget):
         if self.discriminate:
             data[data < self.d1] = 0  # discrimination in Spectrum Widget
             data[data > self.d2] = 0
-        senddata = np.array(data)     # avoid inconsistency between data and 2D-image
-        self.setbkgd.emit(senddata)                     # show 2D in ImageWidget
+        senddata = np.copy(data)      # avoid inconsistency between data and 2D-image
+        self.showimg.emit(senddata, False)              # show 2D in ImageWidget
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
         data = self.jointRemoval(data.flatten())
         if save: self.saveSpec()   # save = True only in Rixs(QThread), could be extended in another commandt
@@ -1531,7 +1542,7 @@ class SpectrumWidget(QWidget):
         spec_number = str(1+self.rixs_n).zfill(3) if not final else ""
         filename="rixs_{0}_{1}_{2}".format(dir_date, file_no, spec_number)
         np.savetxt(data_dir + filename, self.rixs_y, fmt='%.2f', delimiter=' ')
-        self.msg.emit('rixs data saved in {0}.txt'.format(filename0))
+        self.msg.emit('rixs data saved in {0}.txt'.format(filename))
         if final: self.saveRef.emit(True)
 
     def setRef(self, bool= True):
@@ -2005,7 +2016,7 @@ class Rixs(QThread):  # no dummy now
             self.img_number += 1
             self.exposethread = Expose(self.t, self.img_number, True)
             self.exposethread.cmd_msg.connect(cmd_global.sysReturn)
-            self.exposethread.get.connect(img_global.getData)
+            self.exposethread.rixs.connect(img_global.getData)
             self.exposethread.show.connect(img_global.showImg)
             self.exposethread.save[int].connect(img_global.saveImg)
             self.exposethread.start()
@@ -2023,6 +2034,7 @@ class Rixs(QThread):  # no dummy now
 
 class Expose(QThread):
     get = pyqtSignal(bool)
+    rixs = pyqtSignal(bool, int)
     show = pyqtSignal()
     save = pyqtSignal(int)
     cmd_msg = pyqtSignal(str)
@@ -2057,10 +2069,12 @@ class Expose(QThread):
 
             dt = round(time.time() - t1, 3)
             print('image taken, time span in seconds= %s' % dt)
-            self.get.emit(self.plot) # get data, if self.plot = True, also plot in Spectrum Widget.
-            self.show.emit()         # show image
-            if self.n != 0: # img command doesn't save file
-                self.save[int].emit(self.n)
+            if self.plot:
+                self.rixs.emit(self.plot, self.n) # get data, if self.plot = True, also plot in Spectrum Widget.
+                #self.save[int].emit(self.n)
+            else:
+                self.get.emit()
+                self.show.emit()         # show image
 
 class Macroloop(QThread):
     msg = pyqtSignal(str)
