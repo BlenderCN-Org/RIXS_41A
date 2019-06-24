@@ -253,7 +253,7 @@ class Panel(QWidget):
         spectrum_widget.msg.connect(command_widget.sysReturn)
         spectrum_widget.setbkgd.connect(image_widget.setBkgd)
         spectrum_widget.showimg.connect(image_widget.setBkgd)
-        spectrum_widget.saveRef.connect(image_widget.saveImg)
+        spectrum_widget.saveRef.connect(image_widget.saveRef)
         command_widget.loadimage.connect(image_widget.loadImg)
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
@@ -1254,7 +1254,7 @@ class ImageWidget(QWidget):
             self.saveImg(num)
             self.plotSpectrum(True, True)
 
-    def saveImg(self, img_number=0, ref=False):
+    def saveImg(self, img_number):
         '''
         img_number = int
         save file as txt with header of parameters
@@ -1268,6 +1268,22 @@ class ImageWidget(QWidget):
         else:
             tail = 'ref'
 
+        file_name0 = "rixs_{}_{}_{}.img".format(dir_date, file_no, tail)
+        file_name = img_dir + file_name0                    # for saving in correct dir
+        # append parameters as header
+        np.savetxt(file_name, data, fmt='%9d', delimiter=',', header=header) # image data format
+        cmd_global.sysReturn('image data saved: {}'.format(file_name0))
+
+    def saveRef(self, ref=False):
+        '''
+        img_number = int
+        save file as txt with header of parameters
+        name format example: rixs_20190508_img001.img
+        '''
+        header = self.getHeader()                           # string of current parameter series
+        data = self.refimage   # 2d image
+        # fill img_number string with 3 digits in normal(not ref) case
+        tail = 'ref'
         file_name0 = "rixs_{}_{}_{}.img".format(dir_date, file_no, tail)
         file_name = img_dir + file_name0                    # for saving in correct dir
         # append parameters as header
