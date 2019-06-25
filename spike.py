@@ -12,8 +12,7 @@ from scipy.optimize import curve_fit
 from scipy import fftpack
 
 
-def low_pass_fft(spectrum, max_freq, step=0.05):
-    max_freq  = 0.3
+def low_pass_fft(spectrum, max_freq=0.3, step=0.05):
     # The FFT of the signal
     spectrum_fft = fftpack.fft(spectrum)
     #The corresponding frequencies

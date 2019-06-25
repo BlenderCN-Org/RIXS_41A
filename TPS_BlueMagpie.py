@@ -1,4 +1,4 @@
-# Last edited:20190624 11am
+# Last edited:20190625 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -10,7 +10,7 @@ import pandas as pd
 import datetime, re
 import pvlist as pvl
 import math
-from spike import spikeRemoval
+from spike import spikeRemoval, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
 
@@ -1556,13 +1556,16 @@ class SpectrumWidget(QWidget):
             data[i] = data[i] - (h * np.exp(-((i - 1035) ** 2) / 2))
         return data
 
-    def saveSpec(self, final=False):
-        # self.n start from 0
-        spec_number = str(1+self.rixs_n).zfill(3) if not final else ""
+    def saveSpec(self, final=False, askname=False):
+        if askname:
+            spec_number = str(1+self.rixs_n).zfill(3) if not final else ""
         filename="rixs_{0}_{1}_{2}".format(dir_date, file_no, spec_number)
         np.savetxt(data_dir + filename, self.rixs_y, fmt='%.2f', delimiter=' ')
         self.msg.emit('rixs data saved in {0}.txt'.format(filename))
         if final: self.saveRef.emit(True)
+
+    def getHeader(self):
+        pass
 
     def setRef(self, bool= True):
         if bool:
