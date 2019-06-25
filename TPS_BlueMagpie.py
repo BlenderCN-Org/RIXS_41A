@@ -1,4 +1,4 @@
-# Last edited:20190625 4pm
+# Last edited:20190625 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -254,6 +254,7 @@ class Panel(QWidget):
         spectrum_widget.setbkgd.connect(image_widget.setBkgd)
         spectrum_widget.showimg.connect(image_widget.setBkgd)
         spectrum_widget.saveRef.connect(image_widget.saveRef)
+        command_widget.saveName.connect(spectrum_widget.saveName)
         command_widget.loadimage.connect(image_widget.loadImg)
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
@@ -354,6 +355,7 @@ class Command(QWidget):
     macrostat = pyqtSignal(str)
     pause = pyqtSignal(float)
     loadimage = pyqtSignal(str)
+    saveName = pyqtSignal(str)
     plot_rixs = pyqtSignal(str)
     macrostarted = pyqtSignal(str)
     setrixsplot = pyqtSignal(str)
@@ -583,9 +585,11 @@ class Command(QWidget):
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g value </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.  <font color=blue>e.g. spike on </font> <br>\n"
                    "<b>bkrm</b>: turn on/off background subtraction for data processing. <font color=blue>e.g. bkrm on </font> <br>\n"
+                   "<b>fft</b>: turn on/off fast fourier transform for data processing. <font color=blue>e.g. fft on </font> <br>\n"
                    "<b>d</b>: turn on/off discrimination after background substraction. <font color=blue>e.g. d on </font> <br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>")
+                   "<b>save</b>: save 1D data in txt from shown spectrum.<br>")
             self.sysReturn(msg)
 
         elif text == "h":
@@ -679,6 +683,13 @@ class Command(QWidget):
         elif text == 'load':
             self.sysReturn(text, "v", True)
             self.fileOpen()
+
+        elif text == 'save':
+            self.sysReturn(text, "v", True)
+            name = QFileDialog.getSaveFileName(self, 'Save File')
+            print('name : {}'.format(name[0]))
+            if type(name[0]) == str:
+                self.saveName.emit(name[0])
 
         elif text == 'setref':
             self.sysReturn(text, "v", True)
@@ -812,6 +823,19 @@ class Command(QWidget):
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   bkrm on/off", "err")
+
+        elif text[:4] == 'fft ':
+            space, sptext = text.count(' '), text.split(' ')
+            if space == 1 and sptext[1] in ['on', 'off']:
+                self.sysReturn(text, "v", True)
+                self.sysReturn("fast fourier transform after spike removal turned {}".format(sptext[1]))
+                if sptext[1] == 'on':
+                    self.setfactor.emit('fft', True)
+                elif sptext[1] == 'off':
+                    self.setfactor.emit('fft', False)
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   fft on/off", "err")
 
         elif text[:6] == 'spike ':
             space, sptext = text.count(' '), text.split(' ')
@@ -1388,6 +1412,7 @@ class SpectrumWidget(QWidget):
         self.d2 = 200
         self.gfactor = 40 # gaussian factor
         self.x1, self.x2 = 0, 1023
+        self.fft = False
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
         self.bkgdsubstract = False #flag to apply background substraction while data processing
@@ -1407,19 +1432,23 @@ class SpectrumWidget(QWidget):
         self.plotWidget = PlotWidget(self)
         self.pos_bar = QLabel(self)
         self.refinfo = QLabel(self)
+        self.fftinfo = QLabel(self)
         self.xval = QLabel(self)
         self.spikeinfo = QLabel(self) 
         self.dinfo = QLabel(self)
 
     def __layout__(self):
         self.layoutHorizontal = QHBoxLayout()
-        self.layoutHorizontal.addWidget(self.xval)
         self.layoutHorizontal.addWidget(self.spikeinfo)
+        self.layoutHorizontal.addWidget(self.fftinfo)
         self.layoutHorizontal2 = QHBoxLayout()
         self.layoutHorizontal2.addWidget(self.refinfo)
         self.layoutHorizontal2.addWidget(self.dinfo)
+        self.topHorizontal = QHBoxLayout()
+        self.topHorizontal.addWidget(self.pos_bar)
+        self.topHorizontal.addWidget(self.xval)
         self.layoutVertical = QVBoxLayout(self)
-        self.layoutVertical.addWidget(self.pos_bar)
+        self.layoutVertical.addLayout(self.topHorizontal)
         self.layoutVertical.addWidget(self.plotWidget)
         self.layoutVertical.addLayout(self.layoutHorizontal)
         self.layoutVertical.addLayout(self.layoutHorizontal2)
@@ -1538,8 +1567,8 @@ class SpectrumWidget(QWidget):
         self.showimg.emit(senddata, False)              # show 2D in ImageWidget
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
         data = self.jointRemoval(data.flatten())
-
-        data= low_pass_fft(data) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
+        if self.fft:
+            data= low_pass_fft(data) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
         
         if save: self.saveSpec()   # save = True only in Rixs(QThread), could be extended in another commandt
         if accum: # accum = True only in Rixs(QThread)
@@ -1556,13 +1585,21 @@ class SpectrumWidget(QWidget):
             data[i] = data[i] - (h * np.exp(-((i - 1035) ** 2) / 2))
         return data
 
-    def saveSpec(self, final=False, askname=False):
-        if askname:
-            spec_number = str(1+self.rixs_n).zfill(3) if not final else ""
+    def saveSpec(self, final=False):
+        spec_number = str(1+self.rixs_n).zfill(3) if not final else ""
         filename="rixs_{0}_{1}_{2}".format(dir_date, file_no, spec_number)
         np.savetxt(data_dir + filename, self.rixs_y, fmt='%.2f', delimiter=' ')
         self.msg.emit('rixs data saved in {0}.txt'.format(filename))
         if final: self.saveRef.emit(True)
+
+    def saveName(self, name=None):
+        if name == None:
+            name = data_dir + dir_date + 'test'
+        if not self.analyze:
+            print ('currently save spectrum only, not including scan data.')
+        else:
+            np.savetxt(name, self.rixs_y, fmt='%.2f', delimiter=' ')
+            self.msg.emit('spectrum saved in {0}.txt'.format(os.path.basename(name)))
 
     def getHeader(self):
         pass
@@ -1598,6 +1635,7 @@ class SpectrumWidget(QWidget):
         elif p == 'd1': self.d1 = v
         elif p == 'd2': self.d2 = v
         elif p == 'g': self.gfactor = v
+        elif p == 'fft': self.fft = v
         else: print('invalid factor for setFactor function.')
         self.factorsinfo() # refresh parameter display
         if self.analyze : self.plotRIXS()
@@ -1607,15 +1645,18 @@ class SpectrumWidget(QWidget):
         spikeflag = "<font color=green>ON</font>" if self.spikeremove else "<font color=red>OFF</font>"
         bkgdflag = "<font color=green>ON</font>" if self.bkgdsubstract else "<font color=red>OFF</font>"
         dflag = "<font color=green>ON</font>" if self.discriminate else "<font color=red>OFF</font>"
+        fftflag = "<font color=green>ON</font>" if self.fft else "<font color=red>OFF</font>"
         if set:
-            self.xval.setText('x1 = {0}, x2 = {1}'.format(self.x1, self.x2))
+            self.xval.setText('<p align=\"right\">x1 = {0}, x2 = {1}</p>'.format(self.x1, self.x2))
             self.spikeinfo.setText('spike factor [{}] = {} '.format(spikeflag, self.spikefactor))
             self.refinfo.setText('background [{}] = {}'.format(bkgdflag, self.ref_name))
-            self.dinfo.setText('d1 = {}, d2 = {} [{}]'.format(self.d1, self.d2, dflag))
+            self.fftinfo.setText('<p align=\"right\">fast fourier transform [{}]</p>'.format(fftflag))
+            self.dinfo.setText('<p align=\"right\">d1 = {}, d2 = {} [{}]</p>'.format(self.d1, self.d2, dflag))
         else:
             self.xval.setText('')
             self.spikeinfo.setText('')
             self.refinfo.setText('')
+            self.fftinfo.setText('')
             self.dinfo.setText('')
 
 class Barupdate(QThread):
