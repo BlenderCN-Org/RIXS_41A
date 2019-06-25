@@ -99,13 +99,13 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "th": 1, "tth": 1,
-    "agm": 1, "ags": 1,
-    "ta": 1, "tb": 1,
-    "I0": 1, "Iph": 1,
+    "hexapod": 0, "ccd": 0, "xyzstage":0,
+    "th": 0, "tth": 0,
+    "agm": 0, "ags": 0,
+    "ta": 0, "tb": 0,
+    "I0": 0, "Iph": 0,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1
+    "thoffset":0 , "Iring":0
 })
 
 
@@ -1538,6 +1538,9 @@ class SpectrumWidget(QWidget):
         self.showimg.emit(senddata, False)              # show 2D in ImageWidget
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
         data = self.jointRemoval(data.flatten())
+
+        data= low_pass_fft(data) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
+        
         if save: self.saveSpec()   # save = True only in Rixs(QThread), could be extended in another commandt
         if accum: # accum = True only in Rixs(QThread)
             self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
