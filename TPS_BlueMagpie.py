@@ -588,7 +588,7 @@ class Command(QWidget):
                    "<b>fft</b>: turn on/off fast fourier transform for data processing. <font color=blue>e.g. fft on </font> <br>\n"
                    "<b>d</b>: turn on/off discrimination after background substraction. <font color=blue>e.g. d on </font> <br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
-                   "<b>load</b>: load an image file from project#0/data/img folder.<br>")
+                   "<b>load</b>: load an image file from project#0/data/img folder.<br>"
                    "<b>save</b>: save 1D data in txt from shown spectrum.<br>")
             self.sysReturn(msg)
 
