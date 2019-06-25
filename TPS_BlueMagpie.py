@@ -581,8 +581,8 @@ class Command(QWidget):
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>rixs t n </font> <br>\n"
                    "<br>\n"
                    "<b>setref</b>: set current spectrum as reference spectrum.<br>\n"
-                   "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor). <br>\n"
-                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g value </font> <br>\n"
+                   "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor), fmax, step. <br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g/fmax/step value </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.  <font color=blue>e.g. spike on </font> <br>\n"
                    "<b>bkrm</b>: turn on/off background subtraction for data processing. <font color=blue>e.g. bkrm on </font> <br>\n"
                    "<b>fft</b>: turn on/off fast fourier transform for data processing. <font color=blue>e.g. fft on </font> <br>\n"
@@ -794,16 +794,12 @@ class Command(QWidget):
                     else:
                         self.sysReturn(text, "iv")
                         self.sysReturn("{} should be integer or in range(0, 1023)".format(v), "err")
-                elif p in ['f', 'g']:
+                elif p in ['f', 'g', 'd1', 'd2', 'fmax', 'step']:
                     if self.checkFloat(v):
                         self.setfactor.emit(str(p), float(v))
                         self.sysReturn(text, "v", True)
                         self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
-                elif p in ['d1', 'd2']:
-                    if self.checkFloat(v):
-                        self.setfactor.emit(str(p), float(v))
-                        self.sysReturn(text, "v", True)
-                        self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
+
                 else:
                     self.sysReturn(text, "iv")
                     self.sysReturn("invalid parameter.  try: x1/x2/d1/d2/f/g", "err")
@@ -1412,6 +1408,7 @@ class SpectrumWidget(QWidget):
         self.d2 = 200
         self.gfactor = 40 # gaussian factor
         self.x1, self.x2 = 0, 1023
+        self.fmax, self.step = 0.3, 0.05
         self.fft = False
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
@@ -1568,7 +1565,7 @@ class SpectrumWidget(QWidget):
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
         data = self.jointRemoval(data.flatten())
         if self.fft:
-            data= low_pass_fft(data) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
+            data= low_pass_fft(data, self.fmax, self.step) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
         
         if save: self.saveSpec()   # save = True only in Rixs(QThread), could be extended in another commandt
         if accum: # accum = True only in Rixs(QThread)
@@ -1636,6 +1633,8 @@ class SpectrumWidget(QWidget):
         elif p == 'd2': self.d2 = v
         elif p == 'g': self.gfactor = v
         elif p == 'fft': self.fft = v
+        elif p == 'fmax': self.fmax = v
+        elif p == 'step': self.step = v
         else: print('invalid factor for setFactor function.')
         self.factorsinfo() # refresh parameter display
         if self.analyze : self.plotRIXS()
@@ -1650,7 +1649,7 @@ class SpectrumWidget(QWidget):
             self.xval.setText('<p align=\"right\">x1 = {0}, x2 = {1}</p>'.format(self.x1, self.x2))
             self.spikeinfo.setText('spike factor [{}] = {} '.format(spikeflag, self.spikefactor))
             self.refinfo.setText('background [{}] = {}'.format(bkgdflag, self.ref_name))
-            self.fftinfo.setText('<p align=\"right\">fast fourier transform [{}]</p>'.format(fftflag))
+            self.fftinfo.setText('<p align=\"right\">f<sub>max</sub> = {}, step = {} [{}]</p>'.format(self.fmax, self.step, fftflag))
             self.dinfo.setText('<p align=\"right\">d1 = {}, d2 = {} [{}]</p>'.format(self.d1, self.d2, dflag))
         else:
             self.xval.setText('')
