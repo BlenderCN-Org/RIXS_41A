@@ -1,4 +1,4 @@
-# Last edited:20190625 5pm
+# Last edited:20190701 2pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -99,13 +99,13 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":0,
-    "th": 0, "tth": 0,
-    "agm": 0, "ags": 0,
-    "ta": 0, "tb": 0,
-    "I0": 0, "Iph": 0,
+    "hexapod": 0, "ccd": 1, "xyzstage":1,
+    "th": 1, "tth": 1,
+    "agm": 1, "ags": 1,
+    "ta": 1, "tb": 1,
+    "I0": 1, "Iph": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":0 , "Iring":0
+    "thoffset":1 , "Iring":1
 })
 
 
@@ -1280,13 +1280,10 @@ class ImageWidget(QWidget):
         save file as txt with header of parameters
         name format example: rixs_20190508_img001.img
         '''
-        header = self.getHeader()                           # string of current parameter series
-        data = self.imgdata if not ref else self.refimage   # 2d image
+        header = self.getHeader()        # string of current parameter series
+        data = self.imgdata              # 2d image
         # fill img_number string with 3 digits in normal(not ref) case
-        if not ref:
-            tail = 'img{}'.format(str(img_number).zfill(3))
-        else:
-            tail = 'ref'
+        tail = 'img{}'.format(str(img_number).zfill(3))
 
         file_name0 = "rixs_{}_{}_{}.img".format(dir_date, file_no, tail)
         file_name = img_dir + file_name0                    # for saving in correct dir
@@ -1294,7 +1291,7 @@ class ImageWidget(QWidget):
         np.savetxt(file_name, data, fmt='%9d', delimiter=',', header=header) # image data format
         cmd_global.sysReturn('image data saved: {}'.format(file_name0))
 
-    def saveRef(self, ref=False):
+    def saveRef(self):
         '''
         img_number = int
         save file as txt with header of parameters
@@ -1377,7 +1374,7 @@ class SpectrumWidget(QWidget):
     msg = pyqtSignal(str)
     setbkgd = pyqtSignal(np.ndarray)
     showimg = pyqtSignal(np.ndarray, bool)
-    saveRef = pyqtSignal(bool)
+    saveRef = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -1566,13 +1563,15 @@ class SpectrumWidget(QWidget):
         data = self.jointRemoval(data.flatten())
         if self.fft:
             data= low_pass_fft(data, self.fmax, self.step) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
-        
-        if save: self.saveSpec()   # save = True only in Rixs(QThread), could be extended in another commandt
+        previous_data = np.copy(self.rixs_y)
+        self.rixs_y = np.copy(data) # for saving 1-D spectrum
+        if save: self.saveSpec()    # save = True only in Rixs(QThread), could be extended in another command
         if accum: # accum = True only in Rixs(QThread)
-            self.rixs_y = np.average([self.rixs_y, data], axis = 0, weights=[self.rixs_n, 1])
+            self.rixs_y = np.average([previous_data, data], axis = 0, weights=[self.rixs_n, 1])
             self.rixs_n += 1
         else:
             self.rixs_y = data
+
         self.rixs.setData(x=self.rixs_x[100:], y=self.rixs_y[100:]) # cut 0-117
 
     def jointRemoval(self, data):
@@ -1583,11 +1582,13 @@ class SpectrumWidget(QWidget):
         return data
 
     def saveSpec(self, final=False):
-        spec_number = str(1+self.rixs_n).zfill(3) if not final else ""
-        filename="rixs_{0}_{1}_{2}".format(dir_date, file_no, spec_number)
+        print(self.rixs_y)
+        spec_number = "_{}".format(str(1+self.rixs_n).zfill(3)) if not final else ""
+        filename="rixs_{0}_{1}{2}".format(dir_date, file_no, spec_number)
         np.savetxt(data_dir + filename, self.rixs_y, fmt='%.2f', delimiter=' ')
         self.msg.emit('rixs data saved in {0}.txt'.format(filename))
-        if final: self.saveRef.emit(True)
+        if final and self.bkgdsubstract:
+            self.saveRef.emit()
 
     def saveName(self, name=None):
         if name == None:
