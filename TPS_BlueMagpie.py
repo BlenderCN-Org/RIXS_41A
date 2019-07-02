@@ -99,13 +99,13 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "th": 1, "tth": 1,
-    "agm": 1, "ags": 1,
-    "ta": 1, "tb": 1,
-    "I0": 1, "Iph": 1,
+    "hexapod": 0, "ccd": 0, "xyzstage":0,
+    "th": 0, "tth": 0,
+    "agm": 0, "ags": 0,
+    "ta": 0, "tb": 0,
+    "I0": 0, "Iph": 0,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1
+    "thoffset":0 , "Iring":0
 })
 
 
@@ -125,7 +125,7 @@ if Device['ccd']==1:
     pvl.ccd("exposure", 2)
     pvl.ccd("gain", 10)
     pvl.ccd("acqmode", 2)   # 0: video; 1: single (obsolete); 2: accumulation
-    pvl.ccd("accunum", 1)   # accunum to 1
+    pvl.ccd("accunum", 1)   # accunum to 1 
     pvl.ccd("accutype", 0)  # 0: raw image; 2: differnece image
 
 #TODO: restart PV while get None
@@ -1360,7 +1360,8 @@ class ImageWidget(QWidget):
         self.hLine.show()
 
     def leaveEvent(self, event):
-        self.status_bar.clear()
+        #self.status_bar.clear()
+        self.status_bar.setText("")
         self.vLine.hide()
         self.hLine.hide()
 
@@ -1480,6 +1481,8 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setXRange(float(x1), float(x2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', text=scan_param)
         self.plotWidget.plotItem.setLabel('left', text='Intensity', units='A' if plot == 'Iph' else None)
+        self.plotWidget.addItem(self.vLine, ignoreBounds=True)
+        self.plotWidget.addItem(self.hLine, ignoreBounds=True)
         color = ['g', 'b', 'w', 'r', 'y']
         for i in range(0, len(plot)):
             self.curve[i] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[i], style=1, width=1),
@@ -1499,6 +1502,8 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setXRange(0, float(dt * n), padding=None, update=True)  # t1= 0, t2= dt*n
         self.plotWidget.plotItem.setLabel('bottom', text='time (sec)')
         self.plotWidget.plotItem.setLabel('left', text=p)
+        self.plotWidget.addItem(self.vLine, ignoreBounds=True)
+        self.plotWidget.addItem(self.hLine, ignoreBounds=True)
         color = ['g', 'b', 'w', 'r', 'y']  # extendable
         self.curve[0] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[0], style=1, width=1), name=p)
 
@@ -1535,6 +1540,8 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setXRange(float(y1), float(y2), padding=None, update=True)
         self.plotWidget.plotItem.setLabel('bottom', 'y-pixel')
         self.plotWidget.plotItem.setLabel('left', text='Intensity (arb. units)')
+        self.plotWidget.addItem(self.vLine, ignoreBounds=True)
+        self.plotWidget.addItem(self.hLine, ignoreBounds=True)
         self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
 
     def setRIXSdata(self, array, accum=False, save=False):
