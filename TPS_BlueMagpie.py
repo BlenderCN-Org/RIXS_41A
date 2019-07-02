@@ -1,4 +1,4 @@
-# Last edited:20190702 9am
+# Last edited:20190702 10am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -1581,7 +1581,8 @@ class SpectrumWidget(QWidget):
         print(self.rixs_y)
         spec_number = "_{}".format(str(1+self.rixs_n).zfill(3)) if not final else ""
         filename="rixs_{0}_{1}{2}".format(dir_date, file_no, spec_number)
-        np.savetxt(data_dir + filename, self.rixs_y, fmt='%.2f', delimiter=' ')
+        header = self.getHeader()
+        np.savetxt(data_dir + filename, self.rixs_y, fmt='%.2f', delimiter=' ', header=header)
         self.msg.emit('rixs data saved in {0}.txt'.format(filename))
         if final and self.bkgdsubstract:
             self.saveRef.emit()
@@ -1592,11 +1593,17 @@ class SpectrumWidget(QWidget):
         if not self.analyze:
             print ('currently save spectrum only, not including scan data.')
         else:
-            np.savetxt(name, self.rixs_y, fmt='%.2f', delimiter=' ')
+            header = self.getHeader()
+            np.savetxt(name, self.rixs_y, fmt='%.2f', delimiter=' ', header=header)
             self.msg.emit('spectrum saved in {0}.txt'.format(os.path.basename(name)))
 
     def getHeader(self):
-        pass
+        header_text = 'x1 = {}, x2 = {}'.format(self.x1, self.x2)
+        if self.discriminate: header_text += '\nd1 = {}, d2 = {} '.format(self.d1, self.d2)
+        if self.bkgdsubstract: header_text += '\nbackground = {}'.format(self.ref_name)
+        if self.fft: header_text += '\nfmax = {}, step = {}'.format(self.fmax, self.step)
+        if self.spikeremove: header_text += '\nspike factor = {}'.format(self.spikefactor)
+        return header_text
 
     def setRef(self, bool= True):
         if bool:
