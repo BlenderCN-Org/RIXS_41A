@@ -1,4 +1,4 @@
-# Last edited:20190701 2pm
+# Last edited:20190702 9am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -1330,15 +1330,11 @@ class ImageWidget(QWidget):
         try:
             raw_data = np.genfromtxt(filename, delimiter=',', skip_header=2)
             data = np.asarray(raw_data)
-            print('size = ', data.size)
-            print(data)
             if data.size > 2097152:
                 data = data[np.logical_not(np.isnan(data))]
                 print(data, data.size)
                 data = np.take(data, list(range(0, 2097152))) #take 1024*2048 only
                 print(data, data.size)
-            print('size = ', data.size)
-            print(data)
             self.imgdata = np.reshape(data, (1024, 2048), order='F')
             self.showImg()
         except:
