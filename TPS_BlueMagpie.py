@@ -1,4 +1,4 @@
-# Last edited:20190702 10am
+# Last edited:20190704 2pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -13,6 +13,7 @@ import math
 from spike import spikeRemoval, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
+import login
 
 # Global for connection
 spectrum_global = None
@@ -390,6 +391,10 @@ class Command(QWidget):
         self.popup.connect(self.popupMacro)
         self.macrostat[str].connect(self.command_input.setText)
         self.macrotimer = QTimer(self)
+
+        #login related
+        self.login = login.Login()
+
         '''
         History
          - callable (command: h)
@@ -591,6 +596,61 @@ class Command(QWidget):
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>"
                    "<b>save</b>: save 1D data in txt from shown spectrum.<br>")
             self.sysReturn(msg)
+
+        # login process
+        elif text[:6] == 'login ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            self.sysReturn(text, "v")
+
+            if space == 2:  # e.g. login username password
+                u = sptext[1]
+                p = sptext[2]
+                if(self.login.handleLogin(u, p)):
+                    # TODO: change the login flag for current user and create the user working folder
+                    self.sysReturn("login successfully")
+                else:
+                    self.sysReturn("login failed")
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. usage:   login username password", "err")
+
+        # supervisor only
+        elif text[:8] == 'adduser ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            self.sysReturn(text, "v")
+
+            if space == 2:  # e.g. adduser newuser password
+                u = sptext[1]
+                p = sptext[2]
+                self.login.adduser(u, p)
+                self.sysReturn("add user successfully")
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. usage:   adduser newuser password", "err")
+
+        # supervisor only
+        elif text[:8] == 'deluser ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            self.sysReturn(text, "v")
+
+            if space == 1:  # e.g. deluser username
+                u = sptext[1]
+                if(self.login.deluser(u)):
+                    # TODO: delete the user working folder
+                    self.sysReturn("delete user successfully")
+                else:
+                    self.sysReturn("this user does not exist, try again.")
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. usage:   deluser username", "err")
+
+        elif text == 'logout':
+            self.sysReturn(text, "v")
+            # TODO: change the login flag for current user
+            self.sysReturn("logout successfully")
 
         elif text == "h":
             self.sysReturn(text, "v")
@@ -2239,4 +2299,5 @@ class Macroloop(QThread):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     BlueMagpie = MainWindow()
+    #login
     sys.exit(app.exec_())
