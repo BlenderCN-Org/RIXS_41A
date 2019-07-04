@@ -255,6 +255,7 @@ class Panel(QWidget):
         spectrum_widget.setbkgd.connect(image_widget.setBkgd)
         spectrum_widget.showimg.connect(image_widget.setBkgd)
         spectrum_widget.saveRef.connect(image_widget.saveRef)
+        spectrum_widget.setx1x2.connect(image_widget.setXRangeVLines)
         command_widget.saveName.connect(spectrum_widget.saveName)
         command_widget.loadimage.connect(image_widget.loadImg)
         command_widget.setrixsplot.connect(spectrum_widget.setRIXSplot)
@@ -674,8 +675,9 @@ class Command(QWidget):
 
         elif text == 'logout':
             self.sysReturn(text, "v")
-            # TODO: change the login flag for current user
+            self.userpower = 0
             self.sysReturn("logout successfully")
+            self.command_input.setPlaceholderText('Please enter username to login ...')
 
         elif text == "h":
             self.sysReturn(text, "v")
@@ -1313,9 +1315,9 @@ class ImageWidget(QWidget):
         plt.setAspectLocked(True)
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
-
         self.histogram_level = []
-        self.showImg()
+        self.imv.setImage(self.imgdata)
+
         # Widget layout
         self.status_bar = QLabel(self)
         self.layoutVertical = QVBoxLayout(self)
@@ -1485,6 +1487,7 @@ class SpectrumWidget(QWidget):
     setbkgd = pyqtSignal(np.ndarray)
     showimg = pyqtSignal(np.ndarray, bool)
     saveRef = pyqtSignal()
+    setx1x2 = pyqtSignal(int, int)
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -1761,6 +1764,7 @@ class SpectrumWidget(QWidget):
         elif p == 'step': self.step = v
         else: print('invalid factor for setFactor function.')
         self.factorsinfo() # refresh parameter display
+        self.setx1x2.emit(self.x1, self.x2)
         if self.analyze : self.plotRIXS()
         # trigger processing if last plot is not scan/tscan/xas
 
