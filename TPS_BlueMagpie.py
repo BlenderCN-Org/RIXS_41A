@@ -623,24 +623,6 @@ class Command(QWidget):
                    "<b>save</b>: save 1D data in txt from shown spectrum.<br>")
             self.sysReturn(msg)
 
-        # login process
-        elif text[:6] == 'login ':
-            space = text.count(' ')
-            sptext = text.split(' ')
-            self.sysReturn(text, "v")
-
-            if space == 2:  # e.g. login username password
-                u = sptext[1]
-                p = sptext[2]
-                if(self.login.handleLogin(u, p)):
-                    # TODO: change the login flag for current user and create the user working folder
-                    self.sysReturn("login successfully")
-                else:
-                    self.sysReturn("login failed")
-            else:
-                self.sysReturn(text, "iv")
-                self.sysReturn("input error. usage:   login username password", "err")
-
         # supervisor only
         elif text[:8] == 'adduser ' and self.userpower == 2:
             space = text.count(' ')
@@ -2328,5 +2310,4 @@ class Macroloop(QThread):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     BlueMagpie = MainWindow()
-    #login
     sys.exit(app.exec_())
