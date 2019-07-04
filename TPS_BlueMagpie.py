@@ -262,6 +262,7 @@ class Panel(QWidget):
         command_widget.setrixsdata.connect(image_widget.plotSpectrum)
         command_widget.setref.connect(spectrum_widget.setRef)
         command_widget.setfactor.connect(spectrum_widget.setFactor)
+        command_widget.username.connect(status_widget.getName)
         image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
         image_widget.errmsg.connect(command_widget.sysReturn)
 
@@ -287,6 +288,7 @@ class StatusWidget(QWidget):
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
         self.status_box.setFont(QFont("UbuntuMono", 10.5))
         self.status_box.setReadOnly(True)
+        self._username = ""
         # Widget layout
         self.layoutVertical = QVBoxLayout(self)
         self.barhorizontal = QHBoxLayout()
@@ -302,7 +304,7 @@ class StatusWidget(QWidget):
         time_str = tt.strftime("%H:%M:%S, %b %d %Y; ")
         param['f'] = file_no
         self.status_bar.setText("{}  Project #0;   User: {};   file number: {};"
-                                .format(time_str, cmd_global.login.username, int(file_no)))
+                                .format(time_str, self._username, int(file_no)))
         self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format
                                   (pvl.getVal('ring') if Device['Iring']==1 else 0))
 
@@ -341,6 +343,9 @@ class StatusWidget(QWidget):
         status_text = "%s <font color =red> %s %s </font>" % (parameter_text, WorkingSTATUS, time_text)
         self.status_box.setText(status_text)
 
+    def getName(self, username):
+        self._username = username
+
     # TODO: deglobalize
     # def setString(self, string=None): #destroy global parameters
     #     string = WorkingSTATUS
@@ -363,6 +368,7 @@ class Command(QWidget):
     setrixsdata = pyqtSignal()
     setref = pyqtSignal(bool)
     setfactor = pyqtSignal(str, object)
+    username = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -471,8 +477,8 @@ class Command(QWidget):
                 self.userpower = self.login.handleLogin(txt) #check password
                 if self.userpower != 0:
                     self.pwd = False
-                    self.userpower = 1 # 0 = logout
                     self.sysReturn('Welcome {} !'.format(self.login.username), 'v')
+                    self.username.emit(self.login.username)
                     self.command_input.setEchoMode(0)
                     self.command_input.setPlaceholderText("Type help to list commands ...")
                 else:
@@ -632,7 +638,7 @@ class Command(QWidget):
             if space == 2:  # e.g. adduser newuser password
                 u = sptext[1]
                 p = sptext[2]
-                self.login.adduser(u, p)
+                self.login.adduser(u, str(p))
                 self.sysReturn("add user successfully")
             else:
                 self.sysReturn(text, "iv")
