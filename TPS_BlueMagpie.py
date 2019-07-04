@@ -99,13 +99,13 @@ param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":0,
-    "th": 0, "tth": 0,
-    "agm": 0, "ags": 0,
-    "ta": 0, "tb": 0,
-    "I0": 0, "Iph": 0,
+    "hexapod": 0, "ccd": 1, "xyzstage":1,
+    "th": 1, "tth": 1,
+    "agm": 1, "ags": 1,
+    "ta": 1, "tb": 1,
+    "I0": 1, "Iph": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":0 , "Iring":0
+    "thoffset":1 , "Iring":1
 })
 
 
@@ -1207,6 +1207,7 @@ class ImageWidget(QWidget):
         # replace by RGB pixel Magpie picture?
 
         plt = pg.PlotItem(labels={'bottom': ('x pixel', ''), 'left': ('y pixel', '')})
+        self.plt = plt
         plt.getViewBox().setRange(yRange=(1, 2048), xRange=(1, 1024), disableAutoRange=False)
         plt.setLimits(minXRange=4, maxXRange=8192, minYRange=4, maxYRange=8192)
 
@@ -1228,6 +1229,7 @@ class ImageWidget(QWidget):
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
 
+        self.histogram_level = []
         self.showImg()
         # Widget layout
         self.status_bar = QLabel(self)
@@ -1239,6 +1241,13 @@ class ImageWidget(QWidget):
         self.hLine = pg.InfiniteLine(angle=0, pen=pg.mkPen('w', width=0.5), movable=False)
         plt.addItem(self.vLine, ignoreBounds=True)
         plt.addItem(self.hLine, ignoreBounds=True)
+        # x range vLines
+        self.x1Line = pg.InfiniteLine(angle=90, pen=pg.mkPen('r', width=0.5), movable=False)
+        plt.addItem(self.x1Line, ignoreBounds=True)
+        self.x1Line.setPos(0)
+        self.x2Line = pg.InfiniteLine(angle=90, pen=pg.mkPen('r', width=0.5), movable=False)
+        plt.addItem(self.x2Line, ignoreBounds=True)
+        self.x2Line.setPos(2)
 
         def mouseMoved(pos):
             data = self.imv.image
@@ -1315,7 +1324,22 @@ class ImageWidget(QWidget):
         return header_text
 
     def showImg(self):
+        _view_box = self.plt.getViewBox()
+        _state = _view_box.getState()
+        # print('Image View State = ', _state)
+
+        first_update = False
+        if self.histogram_level == []:
+            first_update = True
+
+        _histo_widget = self.imv.getHistogramWidget()
+        self.histogram_level = _histo_widget.getLevels()
+
         self.imv.setImage(self.imgdata)
+        _view_box.setState(_state)
+
+        if not first_update:
+            _histo_widget.setLevels(self.histogram_level[0], self.histogram_level[1])
 
     def setBkgd(self, data, bkgd=True):
         try:
@@ -1364,6 +1388,10 @@ class ImageWidget(QWidget):
         self.status_bar.setText("")
         self.vLine.hide()
         self.hLine.hide()
+
+    def setXRangeVLines(self, x1, x2):
+        self.x1Line.setPos(x1)
+        self.x2Line.setPos(x2)
 
 
 class SpectrumWidget(QWidget):
