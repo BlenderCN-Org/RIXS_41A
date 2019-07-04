@@ -1,4 +1,4 @@
-# Last edited:20190704 2pm
+# Last edited:20190704 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -352,7 +352,6 @@ class StatusWidget(QWidget):
 
 class Command(QWidget):
     popup = pyqtSignal()
-    inputext = pyqtSignal(str)
     macrostat = pyqtSignal(str)
     pause = pyqtSignal(float)
     loadimage = pyqtSignal(str)
@@ -366,24 +365,24 @@ class Command(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        # message
-        self.command_message = QTextEdit(self)
         # welcome message
         time = QTime.currentTime()
-        welcome_message = ('<font color=blue>' + time.toString() + ' >> Welcome to TPS Blue Magpie!</font>')
+        welcome_message = ("<font color=blue>{} >> Welcome to TPS Blue Magpie!</font>".format(time.toString()))
+        self.command_message = QTextEdit(self)
         self.command_message.setText(welcome_message)
+        self.sysReturn("Please enter username to login ... ")
         self.command_message.setFont(QFont("UbuntuMono", 10))
         self.command_message.setReadOnly(True)
 
         # user input
         self.command_input = QLineEdit(self)
         self.command_input.setFocusPolicy(Qt.StrongFocus)
-        self.command_input.setPlaceholderText("Type help to list commands ...")
+        self.command_input.setPlaceholderText('Please enter username to login ...')
+        self.pwd = False
         self.commandLock()
 
         # input function communications
         self.command_input.returnPressed.connect(self.send_message)
-        self.inputext.connect(self.send)  # input string as signal
         self.pause.connect(self.inputPause)
 
         # macro related
@@ -393,6 +392,7 @@ class Command(QWidget):
         self.macrotimer = QTimer(self)
 
         #login related
+        self.userpower = 0 # logout:0, normal:1, super:2
         self.login = login.Login()
 
         '''
@@ -445,19 +445,44 @@ class Command(QWidget):
         self.Input.addWidget(self.abort_button)
         self.Commandlayout.addLayout(self.Input)
 
-
     def send_message(self):
         global ABORT
         ABORT = False
         txt = self.command_input.text()
         self.command_input.setText("")
         self.command_message.moveCursor(QTextCursor.End)
-        self.inputext[str].emit(txt)
+        if self.userpower==0: #require login
+            self.checkLogin(txt)
+        else:
+            self.send(txt)
+
+    def checkLogin(self, txt):
+        try:
+            if not self.pwd:
+                if self.login.checkUser(txt) == True:
+                    self.sysReturn('Hello {}, please enter your password:'.format(txt))
+                    self.command_input.setEchoMode(2)
+                    self.command_input.setPlaceholderText('Please enter your password...')
+                    self.pwd = True
+                else:
+                    self.sysReturn('Invalid username, please try again.', 'err')
+            else:
+                self.userpower = self.login.handleLogin(txt) #check password
+                if self.userpower != 0:
+                    self.pwd = False
+                    self.userpower = 1 # 0 = logout
+                    self.sysReturn('Welcome {} !'.format(self.login.username), 'v')
+                    self.command_input.setEchoMode(0)
+                    self.command_input.setPlaceholderText("Type help to list commands ...")
+                else:
+                    self.sysReturn('Wrong password, please try again.', 'err')
+        except:
+            self.sysReturn('Please enter username to login ...')
+
         '''
         Set global abort flag when button clicked
         (because scan loop is not in this class...)
         '''
-
     def abortCommand(self):
         global ABORT
         ABORT = True
@@ -616,7 +641,7 @@ class Command(QWidget):
                 self.sysReturn("input error. usage:   login username password", "err")
 
         # supervisor only
-        elif text[:8] == 'adduser ':
+        elif text[:8] == 'adduser ' and self.userpower == 2:
             space = text.count(' ')
             sptext = text.split(' ')
             self.sysReturn(text, "v")
@@ -631,7 +656,7 @@ class Command(QWidget):
                 self.sysReturn("input error. usage:   adduser newuser password", "err")
 
         # supervisor only
-        elif text[:8] == 'deluser ':
+        elif text[:8] == 'deluser ' and self.userpower == 2:
             space = text.count(' ')
             sptext = text.split(' ')
             self.sysReturn(text, "v")

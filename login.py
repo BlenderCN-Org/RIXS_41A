@@ -7,6 +7,10 @@ Created on 20190622
 
 import pickle
 import hashlib
+from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
+from PyQt5.QtCore import *
 from os import path
 
 #import dirsync
@@ -14,28 +18,40 @@ from os import path
 class Login():
     def __init__(self):
         super().__init__()
-
-    def Encryption(self, data):
-        return hashlib.sha224(data.encode()).hexdigest()
-
-    def handleLogin(self, username, password):
+        self.username = ""
         ## check if the database exists.
         if path.isfile('database.db'):
             fh = open('database.db', 'rb')
-            db = pickle.load(fh)
+            self.db = pickle.load(fh)
             fh.close()
         ## else, create one.
         else:
-            db = {'rixs' : self.Encryption('123456'), 'user' : self.Encryption('123')}
+            self.db = {'admin': self.Encryption('7110'),
+                       'rixs': self.Encryption('123456'),
+                       'user': self.Encryption('123')}
             fh = open('database.db', 'wb')
             pickle.dump(db, fh)
             fh.close()
 
-        ## If the user exists in the "db", and then decoded password
-        if username in db and db[username] == self.Encryption(password):
+    def Encryption(self, data):
+        return hashlib.sha224(data.encode()).hexdigest()
+
+    def checkUser(self, username):
+        print('user name: ', username)
+        if username in self.db:
+            self.username = username
             return True
         else:
             return False
+
+    def handleLogin(self, password):## If the user exists in the "db", and then decoded password
+        if self.db[self.username] == self.Encryption(password):
+            if self.username == 'admin':
+                return 2
+            else:
+                return 1
+        else:
+            return 0
 
     def adduser(self, newuser, password):
         with open('database.db', 'rb') as fh:
@@ -60,3 +76,4 @@ class Login():
             pickle.dump(db, fh)
 
         return flag
+
