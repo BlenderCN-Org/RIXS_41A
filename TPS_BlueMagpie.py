@@ -1,4 +1,4 @@
-# Last edited:20190704 5pm
+# Last edited:20190704 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -301,8 +301,8 @@ class StatusWidget(QWidget):
         tt = datetime.datetime.now()
         time_str = tt.strftime("%H:%M:%S, %b %d %Y; ")
         param['f'] = file_no
-        self.status_bar.setText("%s  Project #0;   PI: Testing; file number: %s;"
-                                %(time_str, int(file_no)))
+        self.status_bar.setText("{}  Project #0;   User: {};   file number: {};"
+                                .format(time_str, cmd_global.login.username, int(file_no)))
         self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format
                                   (pvl.getVal('ring') if Device['Iring']==1 else 0))
 

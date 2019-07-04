@@ -39,13 +39,14 @@ class Login():
     def checkUser(self, username):
         print('user name: ', username)
         if username in self.db:
-            self.username = username
+            self.checkname = username
             return True
         else:
             return False
 
     def handleLogin(self, password):## If the user exists in the "db", and then decoded password
-        if self.db[self.username] == self.Encryption(password):
+        if self.db[self.checkname] == self.Encryption(password):
+            self.username = self.checkname
             if self.username == 'admin':
                 return 2
             else:
