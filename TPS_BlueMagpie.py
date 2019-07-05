@@ -1,4 +1,4 @@
-# Last edited:20190705 5pm
+# Last edited:20190705 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -107,7 +107,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1, "test":1
+    "thoffset":1 , "Iring":1, "test":0
 })
 
 
@@ -612,8 +612,9 @@ class Command(QWidget):
                    "<b>do</b>: open a text file to execute macro commands.<br>\n"
                    "<b>h</b>: recall previous commands executed successfully.<br>\n"
                    "<br>\n"
-                   "<b>mv</b>: set a parameter to its absolute value.<br>\n"
-                   "<b>scan</b>: stepwise scan a parameter and plot selected parameters with some dwell time.<br>\n"
+                   "<b>mv</b>: set a parameter to a target value.<br>\n"
+                   "<b>mvr</b>: set a parameter to a value relative a current position.<br>\n"
+                   "<b>scan</b>: scan a parameter and plot selected parameters with some dwell time.<br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> "
                    "<font color=blue>scan <b>det,</b> (optional) param x1 x2 dx dt n </font> <br>\n"
                    "<b>xas</b>:  execute X-ray absorption.<br>\n"
@@ -622,7 +623,7 @@ class Command(QWidget):
                    "<b>rixs</b>:  take a series of RIXS images with a fixed exposure time (t).<br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>rixs t n </font> <br>\n"
                    "<br>\n"
-                   "<b>setref</b>: set current spectrum as reference spectrum.<br>\n"
+                   "<b>setref</b>: set the current spectrum as a reference spectrum.<br>\n"
                    "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor), fmax, step. <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g/fmax/step value </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.  <font color=blue>e.g. spike on </font> <br>\n"
