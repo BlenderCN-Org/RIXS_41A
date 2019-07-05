@@ -1,4 +1,4 @@
-# Last edited:20190704 6pm
+# Last edited:20190705 11am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -414,7 +414,7 @@ class Command(QWidget):
         self.logname = str(dir_date) + "_commandlog"
         '''
         Full log (for KeyPressEvent function and file number)
-         - inherit all log from same day.
+         - inherit all log from the same day.
         '''
         self.fullog_name = log_dir + str(dir_date) + "_fullog1.txt"  # Example: 20190509_fullog.txt
         self.fullog_col = ['Time', 'Text'] + param_index
@@ -478,7 +478,7 @@ class Command(QWidget):
                 if self.userpower != 0:
                     self.pwd = False
                     self.sysReturn('Welcome {} !'.format(self.login.username), 'v')
-                    self.username.emit(self.login.username)
+                    self.username.emit(self.login.username) #to status widget
                     self.command_input.setEchoMode(0)
                     self.command_input.setPlaceholderText("Type help to list commands ...")
                 else:
@@ -664,6 +664,7 @@ class Command(QWidget):
         elif text == 'logout':
             self.sysReturn(text, "v")
             self.userpower = 0
+            self.username.emit("")
             self.sysReturn("logout successfully")
             self.command_input.setPlaceholderText('Please enter username to login ...')
 
@@ -1304,7 +1305,7 @@ class ImageWidget(QWidget):
         self.imv.ui.roiBtn.hide()
         self.imv.ui.menuBtn.hide()
         self.histogram_level = []
-        self.imv.setImage(self.imgdata)
+        self.showImg()
 
         # Widget layout
         self.status_bar = QLabel(self)
@@ -1393,8 +1394,19 @@ class ImageWidget(QWidget):
 
     def getHeader(self):
         # record param from global pd.Series
-        index = ','.join(param.index.tolist())
-        value = ','.join(['{:.2f}'.format(x) for x in param.tolist()])
+        index = param.index.tolist()
+        value = ['{:.2f}'.format(x) for x in param.tolist()]
+        for i in range(0, len(index)):
+            str1= str(index[i])
+            str2= str(value[i])
+            dlen= len(str2)-len(str1)
+            if dlen != 0:
+                if dlen>0: #str2 longer than str1
+                    index[i] = " "*dlen + str1
+                else: #str1 longer than str2
+                    value[i] = " "*abs(dlen) + str2
+        index = ','.join(index)
+        value = ','.join(value)
         header_text = '{}\n{}'.format(index, value)
         return header_text
 
@@ -1459,14 +1471,13 @@ class ImageWidget(QWidget):
         self.hLine.show()
 
     def leaveEvent(self, event):
-        #self.status_bar.clear()
-        self.status_bar.setText("")
+        self.status_bar.setText("") # using clear will resize window
         self.vLine.hide()
         self.hLine.hide()
 
     def setXRangeVLines(self, x1, x2):
         self.x1Line.setPos(x1)
-        self.x2Line.setPos(x2)
+        self.x2Line.setPos(x2+1) # right boundary
 
 
 class SpectrumWidget(QWidget):
