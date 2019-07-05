@@ -2063,7 +2063,7 @@ class Scan(QThread):
         self.cmd_msg.emit('{0} data saved in {1}.itx'.format("XAS" if self.xas else "scan" ,filename0))
     
     def getHeader(self, name):
-        header = "IGOR\nWAVES {}\nBEGIN\n".format(name)
+        header = "IGOR\nWAVES/D {}\nBEGIN\n".format(name)
         return header
 
 class Tscan(QThread):
@@ -2145,7 +2145,7 @@ class Tscan(QThread):
         self.cmd_msg.emit('{0} data saved in {1}.txt'.format("tscan" , filename0))
 
     def getHeader(self, name):
-        header = "IGOR\nWAVES {}\nBEGIN\n".format(name)
+        header = "IGOR\nWAVES/D {}\nBEGIN\n".format(name)
         return header
 
 
