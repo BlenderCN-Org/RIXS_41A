@@ -30,7 +30,7 @@ class Login():
                        'rixs': self.Encryption('123456'),
                        'user': self.Encryption('123')}
             fh = open('database.db', 'wb')
-            pickle.dump(db, fh)
+            pickle.dump(self.db, fh)
             fh.close()
 
     def Encryption(self, data):

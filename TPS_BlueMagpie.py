@@ -1,4 +1,4 @@
-# Last edited:20190705 4pm
+# Last edited:20190705 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -107,23 +107,26 @@ Device = pd.Series({
     "ta": 1, "tb": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1
+    "thoffset":1 , "Iring":1, "test":1
 })
 
 
 def checkSafe(p):  # Individual device safe check
-    if p in ['x', 'y', 'z']:
-        if Device["xyzstage"] == 1:
+    if Device["test"] ==0:
+        if p in ['x', 'y', 'z']:
+            if Device["xyzstage"] == 1:
+                return True
+        elif p in ["ccd", "gain", "Tccd"]:
+            if Device['ccd'] == 1:
+                return True
+        elif Device[p] == 1:
             return True
-    elif p in ["ccd", "gain", "Tccd"]:
-        if Device['ccd'] == 1:
-            return True
-    elif Device[p] == 1:
-        return True
+        else:
+            return False
     else:
         return False
 
-if Device['ccd']==1:
+if Device['ccd']==1 and Device['test'] ==0:
     pvl.ccd("exposure", 2)
     pvl.ccd("gain", 10)
     pvl.ccd("acqmode", 2)   # 0: video; 1: single (obsolete); 2: accumulation
@@ -307,7 +310,7 @@ class StatusWidget(QWidget):
         self.status_bar.setText("{}  Project #0;   User: {};   file number: {};"
                                 .format(time_str, self._username, int(file_no)))
         self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format
-                                  (pvl.getVal('ring') if Device['Iring']==1 else 0))
+                                  (pvl.getVal('ring') if Device['Iring']==1 and Device['test']==0 else 0))
 
     def show_text(self):
         # called every 1 sec
@@ -739,6 +742,7 @@ class Command(QWidget):
             if space == 2:  # e.g. rixs t n
                 if self.checkFloat(sptext[1]) and self.checkInt(sptext[2]):
                     file_no += 1
+                    param['f'] = file_no
                     # t as exposure time ; n as number of images.
                     t = float(sptext[1])
                     n = int(sptext[2])
@@ -968,6 +972,7 @@ class Command(QWidget):
 
                 if (check_param1 == 'OK') and (check_param2 == 'OK'):
                     file_no += 1
+                    param['f'] = file_no
                     start_time = datetime.datetime.now()
                     self.sysReturn('Scan %s begins at %s'%(file_no, start_time.strftime("%c")))
                     self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False)
@@ -1007,6 +1012,7 @@ class Command(QWidget):
                 dwell = float(dwell)
                 n = int(abs((float(e2) - float(e1)) / dE)) # n steps
                 file_no += 1
+                param['f'] = file_no
                 start_time = datetime.datetime.now()
                 self.sysReturn(text, 'v', True)
                 self.sysReturn('XAS %s begins at %s' % (file_no, start_time.strftime("%c")))
@@ -2046,9 +2052,18 @@ class Scan(QThread):
             filename0="scan_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
         else:
             filename0="xas_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
-        filename = data_dir + filename0
-        self.data_matrix.to_csv(filename)
-        self.cmd_msg.emit('{0} data saved in {1}.txt'.format("XAS" if self.xas else "scan" ,filename0))
+        filename = data_dir + filename0 + ".itx"
+        text = self.getHeader(filename0)
+        with open(filename, "w") as file:
+            file.write(text)
+        self.data_matrix.to_csv(filename, mode='a', index=False)
+        with open(filename, "a+") as file:
+            file.write('END')
+        self.cmd_msg.emit('{0} data saved in {1}.itx'.format("XAS" if self.xas else "scan" ,filename0))
+    
+    def getHeader(self, name):
+        header = "IGOR\nWAVES {}\nBEGIN\n".format(name)
+        return header
 
 class Tscan(QThread):
     setplot = pyqtSignal(str, float, int)
@@ -2069,6 +2084,7 @@ class Tscan(QThread):
         global param, WorkingSTATUS, BUSY, CountDOWN, file_no
         BUSY = True
         file_no += 1
+        param['f'] = file_no
         '''
         Data collection
         '''
@@ -2118,9 +2134,18 @@ class Tscan(QThread):
 
     def saveSpec(self):
         filename0="tscan_{0}_{1}".format(dir_date, file_no)
-        filename = data_dir + filename0
-        self.data_matrix.to_csv(filename)
+        filename = data_dir + filename0 + ".itx"
+        text = self.getHeader(filename0)
+        with open(filename, "w") as file:
+            file.write(text)
+        self.data_matrix.to_csv(filename, mode='a', index=False)
+        with open(filename, "a+") as file:
+            file.write('END')
         self.cmd_msg.emit('{0} data saved in {1}.txt'.format("tscan" , filename0))
+
+    def getHeader(self, name):
+        header = "IGOR\nWAVES {}\nBEGIN\n".format(name)
+        return header
 
 
 
