@@ -11,7 +11,7 @@ reading = dict(agm="41a:AGM:Energy.RBV", ags="41a:AGS:Energy.RBV", x= "41a:RIXS:
                z= "41a:RIXS:xyz:zr", hex_x="41a:hexapod:x", hex_y="41a:hexapod:y", hex_z="41a:hexapod:z",
                u="41a:hexapod:u", v="41a:hexapod:v", w="41a:hexapod:w", th="41a:sample:thr",
                tth="41a:sample:tthr", heater="41a:sample:heater", ta="41a:sample:tmp1", tb="41a:sample:tmp2",
-               I0="41a:sample:i0", Iph="41a:sample:phdi", Tccd="41a:ccd1:tmpr", gain="41a:ccd1:gain",
+               I0="41a:sample:i0", Iph="41a:sample:phdi", Itey="41a:sample:TEY", Tccd="41a:ccd1:tmpr", gain="41a:ccd1:gain",
                ring="SR-DI-DCCT:BeamCurrent")
 
 #Get Value

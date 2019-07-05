@@ -1,4 +1,4 @@
-# Last edited:20190705 11am
+# Last edited:20190705 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -80,21 +80,22 @@ CountDOWN = 0
 
 # SETUP_parameters
 # TODO: img?
-param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph',
+param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph', 'Itey',
                'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset']
-param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0., 0, 25, 0, 0, 10, 0]
+param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0.,      0,
+                      0,     25,         0,     0,     10,          0]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
 # note: we can't use param_index0 = param_index
-non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', 'tb']
+non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', 'Itey', 'tb']
 param_index0 = list(param_index)
 for elements in non_movables:
     param_index0.remove(elements)
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-7, 12],
+param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-12, 7],
                          'th': [-10, 215], 'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
                          'gain': [0, 100], 'thoffset':[-70, 70]})
 
@@ -104,7 +105,7 @@ Device = pd.Series({
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
-    "I0": 1, "Iph": 1,
+    "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
     "thoffset":1 , "Iring":1
 })
@@ -337,7 +338,8 @@ class StatusWidget(QWidget):
                         " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
                         " photodiode angle tth = " + Read('tth', '.2f') + "&#176;<br> <br>"
                         " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
-                        " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp <br> <br>"
+                        " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp,"
+                        " I<sub>TEY</sub> = " + Read('Itey', 'current') + " Amp <br> <br>"
                         " RIXS imager:  <br>"
                         " temperature = " + Read('Tccd','.1f') + " \u2103" + ',   gain = ' + Read('gain', 'int') + " <br> <br>")
         status_text = "%s <font color =red> %s %s </font>" % (parameter_text, WorkingSTATUS, time_text)
@@ -416,7 +418,7 @@ class Command(QWidget):
         Full log (for KeyPressEvent function and file number)
          - inherit all log from the same day.
         '''
-        self.fullog_name = log_dir + str(dir_date) + "_fullog1.txt"  # Example: 20190509_fullog.txt
+        self.fullog_name = log_dir + str(dir_date) + "_fullog.txt"  # Example: 20190509_fullog.txt
         self.fullog_col = ['Time', 'Text'] + param_index
         global file_no
         if os.path.exists(self.fullog_name):
@@ -601,7 +603,7 @@ class Command(QWidget):
         '''
         if text == "help":
             self.sysReturn(text, "v")
-            msg = ("<b>p</b>: list valid parameters.<br>\n"
+            msg = ("<b>p</b>: list all valid parameters.<br>\n"
                    "<b>r</b>: show all parameter ranges.<br>\n"
                    "<b>macro</b>: open a macro editor.<br>\n"
                    "<b>do</b>: open a text file to execute macro commands.<br>\n"
@@ -1704,7 +1706,8 @@ class SpectrumWidget(QWidget):
         spec_number = "_{}".format(str(1+self.rixs_n).zfill(3)) if not final else ""
         filename="rixs_{0}_{1}{2}".format(dir_date, file_no, spec_number)
         header = self.getHeader()
-        np.savetxt(data_dir + filename, self.rixs_y, fmt='%.2f', delimiter=' ', header=header)
+        np.savetxt(data_dir + filename, self.rixs_y,
+                   fmt='%.2f', delimiter=' ', header=header)
         self.msg.emit('rixs data saved in {0}.txt'.format(filename))
         if final and self.bkgdsubstract:
             self.saveRef.emit()
