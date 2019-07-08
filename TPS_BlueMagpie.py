@@ -95,13 +95,13 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [480, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-12, 7],
+param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-12, 7],
                          'th': [-10, 215], 'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
                          'gain': [0, 100], 'thoffset':[-70, 70]})
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":1,
+    "hexapod": 0, "ccd": 0, "xyzstage":1,
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
@@ -626,6 +626,8 @@ class Command(QWidget):
                    "<b>setref</b>: set the current spectrum as a reference spectrum.<br>\n"
                    "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor), fmax, step. <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g/fmax/step value </font> <br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>x1, x2= x-pixel range; &nbsp; d1, d2= discriminator levels</font> <br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>fmax= max frequency of FFT; &nbsp; step= inverse of FFT sampling rate </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.  <font color=blue>e.g. spike on </font> <br>\n"
                    "<b>bkrm</b>: turn on/off background subtraction for data processing. <font color=blue>e.g. bkrm on </font> <br>\n"
                    "<b>fft</b>: turn on/off fast fourier transform for data processing. <font color=blue>e.g. fft on </font> <br>\n"
@@ -1526,7 +1528,7 @@ class SpectrumWidget(QWidget):
         self.d2 = 200
         self.gfactor = 40 # gaussian factor
         self.x1, self.x2 = 0, 1023
-        self.fmax, self.step = 0.3, 0.05
+        self.fmax, self.step = 0.15, 1.0
         self.fft = False
         self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
         self.spikeremove = True #flag to apply spike removal while data processing 
@@ -2057,13 +2059,13 @@ class Scan(QThread):
         text = self.getHeader(filename0)
         with open(filename, "w") as file:
             file.write(text)
-        self.data_matrix.to_csv(filename, mode='a', index=False)
+        self.data_matrix.to_csv(filename, mode='a', index=False, sep=' ')
         with open(filename, "a+") as file:
             file.write('END')
         self.cmd_msg.emit('{0} data saved in {1}.itx'.format("XAS" if self.xas else "scan" ,filename0))
     
     def getHeader(self, name):
-        header = "IGOR\nWAVES/D {}\nBEGIN\n".format(name)
+        header = "IGOR\r\nWAVES/D {}\r\nBEGIN\r\n".format(name)
         return header
 
 class Tscan(QThread):
