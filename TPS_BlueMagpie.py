@@ -8,12 +8,14 @@ from pyqtgraph import PlotWidget, GraphicsLayoutWidget
 import numpy as np
 import pandas as pd
 import datetime, re
-import pvlist as pvl
+import pvlist
 import math
 from spike import spikeRemoval, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
 import login
+
+pvl = pvlist.pvlist()
 
 # Global for connection
 spectrum_global = None
@@ -101,7 +103,7 @@ param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":1,
+    "hexapod": 0, "ccd": 1, "xyzstage":1,
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
