@@ -103,13 +103,13 @@ param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":1,
+    "hexapod": 0, "ccd": 0, "xyzstage":1,
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1, "test":0
+    "thoffset":1 , "Iring":1, "test":1
 })
 
 
@@ -1272,6 +1272,8 @@ class Command(QWidget):
         filename = QFileDialog.getOpenFileName(self, 'Open image file',
                                             directory=img_dir
                                             , options=QFileDialog.ReadOnly)
+        l = int(len(filename))
+        print(filename[l-5:l-1])
         if filename != ('', ''):
             file = filename[0]
         try:#send directory
@@ -1432,14 +1434,14 @@ class ImageWidget(QWidget):
         if self.histogram_level == []:
             first_update = True
 
-        _histo_widget = self.imv.getHistogramWidget()
-        self.histogram_level = _histo_widget.getLevels()
+        #_histo_widget = self.imv.getHistogramWidget()
+        #self.histogram_level = _histo_widget.getLevels()
 
         self.imv.setImage(self.imgdata)
         _view_box.setState(_state)
 
-        if not first_update:
-            _histo_widget.setLevels(self.histogram_level[0], self.histogram_level[1])
+        #if not first_update:
+        #    _histo_widget.setLevels(self.histogram_level[0], self.histogram_level[1])
 
     def setBkgd(self, data, bkgd=True):
         try:
