@@ -109,7 +109,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1, "test":1
+    "thoffset":1 , "Iring":1, "test":0
 })
 
 
@@ -196,8 +196,8 @@ Start GUI construction
 class MainWindow(QMainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
-        #self.setFixedSize(1300, 780)
-        self.setFixedSize(1300*1.6, 780*1.6)
+        self.setFixedSize(1300, 780)
+        #self.setFixedSize(1300*1.6, 780*1.6)
         self.setWindowTitle('TPS blue magpie')
 
         exitAct = QAction(QIcon('exit.png'), ' &Quit',  self)
@@ -418,7 +418,7 @@ class Command(QWidget):
         self.macrotimer = QTimer(self)
 
         #login related
-        self.userpower = 1 # logout:0, normal:1, super:2
+        self.userpower = 0 # logout:0, normal:1, super:2
         self.login = login.Login()
 
         '''
