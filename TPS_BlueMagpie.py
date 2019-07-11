@@ -1,4 +1,4 @@
-# Last edited:20190705 6pm
+# Last edited:20190711 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -103,10 +103,10 @@ param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 0, "xyzstage":1,
+    "hexapod": 0, "ccd": 1, "xyzstage":1,
     "th": 1, "tth": 1,
     "agm": 1, "ags": 1,
-    "ta": 1, "tb": 1,
+    "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
     "thoffset":1 , "Iring":1, "test":1
@@ -196,7 +196,8 @@ Start GUI construction
 class MainWindow(QMainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
-        self.setFixedSize(1300, 780)
+        #self.setFixedSize(1300, 780)
+        self.setFixedSize(1300*1.6, 780*1.6)
         self.setWindowTitle('TPS blue magpie')
 
         exitAct = QAction(QIcon('exit.png'), ' &Quit',  self)
@@ -340,7 +341,7 @@ class StatusWidget(QWidget):
                         " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm,  "
                         " thoffset = " + str(pvl.thOffset()) + "&#176; <br>"
                         " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
-                        " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
+                        " T<sub>b</sub> = " + Read('tb', '.2f') + " K, heater mode ["+self.heater()+"]<br> <br>"
                         " photodiode angle tth = " + Read('tth', '.2f') + "&#176;<br> <br>"
                         " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
                         " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp,"
@@ -352,6 +353,17 @@ class StatusWidget(QWidget):
 
     def getName(self, username):
         self._username = username
+
+    def heater(self):
+        v = pvl.getVal('heater') if Device['heater']==1 and Device['test']==0 else 0
+        if v == 0:
+            return "off"
+        elif v==1:
+            return "low"
+        elif v==2:
+            return "medium"
+        elif v==3:
+            return "high"
 
     # TODO: deglobalize
     # def setString(self, string=None): #destroy global parameters
@@ -406,7 +418,7 @@ class Command(QWidget):
         self.macrotimer = QTimer(self)
 
         #login related
-        self.userpower = 0 # logout:0, normal:1, super:2
+        self.userpower = 1 # logout:0, normal:1, super:2
         self.login = login.Login()
 
         '''
@@ -838,6 +850,29 @@ class Command(QWidget):
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   mv parameter value", "err")
 
+        elif text[:7] == 'heater ':
+            space = text.count(' ')
+            sptext = text.split(' ')
+            if space == 1:  # e.g. heater 0
+                v = sptext[1]
+                try:
+                    v = eval(v)
+                    if self.checkInt(v) and 0<= v <=3:
+                        self.sysReturn('heater {0}'.format(v), "v", True)
+                        self.movethread = Move('heater', int(v))  # check if finished or not
+                        self.movethread.msg.connect(self.sysReturn)
+                        self.movethread.finished.connect(self.threadFinish)
+                        self.movethread.start()
+                    else:
+                        self.sysReturn(text, "iv")
+                        self.sysReturn("[Heater mode] 0: off, 1: low, 2: medium, 3: high.".format(v), "err")
+                except:
+                    self.sysReturn(text, "iv")
+                    self.sysReturn("failed to evaluate target value {0}.".format(sptext[2]), 'err')
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   heater mode", "err")
+
         elif text[:4] == 'mvr ':
             space = text.count(' ')
             sptext = text.split(' ')
@@ -1101,7 +1136,6 @@ class Command(QWidget):
 
     def check_param_range(self, param_name, param_value):
         if self.checkFloat(param_value):
-            global param_range
             # if (parame_name in param_index0) and self.checkFloat(param_value) == True:
             j = float(param_value)
             if min(param_range[param_name]) <= j and j <= max(param_range[param_name]):
@@ -1272,8 +1306,8 @@ class Command(QWidget):
         filename = QFileDialog.getOpenFileName(self, 'Open image file',
                                             directory=img_dir
                                             , options=QFileDialog.ReadOnly)
-        l = int(len(filename))
-        print(filename[l-5:l-1])
+        l = int(len(filename[0]))
+        print(filename[0][l-5:l-1])
         if filename != ('', ''):
             file = filename[0]
         try:#send directory
@@ -1429,17 +1463,13 @@ class ImageWidget(QWidget):
         _view_box = self.plt.getViewBox()
         _state = _view_box.getState()
         # print('Image View State = ', _state)
-
         first_update = False
         if self.histogram_level == []:
             first_update = True
-
         #_histo_widget = self.imv.getHistogramWidget()
         #self.histogram_level = _histo_widget.getLevels()
-
         self.imv.setImage(self.imgdata)
         _view_box.setState(_state)
-
         #if not first_update:
         #    _histo_widget.setLevels(self.histogram_level[0], self.histogram_level[1])
 
@@ -1538,6 +1568,7 @@ class SpectrumWidget(QWidget):
         self.spikeremove = True #flag to apply spike removal while data processing 
         self.bkgdsubstract = False #flag to apply background substraction while data processing
         self.discriminate = False
+        self.specsaveformat= '.txt'
 
         
         def mouseMoved(pos):
@@ -1714,6 +1745,12 @@ class SpectrumWidget(QWidget):
             data[i] = data[i] - (h * np.exp(-((i - 1035) ** 2) / 2))
         return data
 
+    def saveFormat(self, txt=True):
+        if txt==True:
+            self.specsaveformat = '.txt'
+        else:
+            self.specsaveformat = '.itx'
+
     def saveSpec(self, final=False):
         print(self.rixs_y)
         spec_number = "_{}".format(str(1+self.rixs_n).zfill(3)) if not final else ""
@@ -1721,7 +1758,7 @@ class SpectrumWidget(QWidget):
         header = self.getHeader()
         np.savetxt(data_dir + filename, self.rixs_y,
                    fmt='%.2f', delimiter=' ', header=header)
-        self.msg.emit('rixs data saved in {0}.txt'.format(filename))
+        self.msg.emit('rixs data saved in {0}{1}'.format(filename, self.specsaveformat))
         if final and self.bkgdsubstract:
             self.saveRef.emit()
 
@@ -1857,17 +1894,17 @@ class Move(QThread):
 
             elif p == 'z':
                 self.xyzMotor('z', v)
-
             elif p == 'ta':
-                pvl.putVal('heater', 1)
                 pvl.putVal(p, v)
+            elif p =='heater':
+                pvl.putVal('heater',v)
             elif p in ['Tccd', 'gain']:
                 pvl.ccd(p, v)
             elif p == 'thoffset':
                 pvl.thOffset(True, v)
         else:
-            param[p] = v
-
+            if p != 'heater':
+                param[p] = v
         self.quit()
 
     def xyzMotor(self, p, v): # move with x, y, z with backlash
