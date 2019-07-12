@@ -1,4 +1,4 @@
-# Last edited:20190711 6pm
+# Last edited:20190712 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -109,7 +109,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1, "test":0
+    "thoffset":1 , "Iring":1, "test":1
 })
 
 
@@ -418,7 +418,7 @@ class Command(QWidget):
         self.macrotimer = QTimer(self)
 
         #login related
-        self.userpower = 0 # logout:0, normal:1, super:2
+        self.userpower = 1 # logout:0, normal:1, super:2
         self.login = login.Login()
 
         '''
@@ -639,7 +639,7 @@ class Command(QWidget):
                    "<br>\n"
                    "<b>setref</b>: set the current spectrum as a reference spectrum.<br>\n"
                    "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor), fmax, step. <br>\n"
-                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/f/g/fmax/step value </font> <br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/sp/g/fmax/step value </font> <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>x1, x2= x-pixel range; &nbsp; d1, d2= discriminator levels</font> <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>fmax= max frequency of FFT; &nbsp; step= inverse of FFT sampling rate </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.  <font color=blue>e.g. spike on </font> <br>\n"
@@ -786,9 +786,10 @@ class Command(QWidget):
         elif text == 'save':
             self.sysReturn(text, "v", True)
             name = QFileDialog.getSaveFileName(self, 'Save File')
-            print('name : {}'.format(name[0]))
-            if type(name[0]) == str:
-                self.saveName.emit(name[0])
+            print('name : {}.'.format(name[0]))
+            if type(name[0]) == str and name[0]!= " ":
+                print(name[0])
+                #self.saveName.emit(name[0])
 
         elif text == 'setref':
             self.sysReturn(text, "v", True)
@@ -916,7 +917,7 @@ class Command(QWidget):
                     else:
                         self.sysReturn(text, "iv")
                         self.sysReturn("{} should be integer or in range(0, 1023)".format(v), "err")
-                elif p in ['f', 'g', 'd1', 'd2', 'fmax', 'step']:
+                elif p in ['sp', 'd1', 'd2', 'fmax', 'step']:
                     if self.checkFloat(v):
                         self.setfactor.emit(str(p), float(v))
                         self.sysReturn(text, "v", True)
@@ -924,10 +925,10 @@ class Command(QWidget):
 
                 else:
                     self.sysReturn(text, "iv")
-                    self.sysReturn("invalid parameter.  try: x1/x2/d1/d2/f/g", "err")
+                    self.sysReturn("invalid parameter.  try: x1/x2/d1/d2/sp", "err")
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   spec x1/x2/d1/d2/f/g value", "err")
+                self.sysReturn("input error. use:   spec x1/x2/d1/d2/sp value", "err")
 
         elif text[:5] == 'bkrm ':
             space, sptext = text.count(' '), text.split(' ')
@@ -1557,7 +1558,7 @@ class SpectrumWidget(QWidget):
         self.ref_x = list(range(0, 2048))
         self.ref_y = np.empty(2048)
         self.ref_name = None
-        self.spikefactor= 1.5 #spike removal function discrimination factor
+        self.spikefactor= 3 #spike removal function discrimination factor
         self.d1 = 20 # discrimination factor for setref
         self.d2 = 200
         self.gfactor = 40 # gaussian factor
@@ -1713,7 +1714,7 @@ class SpectrumWidget(QWidget):
         data = np.copy(self.data) #avoid removing raw data
         if self.spikeremove:
             if self.spikefactor >= 1.05:
-                data = spikeRemoval(data, self.x1, self.x2, self.spikefactor)[0] # save setref 2d image file
+                data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
         if self.bkgdsubstract:
@@ -1785,7 +1786,7 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval(self.data, self.x1, self.x2, 1.05)[0]
+                data = spikeRemoval(self.data, 3)
                 self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
                 print('bkgd')
                 print(self.ref_2d)
@@ -1801,7 +1802,7 @@ class SpectrumWidget(QWidget):
     def setFactor(self, p, v):
         if p == 'x1': self.x1 = v
         elif p == 'x2': self.x2 = v
-        elif p == 'f': self.spikefactor = v
+        elif p == 'sp': self.spikefactor = v
         elif p == 'spike': self.spikeremove = v
         elif p == 'bkrm':
             self.bkgdsubstract = v
@@ -1810,7 +1811,6 @@ class SpectrumWidget(QWidget):
         elif p == 'd': self.discriminate = v
         elif p == 'd1': self.d1 = v
         elif p == 'd2': self.d2 = v
-        elif p == 'g': self.gfactor = v
         elif p == 'fft': self.fft = v
         elif p == 'fmax': self.fmax = v
         elif p == 'step': self.step = v
