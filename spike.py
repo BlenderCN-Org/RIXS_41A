@@ -1,18 +1,19 @@
-########## spike removal, last edited April 19, 2019 by DJH
+########## spike removal, last edited July 12, 2019 by DJH
 # spikeRemoval removes spikes in a region of interest along x-pixel of an input 2D data array.
-# It provides 2D data array after spike removal and locations of spikes.
+# It provides 2D data array after spike removal
 #### input: data, x1 and x2, discrimination factor d
-#### output: data after spike removal, spike list, levels
+#### output: data after spike removal
 
 import numpy as np
 from numpy.random import randn
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, peak_widths
 import pandas as pd
 from scipy.optimize import curve_fit
 from scipy import fftpack
+from matplotlib.colors import LogNorm
+import matplotlib.pyplot as plt
 
-
-def low_pass_fft(spectrum, max_freq=0.3, step=0.05):
+def low_pass_fft(spectrum, max_freq=0.15, step=1):
     # The FFT of the signal
     spectrum_fft = fftpack.fft(spectrum)
     #The corresponding frequencies
@@ -22,7 +23,7 @@ def low_pass_fft(spectrum, max_freq=0.3, step=0.05):
     spectrum_filtered = fftpack.ifft(low_freq_fft).real # remove imaginary part
     return spectrum_filtered
 
-def spikeRemoval(data, x1=400, x2=600, d=3):
+def spikeRemoval_1(data, x1=400, x2=600, d=3):
     # --- data is a 2D np.array
     # --- x1 and x2 set the region of interest of x pixels between x1 and x2
     # --- d is a discrimination factor which sets a discriminator level H (the spike removal level)
@@ -68,7 +69,7 @@ def spikeRemoval(data, x1=400, x2=600, d=3):
         px= np.concatenate((peak1x, peak2x, peak_temp),axis=0)
         peak_x = np.unique(px) # to remove the overlap
         data_x = np.delete(data2x, peak_x) #1D data array after spike removal; its size has been reduced by np.size(peak_x))
-        
+
         avg = np.mean(data_x) # average after spike removal
         #print('average along s =  ', avg)
         spike.append(peak_x)
@@ -82,28 +83,93 @@ def spikeRemoval(data, x1=400, x2=600, d=3):
 
     return [data_sp, spike, level]
 
+
+
+def spikeRemoval(data, d=3): # the 3rd version
+    # --- data is a 2D np.array
+# return list: [data_sp, peak_x, level]
+    # --- data_sp is a np.array for 2D data after spike removal
+    # --- level is a np.array which stores the discriminator levels (the spike removal level) for all y pixels
+    # --- level[j] = the data average of a given y-pixe of j with x pixels between x1 and x2.
+
+    size_y = np.size(data[0,:])
+    size_x = np.size(data[:,0])
+    level = np.copy(data[0,:]) # with y-pixel as the array index
+    spike =[]
+    for j in range(size_y): # size_y = total y-pixel
+        data_x = np.copy(data[:,j]) #1D data array (x-pixel) before spike removal for y-pixel = j
+        data_x_new = np.copy(data[:,j])
+        avg0 = np.mean(data_x) #get a prelimary average before spike removal
+        #### just get an initial avg
+        data2x = np.copy(data[:,j]) #1D data array (x-pixel) before spike removal for y-pixel = j
+        peak_x_0, _ = find_peaks(data2x, height=avg0*2)
+        data_x_0 = np.delete(data2x, peak_x_0) #1D data array after spike removal; its size has been reduced by np.size(peak_x))
+        avg_1 = np.mean(data_x_0) #average after a prelimary spike removal
+
+        ### remove spikes
+        H = avg_1 *d
+        loop = 0
+        while loop < 20:
+            loop +=1
+            peak_x, _ = find_peaks(data_x_new, height=(H,np.inf), width=(1, 10), distance=20)
+
+            if len(peak_x) > 0:
+                print ("j = ", j, ', loop = ', loop)
+                print("number of peak_x = ", len(peak_x))
+                print("peak_x = ", peak_x)
+
+                width_half= peak_widths(data_x_new, peak_x, rel_height=0.5)  # indices of spikes with intenisty larger than "H"
+                width = width_half[0]
+                ww = np.copy(width_half[0])
+                print ('width_half =', width)
+                ww=np.round(ww)
+                ww = ww.astype(int)
+                #print ('ww =', ww)
+                n=0
+                for m in peak_x:
+                    m1 = max(0, m-50)
+                    m2 = min(m+50, size_x)
+                    avg = np.mean(data_x[m1:m2]) # average around the peak
+                    h0= data_x[m] - avg
+                    w = ww[n]
+                    if m > w and m < (size_x-w-1):
+                        x= np.linspace(m-w, m+w, num=2*w+1)
+                        data_sp= data_x_new[m-w:m+w+1]
+                        print("data before sp_removing", data_sp)
+                        data_sp = data_sp - gaussian_1d(x, m, width[n]/2.355, h0, avg)+avg
+                        data_sp[data_sp < avg]= avg
+                        data_x_new[m-w:m+w+1] =data_sp
+                        print("data after sp_removing", data_x_new[m-w:m+w+1])
+                    n +=1
+            else:
+                break
+
+        #now data_x_new are the data after spikle removal  and its size remains unchanged
+        level[j] = H  # a np.array which stores the discriminator level corresponding y pixels
+        data[:,j] = data_x_new
+
+    return data
+
+
 #### removing spikes from data aftre background subtartion
 def spikeRemoval_2(data, d=3, f=20):
-   data_sp = np.copy(data)
-   data_fitted = np.copy(data)
-   avg = np.mean(data)
-   threshold=  avg*f
-
-
-   # peak_local_max returns ndarray
-   peak_pos = peak_local_max(data, min_distance = d, threshold_abs = threshold, indices = True)
+    data_sp = np.copy(data)
+    data_fitted = np.copy(data)
+    avg = np.mean(data)
+    threshold=  avg*f
+    peak_pos = peak_local_max(data, min_distance = d, threshold_abs = threshold, indices = True)
    #print('peak_pos', type(peak_pos))
 
    # get ndarray size
-   N = int(peak_pos.size/2)
-   print('size = ', N) #somehow size is doubled (x y) condisered 2
-   N1=np.size(data[:,0])
-   N2=np.size(data[0,:])
+    N = int(peak_pos.size/2)
+    print('size = ', N) #somehow size is doubled (x y) condisered 2
+    N1=np.size(data[:,0])
+    N2=np.size(data[0,:])
 
 
-   peak_temp = np.array([])
+    peak_temp = np.array([])
 
-   for i in range(N):
+    for i in range(N):
        (m, n) = peak_pos[i]
        h0 = data[m,n]
        print('I({0}, {1}) = {2}'.format(m, n, h0))
@@ -135,10 +201,34 @@ def spikeRemoval_2(data, d=3, f=20):
                        print("j, k=", j, k)
                        print(data_sp[j, k])
                        data_sp[j, k]= bkgd_fit*(1+np.random.normal(0, 0.05))
+    return [data_sp, peak_pos]
 
+def spikeRemoval_fft(data,alpha):
 
-   return [data_sp, peak_pos]
+    data_fft = fftpack.fft2(data)
+    #print(data)
+    #print(data_fft)
+    #fig = plt.figure()
+    #ax1 = fig.add_subplot(1,2,1)
+    #ax2 = fig.add_subplot(1,2,2)
+    #ax1.plot(data)
+    #ax2.plot(data_fft)
 
+    #fig, ax = plt.subplots(2)
+    data_fft2 = data_fft.copy()
+    row, col = data_fft2.shape
+    data_fft2[int(row*alpha):,:] = 0
+
+    fig, (ax1, ax2) = plt.subplots(nrows=2)
+    ax1.imshow(data)
+    ax2.imshow(np.abs(data_fft2), norm=LogNorm(vmin=5))
+    ax1.set_title('Original image')
+    ax2.set_title('Fourier image')
+    #plt.subplot_tool()
+    #plt.colorbar()
+    plt.show()
+    data_new = fftpack.ifft2(data_fft2).real
+    return [data_new]
 
 # Our function to fit is going to be a sum of two-dimensional Gaussians
 def gaussian_2d(x, y, x0, y0, sigma_x, sigma_y, H, c):#, a, b, c):
@@ -148,3 +238,23 @@ def gaussian_1d(x, x0,sigma, H, c):
    return H * np.exp( -0.5*((x-x0)/sigma)**2)+c
 
 
+
+
+def plot_spectrum(im_fft):
+    # A logarithmic colormap
+    plt.imshow(np.abs(im_fft), norm=LogNorm(vmin=5))
+    plt.colorbar()
+
+
+#filename='/Users/djhuang/Google_Drive/DJH_Google＿drive/B大組_科學研究與實驗設施/TPS_41A/AGS_AGM_TPS_beamline/RIXS_software/test_data/rixs_20190710_47_img012.img'
+#filename='/Users/djhuang/Google_Drive/DJH_Google＿drive/B大組_科學研究與實驗設施/TPS_41A/AGS_AGM_TPS_beamline/RIXS_software/test_data/5mintues_signal.txt'
+
+#data = np.genfromtxt(filename, delimiter=',')
+#if data.size > 2097152:
+#    data = data[np.logical_not(np.isnan(data))]     # remove nan
+#    data = np.take(data, list(range(0, 2097152)))   # get 1024*2048 (original 2061)
+
+#data = np.reshape(data, (1024, 2048), order='F')
+
+#spikeRemoval_3(data)
+#print('spike removal results:', spikeRemoval_3(data))
