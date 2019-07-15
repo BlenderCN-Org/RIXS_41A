@@ -418,7 +418,7 @@ class Command(QWidget):
         self.macrotimer = QTimer(self)
 
         #login related
-        self.userpower = 1 # logout:0, normal:1, super:2
+        self.userpower = 0 # logout:0, normal:1, super:2
         self.login = login.Login()
 
         '''
@@ -1887,10 +1887,12 @@ class Move(QThread):
                     x0= get_param('x')
                     xval, yval = self.rotation(x=x0, y=v)
                 print('Calculated x, y = {0}, {1}'.format(xval, yval))
-                self.xyzMotor('x', xval)
-                print('x(motor) is now at {}'.format(pvl.getVal('x')))
-                self.xyzMotor('y', yval)
-                print('y(motor) is now at {}'.format(pvl.getVal('y')))
+                if not ABORT:
+                    self.xyzMotor('x', xval)
+                    print('x(motor) is now at {}'.format(pvl.getVal('x')))
+                if not ABORT:
+                    self.xyzMotor('y', yval)
+                    print('y(motor) is now at {}'.format(pvl.getVal('y')))
 
             elif p == 'z':
                 self.xyzMotor('z', v)
@@ -1948,7 +1950,6 @@ class Move(QThread):
         print('{0} started to move'.format(p))
         time.sleep(0.1)
         while pvl.moving(p) and not ABORT:
-            time.sleep(0.2)  # hold here for BUSY flag
             if ABORT:
                 if p in ['x','y','z','th','tth']:
                     pvl.stopMove(p)
@@ -1962,6 +1963,7 @@ class Move(QThread):
                                      + str(pvl.getVal(p)) + "</font>")
                     self.msg.emit(error_message)
                 break
+            time.sleep(0.2)  # hold here for BUSY flag
         print('{0} finished moving'.format(p))
 
 class Scan(QThread):
