@@ -1,4 +1,4 @@
-# Last edited:20190712 5pm
+# Last edited:20190715 10am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -109,7 +109,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1, "test":1
+    "thoffset":1 , "Iring":1, "test":0
 })
 
 
