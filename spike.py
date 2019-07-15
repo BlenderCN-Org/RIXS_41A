@@ -185,7 +185,7 @@ def spikeRemoval(data, d=3): # the 3rd version
                     #print("final data after sp_removing", data_int)
                 n +=1
         data[:,j] = data_x_new
-    return [data]
+    return data
 
 
 #### removing spikes from data aftre background subtartion
