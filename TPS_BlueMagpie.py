@@ -1,4 +1,4 @@
-# Last edited:20190715 10am
+# Last edited:20190715 11am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -341,7 +341,7 @@ class StatusWidget(QWidget):
                         " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm,  "
                         " thoffset = " + str(pvl.thOffset()) + "&#176; <br>"
                         " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
-                        " T<sub>b</sub> = " + Read('tb', '.2f') + " K, heater mode ["+self.heater()+"]<br> <br>"
+                        " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
                         " photodiode angle tth = " + Read('tth', '.2f') + "&#176;<br> <br>"
                         " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
                         " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp,"
