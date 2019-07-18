@@ -1,4 +1,4 @@
-# Last edited:20190715 11am
+# Last edited:20190718 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -109,7 +109,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1, "test":0
+    "thoffset":1 , "Iring":1, "test":1
 })
 
 
@@ -418,7 +418,7 @@ class Command(QWidget):
         self.macrotimer = QTimer(self)
 
         #login related
-        self.userpower = 1 # logout:0, normal:1, super:2
+        self.userpower = 0 # logout:0, normal:1, super:2
         self.login = login.Login()
 
         '''
@@ -1404,6 +1404,8 @@ class ImageWidget(QWidget):
             raw_img = np.random.uniform(0, 500 + 1, 1024 * 2048)
             img_list = np.asarray(raw_img)
             img_np = np.reshape(img_list, (1024, 2048), order='F')
+            img_np[450:650,1060:1065] += 15
+
         self.imgdata = img_np
         if rixs:
             self.saveImg(num)
@@ -1711,33 +1713,45 @@ class SpectrumWidget(QWidget):
         self.plotRIXS(accum, save)
 
     def plotRIXS(self, accum=False, save=False):  #processing
-        data = np.copy(self.data) #avoid removing raw data
-        if self.spikeremove:
+        data = np.copy(self.data) # avoid removing raw data in ImageWidget
+        # ===== remove spike ======
+        if self.spikeremove:      
             if self.spikefactor >= 1.05:
                 data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
+         # ===== remove background ======
         if self.bkgdsubstract:
             data = np.subtract(data, self.ref_2d) # default ref_2d = array of 0
+         # ===== discrimination ======
         if self.discriminate:
             data[data < self.d1] = 0  # discrimination in Spectrum Widget
             data[data > self.d2] = 0
         senddata = np.copy(data)      # avoid inconsistency between data and 2D-image
         self.showimg.emit(senddata, False)              # show 2D in ImageWidget
         data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
+         # ===== remove joint (y= 1030~1040) ======
         data = self.jointRemoval(data.flatten())
+         # ===== fast fourier transform ======
         if self.fft:
             data= low_pass_fft(data, self.fmax, self.step) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
-        previous_data = np.copy(self.rixs_y)
+         # ===== Averaging and plot ======
+            previous_data = np.copy(self.rixs_y)
         self.rixs_y = np.copy(data) # for saving 1-D spectrum
         if save: self.saveSpec()    # save = True only in Rixs(QThread), could be extended in another command
         if accum: # accum = True only in Rixs(QThread)
-            self.rixs_y = np.average([previous_data, data], axis = 0, weights=[self.rixs_n, 1])
+            #self.rixs_y = np.average([previous_data, data], axis = 0, weights=[self.rixs_n, 1])
+            if self.rixs_n == 0:
+                previous_data = np.zeros(2048)
+            else:
+                previous_data = np.multiply(previous_data, self.rixs_n)
+            self.rixs_y = np.add(previous_data, data)
             self.rixs_n += 1
+            self.rixs_y = np.divide(self.rixs_y, self.rixs_n)
         else:
             self.rixs_y = data
 
-        self.rixs.setData(x=self.rixs_x[100:], y=self.rixs_y[100:]) # cut 0-117
+        self.rixs.setData(x=self.rixs_x[100:], y=self.rixs_y[100:]) # cut 0-99
 
     def jointRemoval(self, data):
         avg = np.mean(data) #data  = 1d array
@@ -2242,7 +2256,7 @@ class Xas(QThread):  # no dummy now
 
 
 
-class Rixs(QThread):  # no dummy now
+class Rixs(QThread):  
     cmd_msg = pyqtSignal(str)
     setplot = pyqtSignal()
     savespec = pyqtSignal(bool)
@@ -2258,7 +2272,10 @@ class Rixs(QThread):  # no dummy now
         global param, WorkingSTATUS, cmd_global, img_global, CountDOWN, BUSY, spectrum_global
         BUSY = True
         self.setplot.emit()
-        pvl.ccd('exposure', self.t)
+        if checkSafe('ccd'):
+            pvl.ccd('exposure', self.t)
+        else:
+            self.cmd_msg.emit('ccd off, generating random data.')
         self.t0 = time.time()
         for i in range(self.n):
             if ABORT: break
@@ -2305,30 +2322,14 @@ class Expose(QThread):
         self.t = t
         self.n = n
         self.plot = plot
+        self.t1 = time.time()
 
     def run(self):
         global WorkingSTATUS
-        pvl.ccd('start', 1)  # 1 for activate
-        t1 = time.time()
-        while pvl.ccd("dataok") == 1:  # check for starting exposure
-            pass
-            if pvl.ccd("dataok") == 0:
-                break
-
-        while (time.time() - t1) < abs(self.t - 0.5):  # wait for exposure
-            time.sleep(0.5)
-            if ABORT:  # check ABORT every 0.5 sec
-                pvl.ccd("stop", 1)
-                self.cmd_msg.emit('RIXS aborted, CCD exposure stopped.')
-                break
-
+        self.startExposure()
         if ABORT == False:
-            while pvl.ccd("dataok") == 0:
-                pass
-                if pvl.ccd("dataok") == 1:
-                    break
-
-            dt = round(time.time() - t1, 3)
+            self.waitExposure()
+            dt = round(time.time() - self.t1, 3)
             print('image taken, time span in seconds= %s' % dt)
             if self.plot:
                 self.rixs.emit(self.plot, self.n) # get data, if self.plot = True, also plot in Spectrum Widget.
@@ -2336,6 +2337,38 @@ class Expose(QThread):
             else:
                 self.get.emit()
                 self.show.emit()         # show image
+
+    def startExposure(self):
+        if checkSafe('ccd'):
+            pvl.ccd('start', 1)  # 1 for activate
+            while pvl.ccd("dataok") == 1:  # check for starting exposure
+                pass
+                if pvl.ccd("dataok") == 0:
+                    break
+
+            while (time.time() - self.t1) < abs(self.t - 0.5):  # check ABORT
+                time.sleep(0.5)
+                if ABORT:  # check ABORT every 0.5 sec
+                    pvl.ccd("stop", 1)
+                    self.cmd_msg.emit('RIXS aborted, CCD exposure stopped.')
+                    break
+        else:
+            while (time.time() - self.t1) < (self.t): # fake wait
+                time.sleep(0.5)
+                if ABORT:
+                    break
+
+    def waitExposure(self):
+        if checkSafe('ccd'):
+            while pvl.ccd("dataok") == 0:
+                pass
+                if pvl.ccd("dataok") == 1:
+                    break
+        else:
+            time.sleep(0.5)
+
+
+
 
 class Macroloop(QThread):
     msg = pyqtSignal(str)
