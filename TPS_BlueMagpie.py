@@ -15,6 +15,7 @@ from scipy.ndimage import gaussian_filter
 import macro
 import login
 
+
 pvl = pvlist.pvlist()
 
 # Global for connection
@@ -2433,5 +2434,6 @@ class Macroloop(QThread):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("flying_bird_128px_1087127_easyicon.net.ico"))
     BlueMagpie = MainWindow()
     sys.exit(app.exec_())
