@@ -10,13 +10,13 @@ from os import path
 (top) username -- data  -- img 
                -- macro
                -- log
-               -- new_folder1 -- img  (by mkdir "new_folder1", 
-                                       which always build a img folder inside)
+               -- **new_folder1 -- img  (by mkdir "new_folder1", 
+                                         which has a default img folder inside)
 ===============================================================
 
 @ dir(): provides path needed in BlueMagpie saving/logging functions.
 
-@ mkdir(): makes a new folder.
+@ mkdir(): make a new folder.
 
 '''
 class Dir():
@@ -34,7 +34,8 @@ class Dir():
         self.log_dir = self.project_dir +'log' + os.sep
         self.data_dir = self.project_dir + 'data' + os.sep
         self.img_dir = self.data_dir + 'img' + os.sep
-        self.saving_dir = self.data_dir     # for user saving dir (replacable, can't be log/macro/img)
+        self.saving_dir = self.data_dir     
+
         if not path.exists(self.dir_name):
             os.mkdir(self.dir_name)
             os.makedirs(self.macro_dir)
@@ -48,13 +49,10 @@ class Dir():
              'data':self.data_dir}
         self.dict.update(d)
 
-    def dir(self, dir):
-        if dir in self.dict:
-            return [True, self.dict[dir]]
-        else:
-            return [False, '']
-
-    def mkdir(self, dirname):
+    def path(self, dirname):       # return path
+        return self.dict[dirname]
+        
+    def mkdir(self, dirname):      # mkdir based on current saving_dir
         dirpath = self.saving_dir + dirname
         if not path.isdir(dirpath):
             os.makedirs(dirpath)
@@ -63,21 +61,30 @@ class Dir():
         else:
             print('{} already exist'.format(dirname))
 
+    def check(self, dirname):     # check path exist
+        if dirname in self.dict:
+            return True
+        else:
+            return False
+    
+    def data(self):
+        return self.saving_dir
+# test code for running dir.py independetly
 
-if __name__ == '__main__':
-    test = Dir('test')
-    if test.dir('macro')[0]:
-        print(test.dir('macro')[1])
-    if test.dir('happy')[0]:
-        print(test.dir('happy'))
-    else:
-        print('no happy found')
-    test.mkdir('happy')
-    if test.dir('happy')[0]:
-        print(test.dir('happy'))
-    else:
-        print('no happy found')
-    test.mkdir('happy')
+#if __name__ == '__main__':
+#    test = Dir('test2') #activate
+#    if test.path('macro')[0]:
+#        print(test.dir('macro')[1])
+#    if test.path('happy')[0]:
+#        print(test.dir('happy'))
+#    else:
+#        print('no happy found')
+#    test.mkdir('happy')
+#    if test.path('happy')[0]:
+#        print(test.dir('happy'))
+#    else:
+#        print('no happy found')
+#    test.mkdir('happy')
 
 
 

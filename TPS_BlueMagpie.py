@@ -14,6 +14,7 @@ from spike import spikeRemoval, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
 import login
+import dir
 
 
 pvl = pvlist.pvlist()
@@ -38,23 +39,23 @@ Dir for datasaving and macro
 file_no = 0  # read file_no from exist log
 
 dir_date = datetime.datetime.today().strftime("%Y%m%d")
-dir_name = "project #0"
-current_path = os.getcwd()
+#dir_name = "project #0"
+#current_path = os.getcwd()
 
-sla = '\\' if ('\\' in current_path) else '/'
+#sla = '\\' if ('\\' in current_path) else '/'
 
-project_path = str(current_path) + sla + dir_name + sla
-macro_dir = str(project_path) + 'macro' + sla
-log_dir = str(project_path) + 'log' + sla
-data_dir = str(project_path) + 'data' + sla
-img_dir = data_dir + 'img' + sla
+#project_path = str(current_path) + sla + dir_name + sla
+#macro_dir = str(project_path) + 'macro' + sla
+#log_dir = str(project_path) + 'log' + sla
+#data_dir = str(project_path) + 'data' + sla
+#img_dir = data_dir + 'img' + sla
 
-if not os.path.exists(dir_name):
-    os.makedirs(project_path)
-    os.makedirs(macro_dir)
-    os.makedirs(log_dir)
-    os.makedirs(data_dir)
-    os.makedirs(img_dir)
+#if not os.path.exists(dir_name):
+#    os.makedirs(project_path)
+#    os.makedirs(macro_dir)
+#    os.makedirs(log_dir)
+#    os.makedirs(data_dir)
+#    os.makedirs(img_dir)
 
 '''
 Abort
@@ -432,25 +433,7 @@ class Command(QWidget):
         # modify counting mechanism => get index directly => check pandas document
         self.history_loc = 0
         self.logname = str(dir_date) + "_commandlog"
-        '''
-        Full log (for KeyPressEvent function and file number)
-         - inherit all log from the same day.
-        '''
-        self.fullog_name = log_dir + str(dir_date) + "_fullog.txt"  # Example: 20190509_fullog.txt
-        self.fullog_col = ['Time', 'Text'] + param_index
-        global file_no
-        if os.path.exists(self.fullog_name):
-            data = pd.read_csv(self.fullog_name, header=0, delimiter="|")
-            if len(data) > 0 :
-                file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
-            self.fullog = data[data['Text'] != "APP_CLOSED"].reset_index(drop=True)
-            self.fullog_i = len(self.fullog) # removed APP_CLOSED for keyboard calling
-        else:
-            self.fullog_i = 0
-            self.fullog = pd.DataFrame(columns = self.fullog_col)
-            file = open(self.fullog_name, "a")
-            file.write("|".join(self.fullog_col) + "\n")
-            file.close()
+        
 
 
         '''
@@ -471,6 +454,26 @@ class Command(QWidget):
         self.Input.addWidget(self.command_input)
         self.Input.addWidget(self.abort_button)
         self.Commandlayout.addLayout(self.Input)
+    '''
+    Full log (for KeyPressEvent function and file number)
+     - inherit all log from the same day.
+    '''
+    def __userlog__(self):
+        self.fullog_name = self.dir.path('log') + str(dir_date) + "_fullog.txt"  # Example: 20190509_fullog.txt
+        self.fullog_col = ['Time', 'Text'] + param_index
+        global file_no
+        if os.path.exists(self.fullog_name):
+            data = pd.read_csv(self.fullog_name, header=0, delimiter="|")
+            if len(data) > 0 :
+                file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
+            self.fullog = data[data['Text'] != "APP_CLOSED"].reset_index(drop=True)
+            self.fullog_i = len(self.fullog) # removed APP_CLOSED for keyboard calling
+        else:
+            self.fullog_i = 0
+            self.fullog = pd.DataFrame(columns = self.fullog_col)
+            file = open(self.fullog_name, "a")
+            file.write("|".join(self.fullog_col) + "\n")
+            file.close()
 
     def send_message(self):
         global ABORT
@@ -501,6 +504,8 @@ class Command(QWidget):
                     self.username.emit(self.login.username) #to status widget
                     self.command_input.setEchoMode(0)
                     self.command_input.setPlaceholderText("Type help to list commands ...")
+                    self.dir = dir('username')
+                    self.__userlog__()
                 else:
                     self.sysReturn('Wrong password, please try again.', 'err')
         except:
@@ -521,6 +526,7 @@ class Command(QWidget):
          - pop up TextEdit
         '''
     def popupMacro(self):
+        macro_dir = self.dir.path('macro')
         self.macro = macro.MacroWindow(macro_dir)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.errorMsg.connect(self.sysReturn)
@@ -1017,7 +1023,7 @@ class Command(QWidget):
                     param['f'] = file_no
                     start_time = datetime.datetime.now()
                     self.sysReturn('Scan %s begins at %s'%(file_no, start_time.strftime("%c")))
-                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False)
+                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False, self.dir.data())
                     self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
                     self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.scanthread.set_data.connect(spectrum_global.liveplot)
@@ -1039,7 +1045,7 @@ class Command(QWidget):
                 timestamp = QTime.currentTime()
                 t0 = timestamp.toString()
                 self.sysReturn('tscan {0} begins at {1}'.format(file_no, t0))
-                self.tscan = Tscan(p, t0, float(dt), int(n))
+                self.tscan = Tscan(p, t0, float(dt), int(n), self.dir.data())
                 self.tscan.cmd_msg.connect(self.sysReturn)
                 self.tscan.setplot.connect(spectrum_global.tscanPlot)
                 self.tscan.plot.connect(spectrum_global.liveplot)
@@ -1284,9 +1290,9 @@ class Command(QWidget):
             self.command_input.setDisabled(BUSY)
             if BUSY == False:
                 self.command_input.setFocus()
-    # not necessary
+
     def doMacro(self, name):
-        macro_name = "%s%s.txt"%(macro_dir, name) # directory
+        macro_name = "%s%s.txt"%(self.dir.path('macro'), name) # directory
         if os.path.exists(macro_name): # check file exist
             self.sysReturn('do %s'%name, "v", True)
             self.sysReturn("macro begins: %s.txt"%name)
@@ -1557,22 +1563,20 @@ class SpectrumWidget(QWidget):
         self.rixs_y = np.empty(2048)
         self.ref_2d = np.zeros([1024,2048])
         self.rixs_n = 0
-        self.rixs_name = None
-        self.ref_x = list(range(0, 2048))
-        self.ref_y = np.empty(2048)
-        self.ref_name = None
-        self.spikefactor= 3 #spike removal function discrimination factor
-        self.d1 = 20 # discrimination factor for setref
-        self.d2 = 200
+        self.rixs_name, self.ref_name= None, None
+        self.ref_x, self.ref_y= list(range(0, 2048)), np.empty(2048)
+        self.spikefactor= 3         #spike removal function discrimination factor
+        self.d1, self.d2 = 20, 200  # discrimination factor for setref
         self.gfactor = 40 # gaussian factor
         self.x1, self.x2 = 0, 1023
         self.fmax, self.step = 0.15, 1.0
         self.fft = False
-        self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
-        self.spikeremove = True #flag to apply spike removal while data processing 
-        self.bkgdsubstract = False #flag to apply background substraction while data processing
+        self.analyze = False        #flag: False = scan/tscan/xas, True = rixs/load
+        self.spikeremove = True     #flag to apply spike removal while data processing 
+        self.bkgdsubstract = False  #flag to apply background substraction while data processing
         self.discriminate = False
         self.specsaveformat= '.txt'
+        self.data_dir = "" 
 
         
         def mouseMoved(pos):
@@ -1618,6 +1622,9 @@ class SpectrumWidget(QWidget):
         self.pos_bar.clear()
         self.vLine.hide()
         self.hLine.hide()
+        
+    def newdir(self, dirpath):
+        self.data_dir = dirpath
 
     def clearplot(self):
         if self.legenditems != []:
@@ -1772,7 +1779,7 @@ class SpectrumWidget(QWidget):
         spec_number = "_{}".format(str(1+self.rixs_n).zfill(3)) if not final else ""
         filename="rixs_{0}_{1}{2}".format(dir_date, file_no, spec_number)
         header = self.getHeader()
-        np.savetxt(data_dir + filename, self.rixs_y,
+        np.savetxt(self.data_dir + filename, self.rixs_y,
                    fmt='%.2f', delimiter=' ', header=header)
         self.msg.emit('rixs data saved in {0}{1}'.format(filename, self.specsaveformat))
         if final and self.bkgdsubstract:
@@ -1780,7 +1787,7 @@ class SpectrumWidget(QWidget):
 
     def saveName(self, name=None):
         if name == None:
-            name = data_dir + dir_date + 'test'
+            name = self.data_dir + dir_date + 'test'
         if not self.analyze:
             print ('currently save spectrum only, not including scan data.')
         else:
@@ -1852,6 +1859,7 @@ class SpectrumWidget(QWidget):
             self.refinfo.setText('')
             self.fftinfo.setText('')
             self.dinfo.setText('')
+          
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
@@ -1987,7 +1995,7 @@ class Scan(QThread):
     data_set = pyqtSignal(list, list) #for xas plot collection
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas):
+    def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas, dir):
         super(Scan, self).__init__()
         self.plot, self.scan_param, self.step = plot, scan_param, step
         self.x1, self.x2, self.dwell, self.n = x1, x2, dwell, n
@@ -1995,6 +2003,7 @@ class Scan(QThread):
         self.data_matrix = pd.DataFrame(columns=param_index)
         self.spec_number = N
         self.xas = xas # flag for file saving and other messages
+        self.data_dir = dir
 
     def run(self):
         global param, WorkingSTATUS, BUSY, CountDOWN
@@ -2113,11 +2122,11 @@ class Scan(QThread):
             filename0="scan_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
         else:
             filename0="xas_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
-        filename = data_dir + filename0 + ".itx"
+        filename = self.data_dir + filename0 + ".itx"
         text = self.getHeader(filename0)
-        with open(filename, "w") as file:
+        with open(filename, "w") as file:                                 # write header first
             file.write(text)
-        self.data_matrix.to_csv(filename, mode='a', index=False, sep=' ')
+        self.data_matrix.to_csv(filename, mode='a', index=False, sep=' ') # then append data
         with open(filename, "a+") as file:
             file.write('END')
         self.cmd_msg.emit('{0} data saved in {1}.itx'.format("XAS" if self.xas else "scan" ,filename0))
@@ -2131,7 +2140,7 @@ class Tscan(QThread):
     plot = pyqtSignal(int, list, pd.Series)
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self, p, t0, dt, n):
+    def __init__(self, p, t0, dt, n, dir):
         super().__init__()
         self.p = p
         self.dt = dt
@@ -2140,6 +2149,7 @@ class Tscan(QThread):
         self.start_point = get_param(p)
         self.timelist = []                                      #as axis x
         self.data_matrix = pd.DataFrame(columns=param_index)    #as axis y
+        self.data_dir = dir
 
     def run(self):
         global param, WorkingSTATUS, BUSY, CountDOWN, file_no
@@ -2195,7 +2205,7 @@ class Tscan(QThread):
 
     def saveSpec(self):
         filename0="tscan_{0}_{1}".format(dir_date, file_no)
-        filename = data_dir + filename0 + ".itx"
+        filename = self.data_dir + filename0 + ".itx"
         text = self.getHeader(filename0)
         with open(filename, "w") as file:
             file.write(text)
