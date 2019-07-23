@@ -1755,6 +1755,7 @@ class SpectrumWidget(QWidget):
         if self.spikeremove:      
             if self.spikefactor >= 1.05:
                 data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor) # save setref 2d image file
+                #data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
          # ===== remove background ======
@@ -1838,6 +1839,7 @@ class SpectrumWidget(QWidget):
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
                 data = spikeRemoval_1(self.data, 0, 1023, 3)
+                #data = spikeRemoval(self.data, 3)
                 self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
                 print('bkgd')
                 print(self.ref_2d)
