@@ -83,7 +83,7 @@ CountDOWN = 0
 
 # SETUP_parameters
 # TODO: img?
-param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'tth', 'ta', 'tb', 'I0', 'Iph', 'Itey',
+param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'det', 'ta', 'tb', 'I0', 'Iph', 'Itey',
                'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset']
 param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0.,      0,
                       0,     25,         0,     0,     10,          0]
@@ -95,17 +95,17 @@ non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', '
 param_index0 = list(param_index)
 for elements in non_movables:
     param_index0.remove(elements)
-# movables: ['agm', 'ags', 'x', 'y', 'z','th', 'tth', 'ta','Tccd', 'gain']
+# movables: ['agm', 'ags', 'x', 'y', 'z','th', 'det', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-12, 7],
-                         'th': [-10, 215], 'tth': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
+                         'th': [-10, 215], 'det': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
                          'gain': [0, 100], 'thoffset':[-70, 70]})
 
 # Individual device safety control
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "th": 1, "tth": 1,
+    "th": 1, "det": 1,
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
@@ -343,7 +343,7 @@ class StatusWidget(QWidget):
                         " thoffset = " + str(pvl.thOffset()) + "&#176; <br>"
                         " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
                         " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
-                        " photodiode angle tth = " + Read('tth', '.2f') + "&#176;<br> <br>"
+                        " photodiode angle tth = " + Read('det', '.2f') + "&#176;<br> <br>"
                         " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
                         " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp,"
                         " I<sub>TEY</sub> = " + Read('Itey', 'current') + " Amp <br> <br>"
@@ -1966,12 +1966,12 @@ class Move(QThread):
         time.sleep(0.1)
         while pvl.moving(p) and not ABORT:
             if ABORT:
-                if p in ['x','y','z','th','tth']:
+                if p in ['x','y','z','th','det']:
                     pvl.stopMove(p)
                 break
             if not pvl.moving(p):
                 time.sleep(0.2)
-                if p in ['th', 'tth']: #for th, tth PV.get() will not get correct number, need this to refresh
+                if p in ['th', 'det']: #for th, det PV.get() will not get correct number, need this to refresh
                    pvl.caget(p)
                 if (abs(pvl.getVal(p) - v) >= 0.02) and (p not in ['x','y','z']):
                     error_message = ("<font color=red>" + p + " not moving correctly, value: "
