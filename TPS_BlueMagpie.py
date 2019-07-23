@@ -84,9 +84,9 @@ CountDOWN = 0
 # SETUP_parameters
 # TODO: img?
 param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'det', 'ta', 'tb', 'I0', 'Iph', 'Itey',
-               'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset', 'chmbr']
+               'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset', 'chmbr', 'tth']
 param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0.,      0,
-                      0,     25,         0,     0,     10,          0,    0]
+                      0,     25,         0,     0,     10,          0,       0,    90]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
@@ -100,12 +100,12 @@ for elements in non_movables:
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-12, 7],
                          'th': [-10, 215], 'det': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
-                         'gain': [0, 100], 'thoffset':[-70, 70], 'chmbr':[-37.5, 45]})
+                         'gain': [0, 100], 'thoffset':[-70, 70], 'chmbr':[-37.5, 45], 'tth':[40, 150]})
 
 # Individual device safety control
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "chmbr":0, "th": 1, "det": 1, 
+    "chmbr":1, "tth":0, "th": 1, "det": 1, 
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
@@ -333,7 +333,7 @@ class StatusWidget(QWidget):
             time_text = ""
 
         parameter_text = (" AGM: " + Read('agm') + " eV<br>"
-                        " AGS: " + Read('ags') + " eV (rotation "+self.agsMotion()+") <br>"
+                        " AGS: " + Read('ags') + " eV, tth = "+Read('tth')+" &#176; (rotation "+self.agsMotion()+") <br>"
                         " <br>"
                         " entrance slit   s1= " + Read('s1','int') + " &micro;m ; "
                         " exit slit   s2= " + Read('s2', 'int') + " &micro;m<br>"
@@ -374,7 +374,12 @@ class StatusWidget(QWidget):
             return ("<font color = red> OFF </font>")
         
     def agsFlag(self, flag): # for command widget control display flag
+        global Device
         self.ags_flag = flag
+        if flag:
+            Device['tth'] = 1
+        else:
+            Device['tth'] = 0
 
 
     # TODO: deglobalize
@@ -640,7 +645,7 @@ class Command(QWidget):
                    "<b>h</b>: recall previous commands executed successfully.<br>\n"
                    "<br>\n"
                    "<b>mv</b>: set a parameter to a target value.<br>\n"
-                   "<b>mvr</b>: set a parameter to a value relative a current position.<br>\n"
+                   #"<b>mvr</b>: set a parameter to a value relative a current position.<br>\n"
                    "<b>scan</b>: scan a parameter and plot selected parameters with some dwell time.<br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> "
                    "<font color=blue>scan <b>det,</b> (optional) param x1 x2 dx dt n </font> <br>\n"
@@ -878,36 +883,36 @@ class Command(QWidget):
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   heater mode", "err")
 
-        elif text[:4] == 'mvr ':
-            space = text.count(' ')
-            sptext = text.split(' ')
-            if space == 2:  # e.g. mvr x 1234
-                p, vr = sptext[1], sptext[2]
-                if p in param_index0:
-                    try:
-                        if self.checkFloat(eval(vr)):
-                            v = get_param(p)+vr
-                            if self.check_param_range(p, v) != 'OK':
-                                self.sysReturn(text,'iv')
-                                self.sysReturn(self.check_param_range(p, v), 'err')
-                            else:
-                                self.sysReturn('mvr {0} {1}'.format(p, eval(vr)), "v", True)
-                                self.movethread = Move(p, float(v))  # check if finished or not
-                                self.movethread.msg.connect(self.sysReturn)
-                                self.movethread.finished.connect(self.threadFinish)
-                                self.movethread.start()
-                        else:
-                            self.sysReturn(text, "iv")
-                            self.sysReturn("{0} is not float.".format(vr), "err")
-                    except:
-                        self.sysReturn(text, "iv")
-                        self.sysReturn("failed to evaluate target position {0}.".format(sptext[2]), 'err')
-                else:
-                    self.sysReturn(text, "iv")
-                    self.sysReturn("parameter \'" + p + "\' is invalid; type \'p\' to list valid parameters", "err")
-            else:
-                self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   mv parameter value", "err")
+        #elif text[:4] == 'mvr ':
+        #    space = text.count(' ')
+        #    sptext = text.split(' ')
+        #    if space == 2:  # e.g. mvr x 1234
+        #        p, vr = sptext[1], sptext[2]
+        #        if p in param_index0:
+        #            try:
+        #                if self.checkFloat(eval(vr)):
+        #                    v = get_param(p)+vr
+        #                    if self.check_param_range(p, v) != 'OK':
+        #                        self.sysReturn(text,'iv')
+        #                        self.sysReturn(self.check_param_range(p, v), 'err')
+        #                    else:
+        #                        self.sysReturn('mvr {0} {1}'.format(p, eval(vr)), "v", True)
+        #                        self.movethread = Move(p, float(v))  # check if finished or not
+        #                        self.movethread.msg.connect(self.sysReturn)
+        #                        self.movethread.finished.connect(self.threadFinish)
+        #                        self.movethread.start()
+        #                else:
+        #                    self.sysReturn(text, "iv")
+        #                    self.sysReturn("{0} is not float.".format(vr), "err")
+        #            except:
+        #                self.sysReturn(text, "iv")
+        #                self.sysReturn("failed to evaluate target position {0}.".format(sptext[2]), 'err')
+        #        else:
+        #            self.sysReturn(text, "iv")
+        #            self.sysReturn("parameter \'" + p + "\' is invalid; type \'p\' to list valid parameters", "err")
+        #    else:
+        #        self.sysReturn(text, "iv")
+        #        self.sysReturn("input error. use:   mv parameter value", "err")
 
         elif text[:5] == 'spec ':
             space, sptext = text.count(' '), text.split(' ')
@@ -1933,7 +1938,7 @@ class Move(QThread):
         # p : index(name) of parameter, should be a string; v : range-checked value
         p, v, BUSY= self.p, self.v, True
         if checkSafe(p):  # check device safety
-            if (p in param_index0) and (p not in ['x','y','z','Tccd', 'gain','ta','thoffset']):
+            if (p in param_index0) and (p not in ['x','y','z','Tccd', 'gain','ta','thoffset', 'tth']):
                 pvl.putVal(p, v)
                 self.moveCheck(p, v)
             elif p in ['x', 'y']:
@@ -1996,8 +2001,6 @@ class Move(QThread):
         y_new = x*math.sin(th) + y*math.cos(th)
         print('motor : ({0}, {1})'.format(x_new,y_new))
         return (x_new, y_new)
-
-
 
     def moveCheck(self, p, v):
         t1 = time.time()
