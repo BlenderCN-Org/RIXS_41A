@@ -1,4 +1,4 @@
-# Last edited:20190718 6pm
+# Last edited:20190723 11am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -84,9 +84,9 @@ CountDOWN = 0
 # SETUP_parameters
 # TODO: img?
 param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'det', 'ta', 'tb', 'I0', 'Iph', 'Itey',
-               'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset']
+               'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset', 'chmbr']
 param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0.,      0,
-                      0,     25,         0,     0,     10,          0]
+                      0,     25,         0,     0,     10,          0,    0]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
@@ -100,12 +100,12 @@ for elements in non_movables:
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-12, 7],
                          'th': [-10, 215], 'det': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
-                         'gain': [0, 100], 'thoffset':[-70, 70]})
+                         'gain': [0, 100], 'thoffset':[-70, 70], 'chmbr':[-1, 1]})
 
 # Individual device safety control
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "th": 1, "det": 1,
+    "chmbr":1, "th": 1, "det": 1, 
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
@@ -338,7 +338,7 @@ class StatusWidget(QWidget):
                         " exit slit   s2= " + Read('s2', 'int') + " &micro;m<br>"
                         " shutter: " + Read('shutter', 'switch') + "<br>"
                         " <br>"
-                        " sample:  <br>"
+                        " sample: (chamber position = "+Read('chmbr')+" mm) <br>"
                         " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm,  "
                         " thoffset = " + str(pvl.thOffset()) + "&#176; <br>"
                         " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"

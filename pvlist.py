@@ -15,20 +15,20 @@ class pvlist():
                        u="41a:hexapod:u", v="41a:hexapod:v", w="41a:hexapod:w", th="41a:sample:thr",
                        det="41a:sample:tthr", heater="41a:sample:heater", ta="41a:sample:tmp1", tb="41a:sample:tmp2",
                        I0="41a:sample:i0", Iph="41a:sample:phdi", Itey="41a:sample:TEY", Tccd="41a:ccd1:tmpr", gain="41a:ccd1:gain",
-                       ring="SR-DI-DCCT:BeamCurrent")
+                       ring="SR-DI-DCCT:BeamCurrent", chmbr="41a:sample:transr")
 
         #Get Value
         self.movingstat = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:RIXS:xyz:x:Moving",
                       y="41a:RIXS:xyz:y:Moving", z="41a:RIXS:xyz:z:Moving", hex_x="41a:hexapod:xm", hex_y="41a:hexapod:ym",
                       hex_z="41a:hexapod:zm", u="41a:hexapod:um", v="41a:hexapod:vm", w="41a:hexapod:wm", th="41a:sample:thm",
-                      det="41a:sample:tthm")
+                      det="41a:sample:tthm", chmbr="41a:sample:transm")
 
 
         #Put Value
         self.putvalue = dict(agm="41a:AGM:Energy.VAL", ags="41a:AGS:Energy.VAL", x="41a:RIXS:xyz:xw",
                       y="41a:RIXS:xyz:yw", z="41a:RIXS:xyz:zw", hex_x="41a:hexapod:xw", hex_y="41a:hexapod:yw",
                        hex_z="41a:hexapod:zw", u="41a:hexapod:uw", v="41a:hexapod:vw", w="41a:hexapod:ww", th="41a:sample:thw",
-                       det="41a:sample:tthw", heater="41a:sample:heater", ta="41a:sample:tmp1w")
+                       det="41a:sample:tthw", heater="41a:sample:heater", ta="41a:sample:tmp1w", chmbr="41a:sample:transw")
 
         self.put_xyz = dict(x="41a:RIXS:xyz:x:Move", y="41a:RIXS:xyz:y:Move", z="41a:RIXS:xyz:z:Move")
 
@@ -39,7 +39,7 @@ class pvlist():
 
         self.stop = dict(x="41a:RIXS:xyz:x:Stop", y="41a:RIXS:xyz:y:Stop", z="41a:RIXS:xyz:z:Stop", hex_x="41a:hexapod:xs",
                     hex_y="41a:hexapod:ys", hex_z="41a:hexapod:zs", u="41a:hexapod:us", v="41a:hexapod:vs",
-                    w="41a:hexapod:ws", th="41a:sample:ths", det="41a:sample:tths")
+                    w="41a:hexapod:ws", th="41a:sample:ths", det="41a:sample:tths", chmbr="41a:sample:transs")
 
 
         self.pvname_list = list(self.reading.values()) + list(self.movingstat.values()) + list(self.ccdict.values())
@@ -97,7 +97,7 @@ class pvlist():
             print('{0} is already at position :{1},  move aborted.'.format(p, value))
 
     def moving(self, p):
-        if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'det', 'agm', 'ags']:
+        if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'det', 'agm', 'ags', 'chmbr']:
             if self.movStat(p) == 1:  # 1: moving, 0: stop
                 return True
             else:  # including gain
