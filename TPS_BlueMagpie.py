@@ -1,4 +1,4 @@
-# Last edited:20190723 4pm
+# Last edited:20190723 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -10,7 +10,7 @@ import pandas as pd
 import datetime, re
 import pvlist
 import math
-from spike import spikeRemoval, low_pass_fft
+from spike import spikeRemoval_1, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
 import login
@@ -774,6 +774,7 @@ class Command(QWidget):
                     self.rixsthread.finished.connect(self.threadFinish)
                     self.rixsthread.setplot.connect(spectrum_global.setRIXSplot)
                     self.rixsthread.savespec.connect(spectrum_global.saveSpec)
+                    #self.rixsthread.no_analyze.connect(spectrum_global.noAnalyze)
                     self.rixsthread.start()
                 else:
                     self.sysReturn(text, "iv")
@@ -1436,10 +1437,11 @@ class ImageWidget(QWidget):
             img_np = np.reshape(img_list, (1024, 2048), order='F')  # reshape from 1d to 2d numpy array
         else:
             # else
+            self.errmsg.emit('ccd off, generating random data.', 'err')
             raw_img = np.random.uniform(0, 500 + 1, 1024 * 2048)
             img_list = np.asarray(raw_img)
             img_np = np.reshape(img_list, (1024, 2048), order='F')
-            img_np[450:650,1060:1065] += 15
+            img_np[450:650,1400:1405] += 2000
 
         self.imgdata = img_np
         if rixs:
@@ -1752,7 +1754,7 @@ class SpectrumWidget(QWidget):
         # ===== remove spike ======
         if self.spikeremove:      
             if self.spikefactor >= 1.05:
-                data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
+                data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor) # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1','err')
          # ===== remove background ======
@@ -1771,7 +1773,7 @@ class SpectrumWidget(QWidget):
         if self.fft:
             data= low_pass_fft(data, self.fmax, self.step) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
          # ===== Averaging and plot ======
-            previous_data = np.copy(self.rixs_y)
+        previous_data = np.copy(self.rixs_y)
         self.rixs_y = np.copy(data) # for saving 1-D spectrum
         if save: self.saveSpec()    # save = True only in Rixs(QThread), could be extended in another command
         if accum: # accum = True only in Rixs(QThread)
@@ -1835,7 +1837,7 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval(self.data, 3)
+                data = spikeRemoval_1(self.data, 0, 1023, 3)
                 self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
                 print('bkgd')
                 print(self.ref_2d)
@@ -1886,6 +1888,11 @@ class SpectrumWidget(QWidget):
             self.refinfo.setText('')
             self.fftinfo.setText('')
             self.dinfo.setText('')
+
+    def noAnalyze(self):
+        self.setFactor('spike', False)
+        self.setFactor('bkrm', False)
+        self.setFactor('d', False)
 
 class Barupdate(QThread):
     refresh = pyqtSignal()
@@ -2297,6 +2304,7 @@ class Rixs(QThread):
     cmd_msg = pyqtSignal(str)
     setplot = pyqtSignal()
     savespec = pyqtSignal(bool)
+    #no_analyze = pyqtSignal()
 
     def __init__(self, t, n):
         super().__init__()
@@ -2311,8 +2319,9 @@ class Rixs(QThread):
         self.setplot.emit()
         if checkSafe('ccd'):
             pvl.ccd('exposure', self.t)
-        else:
-            self.cmd_msg.emit('ccd off, generating random data.')
+        #else:
+            #self.cmd_msg.emit('ccd off, generating random data.')
+            #self.no_analyze.emit()
         self.t0 = time.time()
         for i in range(self.n):
             if ABORT: break
@@ -2348,7 +2357,7 @@ class Rixs(QThread):
         self.cmd_msg.emit(string + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
 
 class Expose(QThread):
-    get = pyqtSignal(bool)
+    get = pyqtSignal()
     rixs = pyqtSignal(bool, int)
     show = pyqtSignal()
     save = pyqtSignal(int)

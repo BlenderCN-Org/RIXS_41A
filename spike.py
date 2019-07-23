@@ -81,7 +81,7 @@ def spikeRemoval_1(data, x1=400, x2=600, d=3):
         data_sp[:,j]=np.copy(data2x)
         level[j] = H  # a np.array which stores the discriminator level corresponding y pixels
 
-    return [data_sp, spike, level]
+    return data_sp
 
 
 
