@@ -1,4 +1,4 @@
-# Last edited:20190723 11am
+# Last edited:20190723 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -100,12 +100,12 @@ for elements in non_movables:
 # golable series for the parameter ranges set to protect instruments.
 param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-12, 7],
                          'th': [-10, 215], 'det': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
-                         'gain': [0, 100], 'thoffset':[-70, 70], 'chmbr':[-1, 1]})
+                         'gain': [0, 100], 'thoffset':[-70, 70], 'chmbr':[-37.5, 45]})
 
 # Individual device safety control
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "chmbr":1, "th": 1, "det": 1, 
+    "chmbr":0, "th": 1, "det": 1, 
     "agm": 1, "ags": 1,
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
@@ -271,6 +271,7 @@ class Panel(QWidget):
         command_widget.setref.connect(spectrum_widget.setRef)
         command_widget.setfactor.connect(spectrum_widget.setFactor)
         command_widget.username.connect(status_widget.getName)
+        command_widget.enableags.connect(status_widget.agsFlag)
         image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
         image_widget.errmsg.connect(command_widget.sysReturn)
 
@@ -304,10 +305,11 @@ class StatusWidget(QWidget):
         self.barhorizontal.addWidget(self.ring_current)
         self.layoutVertical.addLayout(self.barhorizontal)
         self.layoutVertical.addWidget(self.status_box)
-        self.t0 = 0  # for remaining time reference
+        self.t0 = 0  # for remaining time references
+        self.ags_flag = False
 
     def show_bar(self):
-        global param, file_no
+        global param
         tt = datetime.datetime.now()
         time_str = tt.strftime("%H:%M:%S, %b %d %Y; ")
         param['f'] = file_no
@@ -316,8 +318,7 @@ class StatusWidget(QWidget):
         self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format
                                   (pvl.getVal('ring') if Device['Iring']==1 and Device['test']==0 else 0))
 
-    def show_text(self):
-        # called every 1 sec
+    def show_text(self):    # called every 1 sec
         if CountDOWN > 1:
             if CountDOWN != self.t0:  # reset t0
                 self.t0 = float(CountDOWN)  # reference
@@ -332,7 +333,7 @@ class StatusWidget(QWidget):
             time_text = ""
 
         parameter_text = (" AGM: " + Read('agm') + " eV<br>"
-                        " AGS: " + Read('ags') + " eV<br>"
+                        " AGS: " + Read('ags') + " eV (rotation "+self.agsMotion()+") <br>"
                         " <br>"
                         " entrance slit   s1= " + Read('s1','int') + " &micro;m ; "
                         " exit slit   s2= " + Read('s2', 'int') + " &micro;m<br>"
@@ -343,19 +344,19 @@ class StatusWidget(QWidget):
                         " thoffset = " + str(pvl.thOffset()) + "&#176; <br>"
                         " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
                         " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
-                        " photodiode angle tth = " + Read('det', '.2f') + "&#176;<br> <br>"
+                        " photodiode angle = " + Read('det', '.2f') + "&#176;<br> <br>"
                         " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
                         " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp,"
                         " I<sub>TEY</sub> = " + Read('Itey', 'current') + " Amp <br> <br>"
                         " RIXS imager:  <br>"
-                        " temperature = " + Read('Tccd','.1f') + " \u2103" + ',   gain = ' + Read('gain', 'int') + " <br> <br>")
+                        " temperature = " + Read('Tccd','.1f') + " \u2103" + ",   gain = " + Read('gain', 'int') + " <br> <br>")
         status_text = "%s <font color =red> %s %s </font>" % (parameter_text, WorkingSTATUS, time_text)
         self.status_box.setText(status_text)
 
     def getName(self, username):
         self._username = username
 
-    def heater(self):
+    def heater(self):       # heater display 
         v = pvl.getVal('heater') if Device['heater']==1 and Device['test']==0 else 0
         if v == 0:
             return "off"
@@ -365,6 +366,16 @@ class StatusWidget(QWidget):
             return "medium"
         elif v==3:
             return "high"
+
+    def agsMotion(self):     # display decoration for ags flag
+        if self.ags_flag:
+            return ("<font color = green> ON </font>")
+        else:
+            return ("<font color = red> OFF </font>")
+        
+    def agsFlag(self, flag): # for command widget control display flag
+        self.ags_flag = flag
+
 
     # TODO: deglobalize
     # def setString(self, string=None): #destroy global parameters
@@ -389,6 +400,7 @@ class Command(QWidget):
     setref = pyqtSignal(bool)
     setfactor = pyqtSignal(str, object)
     username = pyqtSignal(str)
+    enableags = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -726,15 +738,9 @@ class Command(QWidget):
         #         self.sysReturn(text,"iv")
         #         self.sysReturn('input error. use:   shut  0 or 1', 'err')
 
-        elif 'img' in text[:4]:
-            space = text.count(' ')
-            sptext = text.split(' ')
-            if text != 'img':
-                t = sptext[1]
-            else:
-                t = 2 # default exposure time = 2
-                space = 1
-            if space == 1 and self.checkFloat(t):  # e.g. img t
+        elif text[:3] =='img':
+            [format, t] = self.checkImgformat(text)
+            if format:  # format: img (+t)
                 BUSY = True
                 self.sysReturn(text, "v", True)
                 WorkingSTATUS = "Taking image... "
@@ -747,10 +753,6 @@ class Command(QWidget):
                 self.exposethread.finished.connect(self.threadFinish)
                 self.exposethread.finished.connect(self.imgFinish)
                 self.exposethread.start()
-
-            else:
-                self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   img(+ exposure_time)", "err")
 
         elif text == 'rixs' or text[:5] == 'rixs ':
             # All sequence below should be organized as function(text) which returns msg & log
@@ -1065,11 +1067,20 @@ class Command(QWidget):
                 self.xas.finished.connect(self.threadFinish)
                 self.xas.start()
 
-
         elif text == "macro":
             # popup window
             self.sysReturn(text, "v")
             self.popup.emit()
+
+        elif text[:3] in ["ags", "AGS"]:
+            if self.checkAGS(text):
+                self.sysReturn(text, 'v', True)
+                if text.split(' ')[1] == "on":
+                   self.enableags.emit(True) 
+                   self.sysReturn('AGS rotation enabled.')
+                else:
+                   self.enableags.emit(False)
+                   self.sysReturn('AGS rotation disabled.')
 
         elif text[:3] == "do ":
             space = text.count(' ')
@@ -1082,7 +1093,6 @@ class Command(QWidget):
                 self.sysReturn(text, 'iv')
                 self.sysReturn("input error. use:   do macroname","err")
 
-        # TODO: wait command test after Thread
         elif text[:5] == "wait ":
             BUSY = True
             space = text.count(' ')
@@ -1258,6 +1268,30 @@ class Command(QWidget):
             self.sysReturn(text,'iv')
             self.sysReturn('input error. Format: xas Ei Ef dE dt n','err')
             return False
+
+    def checkAGS(self, text):
+        sptext = text.split(' ')    
+        if len(sptext) != 2:
+            self.sysReturn('input error. Format: AGS on/off', 'err')
+            return False
+        if sptext[1] not in ['on', 'off']:
+            self.sysReturn('input error. Format: AGS on/off', 'err')
+            return False
+        return True
+    
+    def checkImgformat(self, text):
+        space = text.count(' ')
+        sptext = text.split(' ')
+        if space != 1:  
+            if text == 'img':
+                return [True, 2] # format: img, default t = 2.
+            self.sysReturn(text, 'iv')
+            self.sysReturn('input error. usage: img (+ exposure_time)', 'err')
+            return [False]
+        t= sptext[1]    
+        if self.checkFloat(t): 
+            return [True, t]     # format: img t
+        
 
         '''
         check function for Wait command
