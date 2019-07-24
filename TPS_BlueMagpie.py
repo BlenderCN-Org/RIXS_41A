@@ -1,4 +1,4 @@
-# Last edited:20190723 5pm
+# Last edited:20190724 1pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -378,6 +378,7 @@ class StatusWidget(QWidget):
         self.ags_flag = flag
         if flag:
             Device['tth'] = 1
+            pvl.caget('tth')
         else:
             Device['tth'] = 0
 
@@ -1967,6 +1968,8 @@ class Move(QThread):
                 pvl.ccd(p, v)
             elif p == 'thoffset':
                 pvl.thOffset(True, v)
+            elif p == 'tth':
+                self.tthRotation(v)
         else:
             if p != 'heater':
                 param[p] = v
@@ -2002,6 +2005,33 @@ class Move(QThread):
         print('motor : ({0}, {1})'.format(x_new,y_new))
         return (x_new, y_new)
 
+    def tthRotation(self, v):
+        # first check target chmbr position => calculate chmbr(tth)
+        # definition: 
+        #       delta tth = 10 degree, tth0 = 90
+        #       delta chmbr = 7.5 mm,  chmbr0(tth0) = 0 
+        # if > 3 mm (4 degree tth), run for loop for finite steps, else move tth only.
+        chmbr_target = (v-90)*0.75 
+        chmbr_position = pvl.caget('chmbr')
+        tth_position = pvl.caget('tth')
+        print("target chamber position:{}".format(chmbr_target))
+        step = (chmbr_target - chmbr_position)//3 # step > 0, moving positive; step <0, opposite direction. 
+        print("steps to take:{}".format(abs(step)))
+        if step != 0:
+            for i in range(1, abs(step)+1): # both moving in small steps before target
+                tth_step = tth_position + i*4 if (step > 0) else tth_position - i*4
+                chmbr_step = chmbr_position + i*3 if (step > 0) else tth_position - i*3
+                pvl.putVal('tth', tth_step)         # move tth first
+                self.moveCheck('tth', tth_step)
+                pvl.putVal('chmbr', chmbr_step)     # then move chmbr
+                self.moveCheck('chmbr', chmbr_step)
+        pvl.putVal('tth', v)         # target tth position
+        self.moveCheck('tth', v)
+
+
+                
+
+
     def moveCheck(self, p, v):
         t1 = time.time()
         while not pvl.moving(p):
@@ -2017,7 +2047,7 @@ class Move(QThread):
                 break
             if not pvl.moving(p):
                 time.sleep(0.2)
-                if p in ['th', 'det']: #for th, det PV.get() will not get correct number, need this to refresh
+                if p in ['th', 'det']: # for th, det PV.get() will not get correct number, need this to refresh
                    pvl.caget(p)
                 if (abs(pvl.getVal(p) - v) >= 0.02) and (p not in ['x','y','z']):
                     error_message = ("<font color=red>" + p + " not moving correctly, value: "

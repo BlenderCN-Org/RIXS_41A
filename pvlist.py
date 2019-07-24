@@ -132,5 +132,3 @@ class pvlist():
             self.THoffset = v
         else:
             return self.THoffset
-
-            
