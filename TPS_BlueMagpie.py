@@ -1,4 +1,4 @@
-# Last edited:20190725 11am
+# Last edited:20190725 2pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -10,7 +10,7 @@ import pandas as pd
 import datetime, re
 import pvlist
 import math
-from spike import spikeRemoval_1, low_pass_fft
+from spike_ver02 import spikeRemoval_1, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
 import login
@@ -38,7 +38,7 @@ Dir for datasaving and macro
 file_no = 0  # read file_no from exist log
 
 dir_date = datetime.datetime.today().strftime("%Y%m%d")
-dir_name = "project #0"
+dir_name = "project #2"
 current_path = os.getcwd()
 
 sla = '\\' if ('\\' in current_path) else '/'
@@ -189,6 +189,9 @@ def Read(p, form='.3f'):
         if real == 1 and p not in ['Tccd', 'I0',  'gain', 'Iph']:
             if pvl.moving(p):
                 string = '<font color=blue>' + string + '</font>'
+                if p =='tth':
+                    value = pvl.caget('tth')
+                    string = '<font color=blue>{}</font>'.format(format(value, '.1f') if value!= None else 'error')
 
     return string
 '''
@@ -369,9 +372,9 @@ class StatusWidget(QWidget):
 
     def agsMotion(self):     # display decoration for ags flag
         if self.ags_flag:
-            return ("enabled")
+            return ("<font color = green>enabled</font>")
         else:
-            return ("disabled")
+            return ("<font color = red>disabled</font>")
         
     def agsFlag(self, flag): # for command widget control display flag
         global Device
@@ -846,6 +849,7 @@ class Command(QWidget):
                                 self.sysReturn('mv {0} {1}'.format(p, v), "v", True)
                                 self.movethread = Move(p, float(v))  # check if finished or not
                                 self.movethread.msg.connect(self.sysReturn)
+                                self.movethread.errmsg.connect(self.sysReturn)
                                 self.movethread.finished.connect(self.threadFinish)
                                 self.movethread.start()
                         else:
@@ -860,6 +864,7 @@ class Command(QWidget):
             else:
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   mv parameter value", "err")
+
 
         elif text[:7] == 'heater ':
             space = text.count(' ')
@@ -1079,15 +1084,18 @@ class Command(QWidget):
             self.sysReturn(text, "v")
             self.popup.emit()
 
-        elif text[:3] in ["ags", "AGS"]:
+        elif text[:3] in ["air", "AIR"]:
             if self.checkAGS(text):
                 self.sysReturn(text, 'v', True)
                 if text.split(' ')[1] == "on":
                    self.enableags.emit(True) 
                    self.sysReturn('AGS rotation enabled.')
+                   pvl.putVal('air', 1)
+                   pvl.caget('tth')
                 else:
                    self.enableags.emit(False)
                    self.sysReturn('AGS rotation disabled.')
+                   pvl.putVal('air', 0)
 
         elif text[:3] == "do ":
             space = text.count(' ')
@@ -1929,6 +1937,7 @@ class Statupdate(QThread):
 
 class Move(QThread):
     msg = pyqtSignal(str)
+    errmsg = pyqtSignal(str,str)
     refresh = pyqtSignal()
 
     def __init__(self, p, v):
@@ -1972,15 +1981,15 @@ class Move(QThread):
             elif p == 'thoffset':
                 pvl.thOffset(True, v)
             elif p == 'tth':
-                pvl.putVal('air', 1)
-                time.sleep(0.5)
                 if pvl.caget('air') == 1:
                     self.tthRotation(v)
                 else:
-                    self.msg.emit('air not ready, failed to move tth')
+                    self.errmsg.emit('air not ready, failed to move tth', 'err')
         else:
             if p != 'heater':
                 param[p] = v
+            if p == 'tth':
+                self.errmsg.emit('air pressure is not on.','err')
         self.quit()
 
     def xyzMotor(self, p, v): # move with x, y, z with backlash
@@ -2013,30 +2022,32 @@ class Move(QThread):
         print('motor : ({0}, {1})'.format(x_new,y_new))
         return (x_new, y_new)
 
-    def tthRotation(self, v):
+    def tthRotation(self, tth):
         # first check target chmbr position => calculate chmbr(tth)
         # definition: 
         #       delta tth = 10 degree, tth0 = 90
         #       delta chmbr = 7.5 mm,  chmbr0(tth0) = 0 
         # if > 3 mm (4 degree tth), run for loop for finite steps, else move tth only.
-        chmbr_target = (v-90)*0.75 
+        chmbr_target = (tth-90)*0.75 # in units of mm
         chmbr_position = pvl.caget('chmbr')
         tth_position = pvl.caget('tth')
         self.msg.emit("target chamber position:{}".format(chmbr_target))
-        step = (chmbr_target - chmbr_position)//1 # step > 0, moving positive; step <0, opposite direction. 
+        distance = chmbr_target - chmbr_position
+        step = distance//1 if abs(distance) >= 1 else 0 # step > 0, moving positive; step <0, opposite direction.
         self.msg.emit("steps to take:{}".format(abs(step)))
         if step != 0:
-            for i in range(1, abs(step)+1): # both moving in small steps before target
-                tth_step = tth_position + i*1 if (step > 0) else tth_position - i*1
-                chmbr_step = chmbr_position + i*0.75 if (step > 0) else tth_position - i*0.75
+            for i in range(1, int(abs(step)+1)): # both moving in small steps before target
+                tth_step = tth_position + i if (step > 0) else (tth_position - i*1)
+                chmbr_step = chmbr_position + i*0.75 if (step > 0) else (tth_position - i*0.75)
                 pvl.putVal('tth', tth_step)         # move tth first
                 self.moveCheck('tth', tth_step)
                 self.msg.emit("{} moved to {}".format('tth', tth_step))
                 pvl.putVal('chmbr', chmbr_step)     # then move chmbr
                 self.moveCheck('chmbr', chmbr_step)
                 self.msg.emit("{} moved to {}".format('chmbr', chmbr_step))
-        pvl.putVal('tth', v)         # target tth position
-        self.moveCheck('tth', v)
+        pvl.putVal('tth', tth)         # target tth position
+        self.moveCheck('tth', tth)
+        pvl.caget('tth')
 
 
                 
