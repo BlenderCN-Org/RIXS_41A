@@ -15,7 +15,8 @@ class pvlist():
                        u="41a:hexapod:u", v="41a:hexapod:v", w="41a:hexapod:w", th="41a:sample:thr",
                        det="41a:sample:tthr", heater="41a:sample:heater", ta="41a:sample:tmp1", tb="41a:sample:tmp2",
                        I0="41a:sample:i0", Iph="41a:sample:phdi", Itey="41a:sample:TEY", Tccd="41a:ccd1:tmpr", gain="41a:ccd1:gain",
-                       ring="SR-DI-DCCT:BeamCurrent", chmbr="41a:sample:transr", tth="41a:agsm:tthr")
+                       ring="SR-DI-DCCT:BeamCurrent", chmbr="41a:sample:transr", tth="41a:agsm:tthr", 
+                       air="41a:agsm:airready", blink="41a:agsm:linkerready")
 
         #Get Value
         self.movingstat = dict(agm="41a:AGM:Energy.MOVN", ags="41a:AGS:Energy.MOVN", x="41a:RIXS:xyz:x:Moving",
@@ -28,7 +29,8 @@ class pvlist():
         self.putvalue = dict(agm="41a:AGM:Energy.VAL", ags="41a:AGS:Energy.VAL", x="41a:RIXS:xyz:xw",
                       y="41a:RIXS:xyz:yw", z="41a:RIXS:xyz:zw", hex_x="41a:hexapod:xw", hex_y="41a:hexapod:yw",
                        hex_z="41a:hexapod:zw", u="41a:hexapod:uw", v="41a:hexapod:vw", w="41a:hexapod:ww", th="41a:sample:thw",
-                       det="41a:sample:tthw", heater="41a:sample:heater", ta="41a:sample:tmp1w", chmbr="41a:sample:transw", tth="41a:agsm:tthw")
+                       det="41a:sample:tthw", heater="41a:sample:heater", ta="41a:sample:tmp1w", chmbr="41a:sample:transw", 
+                       tth="41a:agsm:tthw", air="41a:agsm:airon")
 
         self.put_xyz = dict(x="41a:RIXS:xyz:x:Move", y="41a:RIXS:xyz:y:Move", z="41a:RIXS:xyz:z:Move")
 

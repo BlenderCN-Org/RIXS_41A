@@ -1,4 +1,4 @@
-# Last edited:20190724 1pm
+# Last edited:20190725 11am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -91,7 +91,7 @@ param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
 # note: we can't use param_index0 = param_index
-non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', 'Itey', 'tb']
+non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', 'Itey', 'tb', 'chmbr']
 param_index0 = list(param_index)
 for elements in non_movables:
     param_index0.remove(elements)
@@ -105,8 +105,8 @@ param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], '
 # Individual device safety control
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "chmbr":1, "tth":0, "th": 1, "det": 1, 
-    "agm": 1, "ags": 1,
+    "chmbr":1, "th": 1, "det": 1, 
+    "agm": 1, "ags": 1, "tth":0, "tthr":1,
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
@@ -333,7 +333,7 @@ class StatusWidget(QWidget):
             time_text = ""
 
         parameter_text = (" AGM: " + Read('agm') + " eV<br>"
-                        " AGS: " + Read('ags') + " eV, tth = "+Read('tth')+" &#176; (rotation "+self.agsMotion()+") <br>"
+                        " AGS: " + Read('ags') + " eV, tth = "+Read('tth', '.1f')+" &#176; (rotation "+self.agsMotion()+") <br>"
                         " <br>"
                         " entrance slit   s1= " + Read('s1','int') + " &micro;m ; "
                         " exit slit   s2= " + Read('s2', 'int') + " &micro;m<br>"
@@ -369,9 +369,9 @@ class StatusWidget(QWidget):
 
     def agsMotion(self):     # display decoration for ags flag
         if self.ags_flag:
-            return ("<font color = green> ON </font>")
+            return ("enabled")
         else:
-            return ("<font color = red> OFF </font>")
+            return ("disabled")
         
     def agsFlag(self, flag): # for command widget control display flag
         global Device
@@ -434,7 +434,6 @@ class Command(QWidget):
         self.macro = None
         self.popup.connect(self.popupMacro)
         self.macrostat[str].connect(self.command_input.setText)
-        self.macrotimer = QTimer(self)
 
         #login related
         self.userpower = 0 # logout:0, normal:1, super:2
@@ -542,6 +541,7 @@ class Command(QWidget):
         self.macro = macro.MacroWindow(macro_dir)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.errorMsg.connect(self.sysReturn)
+        self.macro.windowclosed.connect(self.macroClosed)
         self.macrostarted.connect(self.macro.marcoStart)
         self.macro.show()
 
@@ -1135,6 +1135,9 @@ class Command(QWidget):
         BUSY = False
         WorkingSTATUS = ""
         CountDOWN = 0
+
+    def macroClosed(self):
+        self.macro = None
 
     def imgFinish(self):
         self.sysReturn("img taken (data not saved).")
@@ -1969,7 +1972,12 @@ class Move(QThread):
             elif p == 'thoffset':
                 pvl.thOffset(True, v)
             elif p == 'tth':
-                self.tthRotation(v)
+                pvl.putVal('air', 1)
+                time.sleep(0.5)
+                if pvl.caget('air') == 1:
+                    self.tthRotation(v)
+                else:
+                    self.msg.emit('air not ready, failed to move tth')
         else:
             if p != 'heater':
                 param[p] = v
@@ -2014,17 +2022,19 @@ class Move(QThread):
         chmbr_target = (v-90)*0.75 
         chmbr_position = pvl.caget('chmbr')
         tth_position = pvl.caget('tth')
-        print("target chamber position:{}".format(chmbr_target))
-        step = (chmbr_target - chmbr_position)//3 # step > 0, moving positive; step <0, opposite direction. 
-        print("steps to take:{}".format(abs(step)))
+        self.msg.emit("target chamber position:{}".format(chmbr_target))
+        step = (chmbr_target - chmbr_position)//1 # step > 0, moving positive; step <0, opposite direction. 
+        self.msg.emit("steps to take:{}".format(abs(step)))
         if step != 0:
             for i in range(1, abs(step)+1): # both moving in small steps before target
-                tth_step = tth_position + i*4 if (step > 0) else tth_position - i*4
-                chmbr_step = chmbr_position + i*3 if (step > 0) else tth_position - i*3
+                tth_step = tth_position + i*1 if (step > 0) else tth_position - i*1
+                chmbr_step = chmbr_position + i*0.75 if (step > 0) else tth_position - i*0.75
                 pvl.putVal('tth', tth_step)         # move tth first
                 self.moveCheck('tth', tth_step)
+                self.msg.emit("{} moved to {}".format('tth', tth_step))
                 pvl.putVal('chmbr', chmbr_step)     # then move chmbr
                 self.moveCheck('chmbr', chmbr_step)
+                self.msg.emit("{} moved to {}".format('chmbr', chmbr_step))
         pvl.putVal('tth', v)         # target tth position
         self.moveCheck('tth', v)
 

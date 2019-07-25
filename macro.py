@@ -8,6 +8,8 @@ import sys, os
 class MacroWindow(QWidget):
     errorMsg = pyqtSignal(str,str)
     macroMsg = pyqtSignal(str)
+    windowclosed = pyqtSignal()
+
     def __init__(self, directory):
         super().__init__()
         self.macro_running = False
@@ -180,6 +182,11 @@ class MacroWindow(QWidget):
         if macro_index < len(filelist):
             self.donetext.append(filelist[macro_index])
             self.jobdone.setText(''.join(self.donetext))
+    
+    def closeEvent(self, event):
+        self.windowclosed.emit()
+        event.accept()
+
 
 
 # test running independently
