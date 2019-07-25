@@ -39,7 +39,7 @@ class pvlist():
                       acqmode="41a:ccd1:acqmode", cooler="41a:ccd1:tmpw", accutype="41a:ccd1:imgtype", Tccd="41a:ccd1:tmpw",
                       image="41a:ccd1:image", accunum="41a:ccd1:accunum")
 
-        self.stop = dict(x="41a:RIXS:xyz:x:Stop", y="41a:RIXS:xyz:y:Stop", z="41a:RIXS:xyz:z:Stop", hex_x="41a:hexapod:xs",
+        self.stop = dict(agm="41a:AGM:Energy.STOP", ags="41a:AGS:Energy.STOP", x="41a:RIXS:xyz:x:Stop", y="41a:RIXS:xyz:y:Stop", z="41a:RIXS:xyz:z:Stop", hex_x="41a:hexapod:xs",
                     hex_y="41a:hexapod:ys", hex_z="41a:hexapod:zs", u="41a:hexapod:us", v="41a:hexapod:vs",
                     w="41a:hexapod:ws", th="41a:sample:ths", det="41a:sample:tths", chmbr="41a:sample:transs", tth="41a:agsm:tths")
 
@@ -99,7 +99,7 @@ class pvlist():
             print('{0} is already at position :{1},  move aborted.'.format(p, value))
 
     def moving(self, p):
-        if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'det', 'agm', 'ags', 'chmbr']:
+        if p in ['x', 'y', 'z', 'u', 'v', 'w', 'th', 'det', 'agm', 'ags', 'chmbr','tth']:
             if self.movStat(p) == 1:  # 1: moving, 0: stop
                 return True
             else:  # including gain
@@ -123,11 +123,9 @@ class pvlist():
         self.pv_list[index] = PV(self.reading[p])
 
     def stopMove(self, p):
-        try:
-            e.caput(stop[p],1)
+        if p in ['x', 'y', 'z', 'th', 'det', 'tth', 'chmbr', 'agm', 'ags']:
+            e.caput(self.stop[p],1)
             print('stop signal emitted')
-        except:
-            print('not stoppable parameter.')
 
     def thOffset(self, flag = False, v= 0):
         if flag:

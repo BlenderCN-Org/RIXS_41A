@@ -1,4 +1,4 @@
-# Last edited:20190725 2pm
+# Last edited:20190725 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -110,7 +110,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1, "test":1
+    "thoffset":1 , "Iring":1, "test":0
 })
 
 
@@ -442,6 +442,10 @@ class Command(QWidget):
         self.userpower = 0 # logout:0, normal:1, super:2
         self.login = login.Login()
 
+        #tth control
+        self.chamberFlag = True
+        self.airFlag = False
+
         '''
         History
          - callable (command: h)
@@ -452,6 +456,7 @@ class Command(QWidget):
         # modify counting mechanism => get index directly => check pandas document
         self.history_loc = 0
         self.logname = str(dir_date) + "_commandlog"
+
         '''
         Full log (for KeyPressEvent function and file number)
          - inherit all log from the same day.
@@ -847,7 +852,7 @@ class Command(QWidget):
                                 self.sysReturn(self.check_param_range(p, v), 'err')
                             else:
                                 self.sysReturn('mv {0} {1}'.format(p, v), "v", True)
-                                self.movethread = Move(p, float(v))  # check if finished or not
+                                self.movethread = Move(p, float(v),  self.chamberFlag)  # check if finished or not
                                 self.movethread.msg.connect(self.sysReturn)
                                 self.movethread.errmsg.connect(self.sysReturn)
                                 self.movethread.finished.connect(self.threadFinish)
@@ -1031,7 +1036,7 @@ class Command(QWidget):
                     param['f'] = file_no
                     start_time = datetime.datetime.now()
                     self.sysReturn('Scan %s begins at %s'%(file_no, start_time.strftime("%c")))
-                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False)
+                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False, self.chamberFlag)
                     self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
                     self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.scanthread.set_data.connect(spectrum_global.liveplot)
@@ -1940,10 +1945,11 @@ class Move(QThread):
     errmsg = pyqtSignal(str,str)
     refresh = pyqtSignal()
 
-    def __init__(self, p, v):
+    def __init__(self, p, v, chamber=True):
         super(Move, self).__init__()
         self.p = p
         self.v = v
+        self.chamber = chamber # for tth enable/disable chamber cooperation
         # list all write PVs and call later
 
     def run(self):
@@ -1982,7 +1988,7 @@ class Move(QThread):
                 pvl.thOffset(True, v)
             elif p == 'tth':
                 if pvl.caget('air') == 1:
-                    self.tthRotation(v)
+                    self.tthRotation(v, self.chamber)
                 else:
                     self.errmsg.emit('air not ready, failed to move tth', 'err')
         else:
@@ -2001,10 +2007,12 @@ class Move(QThread):
             if pvl.getVal(p) > v:
                 print('target position {0} smaller than current position {1}, considering backlash'
                       .format(pvl.getVal(p), v))
-                pvl.putVal(p, v - 500)  # considering backlash, put v-500 first
-                self.moveCheck(p, v - 500)
-            pvl.putVal(p, v)
-            self.moveCheck(p, v)
+                if not ABORT:
+                    pvl.putVal(p, v - 500)  # considering backlash, put v-500 first
+                    self.moveCheck(p, v - 500)
+            if not ABORT:
+                pvl.putVal(p, v)
+                self.moveCheck(p, v)
         else:
             print('{0} is close to target :{1},  move aborted.'.format(p, v))
 
@@ -2022,7 +2030,7 @@ class Move(QThread):
         print('motor : ({0}, {1})'.format(x_new,y_new))
         return (x_new, y_new)
 
-    def tthRotation(self, tth):
+    def tthRotation(self, tth, chamber):
         # first check target chmbr position => calculate chmbr(tth)
         # definition: 
         #       delta tth = 10 degree, tth0 = 90
@@ -2037,38 +2045,40 @@ class Move(QThread):
         self.msg.emit("steps to take:{}".format(abs(step)))
         if step != 0:
             for i in range(1, int(abs(step)+1)): # both moving in small steps before target
-                tth_step = tth_position + i if (step > 0) else (tth_position - i*1)
-                chmbr_step = chmbr_position + i*0.75 if (step > 0) else (tth_position - i*0.75)
-                pvl.putVal('tth', tth_step)         # move tth first
-                self.moveCheck('tth', tth_step)
-                self.msg.emit("{} moved to {}".format('tth', tth_step))
-                pvl.putVal('chmbr', chmbr_step)     # then move chmbr
-                self.moveCheck('chmbr', chmbr_step)
-                self.msg.emit("{} moved to {}".format('chmbr', chmbr_step))
+                if not ABORT:
+                    tth_step = tth_position + i if (step > 0) else (tth_position - i*1)
+                    chmbr_step = chmbr_position + i*0.75 if (step > 0) else (chmbr_position - i*0.75)
+                    pvl.putVal('tth', tth_step)         # move tth first
+                    self.moveCheck('tth', tth_step)
+                    self.msg.emit("{} moved to {}".format('tth', tth_step))
+                    if not ABORT:
+                        if chamber:
+                            pvl.putVal('chmbr', chmbr_step)     # then move chmbr
+                            self.moveCheck('chmbr', chmbr_step)
+                            self.msg.emit("{} moved to {}".format('chmbr', chmbr_step))
         pvl.putVal('tth', tth)         # target tth position
         self.moveCheck('tth', tth)
         pvl.caget('tth')
-
-
-                
-
 
     def moveCheck(self, p, v):
         t1 = time.time()
         while not pvl.moving(p):
             time.sleep(0.2)
             if pvl.moving(p) or (time.time() - t1) >= 1 or ABORT:
+                if ABORT:
+                    if p in ['x', 'y', 'z', 'th', 'det', 'tth', 'chmbr', 'agm', 'ags']:
+                        pvl.stopMove(p)
                 break
         print('{0} started to move'.format(p))
         time.sleep(0.1)
         while pvl.moving(p) and not ABORT:
             if ABORT:
-                if p in ['x','y','z','th','det']:
+                if p in ['x','y','z','th','det','tth','chmbr','agm','ags']:
                     pvl.stopMove(p)
                 break
             if not pvl.moving(p):
                 time.sleep(0.2)
-                if p in ['th', 'det']: # for th, det PV.get() will not get correct number, need this to refresh
+                if p in ['th', 'det', 'tth']: # for th, det PV.get() will not get correct number, need this to refresh
                    pvl.caget(p)
                 if (abs(pvl.getVal(p) - v) >= 0.02) and (p not in ['x','y','z']):
                     error_message = ("<font color=red>" + p + " not moving correctly, value: "
@@ -2084,14 +2094,15 @@ class Scan(QThread):
     data_set = pyqtSignal(list, list) #for xas plot collection
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas):
+    def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas, chamberFlag=True):
         super(Scan, self).__init__()
         self.plot, self.scan_param, self.step = plot, scan_param, step
         self.x1, self.x2, self.dwell, self.n = x1, x2, dwell, n
-        self.start_point = Move(scan_param, x1)
+        self.start_point = Move(scan_param, x1, chamberFlag)
         self.data_matrix = pd.DataFrame(columns=param_index)
         self.spec_number = N
         self.xas = xas # flag for file saving and other messages
+        self.chamberFlag = chamberFlag
 
     def run(self):
         global param, WorkingSTATUS, BUSY, CountDOWN
@@ -2139,7 +2150,7 @@ class Scan(QThread):
             Set scanning parameters
             '''
             scan_x.append(x1 + i * step)
-            self.WorkerThread = Move(scan_param, scan_x[i])
+            self.WorkerThread = Move(scan_param, scan_x[i], self.chamberFlag)
             self.WorkerThread.start()
             self.WorkerThread.wait()  # wait move finish
             '''
@@ -2154,6 +2165,7 @@ class Scan(QThread):
                     for i in range(len(plot)):
                         value = get_param(plot[i])
                         raw_array = np.append(raw_array, value)
+            #get CCD data if 'ccd' in plot
 
             current_param = pd.Series(param)  # generate series
 
@@ -2170,6 +2182,7 @@ class Scan(QThread):
 
             current_param[scan_param] = get_param(scan_param) # for datasaving
             current_param['t'] = round(loop_time, 2)
+
             self.data_matrix.loc[len(self.data_matrix), :] = current_param.tolist()  # appending param to data_matrix
             '''
             plot from data_matrix
@@ -2222,6 +2235,9 @@ class Scan(QThread):
     def getHeader(self, name):
         header = "IGOR\r\nWAVES/D {}\r\nBEGIN\r\n".format(name)
         return header
+
+    def ccdSum(self):
+        pass
 
 class Tscan(QThread):
     setplot = pyqtSignal(str, float, int)
