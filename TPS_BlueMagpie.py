@@ -189,8 +189,8 @@ def Read(p, form='.3f'):
         if real == 1 and p not in ['Tccd', 'I0',  'gain', 'Iph']:
             if pvl.moving(p):
                 string = '<font color=blue>' + string + '</font>'
-                if p =='tth':
-                    value = pvl.caget('tth')
+                if p in ['th' , 'tth']:
+                    value = pvl.caget(p)
                     string = '<font color=blue>{}</font>'.format(format(value, '.1f') if value!= None else 'error')
 
     return string
