@@ -1,4 +1,4 @@
-# Last edited:20190726 4pm
+# Last edited:20190726 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -10,7 +10,7 @@ import pandas as pd
 import datetime, re
 import pvlist
 import math
-from spike_ver02 import spikeRemoval_1, low_pass_fft
+from spike import spikeRemoval, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
 import login
@@ -283,6 +283,7 @@ class Panel(QWidget):
         command_widget.enableags.connect(status_widget.agsFlag)
         image_widget.setrixsdata.connect(spectrum_widget.setRIXSdata)
         image_widget.errmsg.connect(command_widget.sysReturn)
+        image_widget.ccdsum.connect(spectrum_widget.ccdSum)
 
         self.bar_update = Barupdate()  # bar 0.5 sec
         self.bar_update.refresh.connect(status_global.show_bar)
@@ -778,7 +779,7 @@ class Command(QWidget):
                 WorkingSTATUS = "Taking image... "
                 CountDOWN = float(t) + 3.5
                 pvl.ccd("exposure", t)
-                self.exposethread = Expose(float(t), 0)
+                self.exposethread = Expose(float(t), show=True)
                 self.exposethread.cmd_msg.connect(self.sysReturn)
                 self.exposethread.get.connect(img_global.getData)
                 self.exposethread.show.connect(img_global.showImg)
@@ -947,7 +948,7 @@ class Command(QWidget):
             space, sptext = text.count(' '), text.split(' ')
             if space == 2:
                 p, v = sptext[1], sptext[2]
-                if p in ['x1', 'x2']:
+                if p in ['x1', 'x2', 'y1', 'y2']:
                     if self.checkInt(v) and 1023 >= int(v) >= 0:
                         self.setfactor.emit(str(p), int(v))
                         self.sysReturn(text, "v", True)
@@ -963,10 +964,10 @@ class Command(QWidget):
 
                 else:
                     self.sysReturn(text, "iv")
-                    self.sysReturn("invalid parameter.  try: x1/x2/d1/d2/sp", "err")
+                    self.sysReturn("invalid parameter.  try: x1/x2/y1/y2/d1/d2/sp", "err")
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   spec x1/x2/d1/d2/sp value", "err")
+                self.sysReturn("input error. use:   spec x1/x2/y1/y2/d1/d2/sp value", "err")
 
         elif text[:5] == 'bkrm ':
             space, sptext = text.count(' '), text.split(' ')
@@ -1436,6 +1437,7 @@ class Command(QWidget):
 class ImageWidget(QWidget):
     setrixsdata = pyqtSignal(np.ndarray, bool, bool)
     errmsg = pyqtSignal(str, str)
+    ccdsum = pyqtSignal(np.ndarray)
 
     def __init__(self, parent=None):
         super(ImageWidget, self).__init__(parent=parent)
@@ -1488,6 +1490,8 @@ class ImageWidget(QWidget):
         self.x2Line = pg.InfiniteLine(angle=90, pen=pg.mkPen('r', width=0.5), movable=False)
         plt.addItem(self.x2Line, ignoreBounds=True)
         self.x2Line.setPos(2)
+        self.x1 = None
+        self.x2 = None
 
         def mouseMoved(pos):
             data = self.imv.image
@@ -1639,8 +1643,16 @@ class ImageWidget(QWidget):
         self.hLine.hide()
 
     def setXRangeVLines(self, x1, x2):
+        self.x1 = x1
+        self.x2 = x2
         self.x1Line.setPos(x1)
         self.x2Line.setPos(x2 + 1)  # right boundary
+
+    def ccdSum(self):
+        data = np.copy(self.imgdata)
+        self.ccdsum.emit(data)
+        print('data sent to ccdSum')
+
 
 
 class SpectrumWidget(QWidget):
@@ -1650,6 +1662,7 @@ class SpectrumWidget(QWidget):
     showimg = pyqtSignal(np.ndarray, bool)
     saveRef = pyqtSignal()
     setx1x2 = pyqtSignal(int, int)
+
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -1680,6 +1693,7 @@ class SpectrumWidget(QWidget):
         self.d2 = 200
         self.gfactor = 40  # gaussian factor
         self.x1, self.x2 = 0, 1023
+        self.y1, self.y2 = 0, 2047 
         self.fmax, self.step = 0.15, 1.0
         self.fft = False
         self.analyze = False  # flag: False = scan/tscan/xas, True = rixs/load
@@ -1831,8 +1845,8 @@ class SpectrumWidget(QWidget):
         # ===== remove spike ======
         if self.spikeremove:
             if self.spikefactor >= 1.05:
-                data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor)  # save setref 2d image file
-                # data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
+                #data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor)  # save setref 2d image file
+                data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1', 'err')
         # ===== remove background ======
@@ -1916,8 +1930,8 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval_1(self.data, 0, 1023, 3)
-                # data = spikeRemoval(self.data, 3)
+                # data = spikeRemoval_1(self.data, 0, 1023, 3)
+                data = spikeRemoval(self.data, 3)
                 self.ref_2d = gaussian_filter(data, sigma=self.gfactor)
                 print('bkgd')
                 print(self.ref_2d)
@@ -1935,6 +1949,10 @@ class SpectrumWidget(QWidget):
             self.x1 = v
         elif p == 'x2':
             self.x2 = v
+        elif p == 'y1':
+            self.y1 = v
+        elif p == 'y2':
+            self.y2 = v
         elif p == 'sp':
             self.spikefactor = v
         elif p == 'spike':
@@ -1985,6 +2003,12 @@ class SpectrumWidget(QWidget):
         self.setFactor('spike', False)
         self.setFactor('bkrm', False)
         self.setFactor('d', False)
+
+    def ccdSum(self, data):
+        sum_data = np.sum(data[self.x1:self.x2, self.y1:self.y2])
+        param['ccd'] = sum_data
+        print('sum data = ', sum_data)
+        
 
 
 class Barupdate(QThread):
@@ -2190,6 +2214,7 @@ class Scan(QThread):
         self.spec_number = N
         self.xas = xas  # flag for file saving and other messages
         self.chamberFlag = chamberFlag
+        self.ccd = True if ('ccd' in plot) else False
 
     def run(self):
         global param, WorkingSTATUS, BUSY, CountDOWN
@@ -2243,16 +2268,26 @@ class Scan(QThread):
             '''
             Data collection
             '''
+            # CCD Exposure if 'ccd' in plot
+            if self.ccd:
+                self.expose = Expose(float(dwell))
+                self.expose.cmd_msg.connect(cmd_global.sysReturn)
+                self.expose.get.connect(img_global.getData)
+                self.expose.sum.connect(img_global.ccdSum)
+                self.expose.start()
+
             t0 = time.time()
             raw_array = np.array([])
             while (time.time() - t0) <= dwell:  # while loop to get the data within dwell time
                 if (time.time() - t0) % 0.1 <= 0.0001:
                     # raw_array = np.append(raw_array, pvl.getVal('Iph'))   # Read Iph data through epics
-
                     for i in range(len(plot)):
                         value = get_param(plot[i])
                         raw_array = np.append(raw_array, value)
-            # get CCD data if 'ccd' in plot
+
+            # Ensure dwell time ccd finished exposure
+            if self.ccd:
+                self.expose.wait()
 
             current_param = pd.Series(param)  # generate series
 
@@ -2267,8 +2302,11 @@ class Scan(QThread):
                 data_ave = np.mean(data_array)
                 current_param[plot[i]] = float(data_ave)  # replace param['Iph'] by averaged data
 
+            # organizing data row
             current_param[scan_param] = get_param(scan_param)  # for datasaving
             current_param['t'] = round(loop_time, 2)
+            if self.ccd:
+                current_param['ccd'] = param['ccd']
 
             self.data_matrix.loc[len(self.data_matrix), :] = current_param.tolist()  # appending param to data_matrix
             '''
@@ -2322,9 +2360,6 @@ class Scan(QThread):
     def getHeader(self, name):
         header = "IGOR\r\nWAVES/D {}\r\nBEGIN\r\n".format(name)
         return header
-
-    def ccdSum(self):
-        pass
 
 
 class Tscan(QThread):
@@ -2521,17 +2556,20 @@ class Rixs(QThread):
 
 class Expose(QThread):
     get = pyqtSignal()
+    sum = pyqtSignal()
     rixs = pyqtSignal(bool, int)
     show = pyqtSignal()
     save = pyqtSignal(int)
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self, t, n, plot=False):
+    def __init__(self, t, n=0, plot=False, show=False):
         super(Expose, self).__init__()
         self.t = t
         self.n = n
         self.plot = plot
+        self.show = show
         self.t1 = time.time()
+        
 
     def run(self):
         global WorkingSTATUS
@@ -2540,12 +2578,16 @@ class Expose(QThread):
             self.waitExposure()
             dt = round(time.time() - self.t1, 3)
             print('image taken, time span in seconds= %s' % dt)
-            if self.plot:
-                self.rixs.emit(self.plot, self.n)  # get data, if self.plot = True, also plot in Spectrum Widget.
-                # self.save[int].emit(self.n)
+            if self.plot:         # for rixs command
+                self.rixs.emit(self.plot, self.n) 
+            elif self.show:
+                self.get.emit()
+                self.show.emit()  # for img command
             else:
                 self.get.emit()
-                self.show.emit()  # show image
+                print('get')
+                self.sum.emit()   # for ccd sum (scan)
+                print('sum')
 
     def startExposure(self):
         if checkSafe('ccd'):
