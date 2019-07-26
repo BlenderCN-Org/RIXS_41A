@@ -10,7 +10,7 @@ import pandas as pd
 import datetime, re
 import pvlist
 import math
-from spike import spikeRemoval, low_pass_fft
+from spike_ver02 import spikeRemoval_1, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
 import login
@@ -782,7 +782,7 @@ class Command(QWidget):
                 self.exposethread = Expose(float(t), show=True)
                 self.exposethread.cmd_msg.connect(self.sysReturn)
                 self.exposethread.get.connect(img_global.getData)
-                self.exposethread.show.connect(img_global.showImg)
+                self.exposethread.showimg.connect(img_global.showImg)
                 self.exposethread.finished.connect(self.threadFinish)
                 self.exposethread.finished.connect(self.imgFinish)
                 self.exposethread.start()
@@ -1654,7 +1654,6 @@ class ImageWidget(QWidget):
         print('data sent to ccdSum')
 
 
-
 class SpectrumWidget(QWidget):
     errmsg = pyqtSignal(str, str)
     msg = pyqtSignal(str)
@@ -1662,7 +1661,6 @@ class SpectrumWidget(QWidget):
     showimg = pyqtSignal(np.ndarray, bool)
     saveRef = pyqtSignal()
     setx1x2 = pyqtSignal(int, int)
-
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -1693,7 +1691,7 @@ class SpectrumWidget(QWidget):
         self.d2 = 200
         self.gfactor = 40  # gaussian factor
         self.x1, self.x2 = 0, 1023
-        self.y1, self.y2 = 0, 2047 
+        self.y1, self.y2 = 0, 2047
         self.fmax, self.step = 0.15, 1.0
         self.fft = False
         self.analyze = False  # flag: False = scan/tscan/xas, True = rixs/load
@@ -1845,8 +1843,8 @@ class SpectrumWidget(QWidget):
         # ===== remove spike ======
         if self.spikeremove:
             if self.spikefactor >= 1.05:
-                #data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor)  # save setref 2d image file
-                data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
+                data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor)  # save setref 2d image file
+                #data = spikeRemoval(data, self.spikefactor)  # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1', 'err')
         # ===== remove background ======
@@ -1930,8 +1928,8 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                # data = spikeRemoval_1(self.data, 0, 1023, 3)
-                data = spikeRemoval(self.data, 3)
+                data = spikeRemoval_1(self.data, 0, 1023, 3)
+                #data = spikeRemoval(self.data, 3)
                 self.ref_2d = gaussian_filter(data, sigma=self.gfactor)
                 print('bkgd')
                 print(self.ref_2d)
@@ -2008,7 +2006,6 @@ class SpectrumWidget(QWidget):
         sum_data = np.sum(data[self.x1:self.x2, self.y1:self.y2])
         param['ccd'] = sum_data
         print('sum data = ', sum_data)
-        
 
 
 class Barupdate(QThread):
@@ -2538,7 +2535,6 @@ class Rixs(QThread):
             self.exposethread = Expose(self.t, self.img_number, True)
             self.exposethread.cmd_msg.connect(cmd_global.sysReturn)
             self.exposethread.rixs.connect(img_global.getData)
-            self.exposethread.show.connect(img_global.showImg)
             self.exposethread.save[int].connect(img_global.saveImg)
             self.exposethread.start()
             self.exposethread.wait()
@@ -2558,7 +2554,7 @@ class Expose(QThread):
     get = pyqtSignal()
     sum = pyqtSignal()
     rixs = pyqtSignal(bool, int)
-    show = pyqtSignal()
+    showimg = pyqtSignal()
     save = pyqtSignal(int)
     cmd_msg = pyqtSignal(str)
 
@@ -2569,7 +2565,6 @@ class Expose(QThread):
         self.plot = plot
         self.show = show
         self.t1 = time.time()
-        
 
     def run(self):
         global WorkingSTATUS
@@ -2578,15 +2573,15 @@ class Expose(QThread):
             self.waitExposure()
             dt = round(time.time() - self.t1, 3)
             print('image taken, time span in seconds= %s' % dt)
-            if self.plot:         # for rixs command
-                self.rixs.emit(self.plot, self.n) 
-            elif self.show:
+            if self.plot:  # for rixs command
+                self.rixs.emit(self.plot, self.n)
+            if self.show:
                 self.get.emit()
-                self.show.emit()  # for img command
-            else:
+                self.showimg.emit()  # for img command
+            if not self.plot and not self.show:
                 self.get.emit()
                 print('get')
-                self.sum.emit()   # for ccd sum (scan)
+                self.sum.emit()  # for ccd sum (scan)
                 print('sum')
 
     def startExposure(self):
