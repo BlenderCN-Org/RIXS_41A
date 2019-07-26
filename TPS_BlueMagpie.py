@@ -15,7 +15,6 @@ from scipy.ndimage import gaussian_filter
 import macro
 import login
 
-
 pvl = pvlist.pvlist()
 
 # Global for connection
@@ -85,8 +84,8 @@ CountDOWN = 0
 # TODO: img?
 param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'det', 'ta', 'tb', 'I0', 'Iph', 'Itey',
                'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset', 'chmbr', 'tth']
-param_value = [file_no, 0., 2.0, 50., 710.,  720.,  0.,  0.,  0.,    0,    90,  20.,  30.,   0.,    0.,      0,
-                      0,     25,         0,     0,     10,          0,       0,    90]
+param_value = [file_no, 0., 2.0, 50., 710., 720., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0,
+               0, 25, 0, 0, 10, 0, 0, 90]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
@@ -98,24 +97,24 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'det', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [400, 1700],'ags': [400, 1200], 'x': [-7, 7], 'y': [-5, 5], 'z': [-12, 5],
+param_range = pd.Series({'agm': [400, 1700], 'ags': [400, 1200], 'x': [-7, 7], 'y': [-5, 5], 'z': [-12, 5],
                          'th': [-5, 218], 'det': [-37, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
-                         'gain': [0, 100], 'thoffset':[-70, 70], 'chmbr':[-37.5, 45], 'tth':[40, 150]})
+                         'gain': [0, 100], 'thoffset': [-70, 70], 'chmbr': [-37.5, 45], 'tth': [40, 150]})
 
 # Individual device safety control
 Device = pd.Series({
-    "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "chmbr":1, "th": 1, "det": 1,
-    "agm": 1, "ags": 1, "tth":0, "tthr":1,
-    "ta": 1, "tb": 1, "heater":1, 
+    "hexapod": 0, "ccd": 1, "xyzstage": 1,
+    "chmbr": 1, "th": 1, "det": 1,
+    "agm": 1, "ags": 1, "tth": 0, "tthr": 1,
+    "ta": 1, "tb": 1, "heater": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset":1 , "Iring":1, "test":0
+    "thoffset": 1, "Iring": 1, "test": 0
 })
 
 
 def checkSafe(p):  # Individual device safe check
-    if Device["test"] ==0:
+    if Device["test"] == 0:
         if p in ['x', 'y', 'z']:
             if Device["xyzstage"] == 1:
                 return True
@@ -129,19 +128,21 @@ def checkSafe(p):  # Individual device safe check
     else:
         return False
 
-if Device['ccd']==1 and Device['test'] ==0:
-    pvl.ccd("acqmode", 2)   # 0: video; 1: single (obsolete); 2: accumulation
-    pvl.ccd("accunum", 1)   # accunum to 1 
+
+if Device['ccd'] == 1 and Device['test'] == 0:
+    pvl.ccd("acqmode", 2)  # 0: video; 1: single (obsolete); 2: accumulation
+    pvl.ccd("accunum", 1)  # accunum to 1
     pvl.ccd("accutype", 0)  # 0: raw image; 2: differnece image
 
-#TODO: restart PV while get None
-#refresh param(pd.Series)
+
+# TODO: restart PV while get None
+# refresh param(pd.Series)
 def get_param(p):
     global param, Device
     if checkSafe(p):
         v = pvl.getVal(p)
-        if v == None: # turn off safe if get None by related PV
-            if p in ['x','y','z']:
+        if v == None:  # turn off safe if get None by related PV
+            if p in ['x', 'y', 'z']:
                 Device["xyzstage"] = 0
             elif p in ["ccd", "gain", "Tccd"]:
                 Device['ccd'] = 0
@@ -160,12 +161,14 @@ def get_param(p):
         v = param[p]
     return v
 
+
 def convertSeconds(seconds):
     m = str(int(seconds // 60)) + ' mins '
     s = str(int(seconds % 60)) + ' secs'
     if int(seconds // 60) == 0: m = ""
     time_stg = m + s
     return time_stg
+
 
 def Read(p, form='.3f'):
     # get value by param_list index
@@ -184,25 +187,29 @@ def Read(p, form='.3f'):
             string = str(format(value, form))
         # real marked blue
         if real == 0: string = '<font color=gray>' + string + '</font>'
-        if real == 1 and p not in ['Tccd', 'I0',  'gain', 'Iph']:
+        if real == 1 and p not in ['Tccd', 'I0', 'gain', 'Iph']:
             if pvl.moving(p):
                 string = '<font color=blue>' + string + '</font>'
-                if p in ['th' , 'tth']:
+                if p in ['th', 'tth']:
                     value = pvl.caget(p)
-                    string = '<font color=blue>{}</font>'.format(format(value, '.1f') if value!= None else 'error')
+                    string = '<font color=blue>{}</font>'.format(format(value, '.1f') if value != None else 'error')
 
     return string
+
+
 '''
 Start GUI construction
 '''
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
         self.setFixedSize(1300, 780)
-        #self.setFixedSize(1300*1.6, 780*1.6)
+        # self.setFixedSize(1300*1.6, 780*1.6)
         self.setWindowTitle('TPS blue magpie')
 
-        exitAct = QAction(QIcon('exit.png'), ' &Quit',  self)
+        exitAct = QAction(QIcon('exit.png'), ' &Quit', self)
         exitAct.setShortcut('Ctrl+Q')
         exitAct.setStatusTip('Exit application')
         exitAct.triggered.connect(self.quitApplication)
@@ -215,7 +222,7 @@ class MainWindow(QMainWindow):
         # Import panel
         self.panel_widget = Panel(self)
         self.setCentralWidget(self.panel_widget)
-        #self.setFixedSize(self.layout)
+        # self.setFixedSize(self.layout)
         self.show()
 
     def closeEvent(self, event):
@@ -224,8 +231,9 @@ class MainWindow(QMainWindow):
 
     def quitApplication(self):
         global cmd_global
-        cmd_global.fullLog("APP_CLOSED") #using space will cause pd reading problem
+        cmd_global.fullLog("APP_CLOSED")  # using space will cause pd reading problem
         qApp.quit()
+
 
 class Panel(QWidget):
     def __init__(self, parent):
@@ -290,7 +298,7 @@ class Panel(QWidget):
 class StatusWidget(QWidget):
     def __init__(self, parent=None):
         super(StatusWidget, self).__init__(parent=parent)
-        self.today = datetime.date.today() #for date change detection
+        self.today = datetime.date.today()  # for date change detection
         self.status_bar = QLabel(self)
         self.ring_current = QLabel(self)
         self.ring_current.setFont(QFont("UbuntuMono", 10))
@@ -317,9 +325,9 @@ class StatusWidget(QWidget):
         self.status_bar.setText("{}  Project #0;   User: {};   file number: {};"
                                 .format(time_str, self._username, int(file_no)))
         self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format
-                                  (pvl.getVal('ring') if Device['Iring']==1 and Device['test']==0 else 0))
+                                  (pvl.getVal('ring') if Device['Iring'] == 1 and Device['test'] == 0 else 0))
 
-    def show_text(self):    # called every 1 sec
+    def show_text(self):  # called every 1 sec
         if CountDOWN > 1:
             if CountDOWN != self.t0:  # reset t0
                 self.t0 = float(CountDOWN)  # reference
@@ -334,47 +342,56 @@ class StatusWidget(QWidget):
             time_text = ""
 
         parameter_text = (" AGM: " + Read('agm') + " eV<br>"
-                        " AGS: " + Read('ags') + " eV, tth = "+Read('tth', '.1f')+" &#176; (rotation "+self.agsMotion()+") <br>"
-                        " <br>"
-                        " entrance slit   s1= " + Read('s1','int') + " &micro;m ; "
-                        " exit slit   s2= " + Read('s2', 'int') + " &micro;m<br>"
-                        " shutter: " + Read('shutter', 'switch') + "<br>"
-                        " <br>"
-                        " sample: (chamber position = "+Read('chmbr')+" mm) <br>"
-                        " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm,  "
-                        " thoffset = " + str(pvl.thOffset()) + "&#176; <br>"
-                        " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
-                        " T<sub>b</sub> = " + Read('tb', '.2f') + " K<br> <br>"
-                        " photodiode angle = " + Read('det', '.2f') + "&#176;<br> <br>"
-                        " I<sub>0</sub> = " + Read('I0', 'current') + " Amp,"
-                        " I<sub>ph</sub> = " + Read('Iph', 'current') + " Amp,"
-                        " I<sub>TEY</sub> = " + Read('Itey', 'current') + " Amp <br> <br>"
-                        " RIXS imager:  <br>"
-                        " temperature = " + Read('Tccd','.1f') + " \u2103" + ",   gain = " + Read('gain', 'int') + " <br> <br>")
+                                                   " AGS: " + Read('ags') + " eV, tth = " + Read('tth',
+                                                                                                 '.1f') + " &#176; (rotation " + self.agsMotion() + ") <br>"
+                                                                                                                                                    " <br>"
+                                                                                                                                                    " entrance slit   s1= " + Read(
+            's1', 'int') + " &micro;m ; "
+                           " exit slit   s2= " + Read('s2', 'int') + " &micro;m<br>"
+                                                                     " shutter: " + Read('shutter', 'switch') + "<br>"
+                                                                                                                " <br>"
+                                                                                                                " sample: (chamber position = " + Read(
+            'chmbr') + " mm) <br>"
+                       " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm,  "
+                                                                                                 " thoffset = " + str(
+            pvl.thOffset()) + "&#176; <br>"
+                              " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
+                                                                                                               " T<sub>b</sub> = " + Read(
+            'tb', '.2f') + " K<br> <br>"
+                           " photodiode angle = " + Read('det', '.2f') + "&#176;<br> <br>"
+                                                                         " I<sub>0</sub> = " + Read('I0',
+                                                                                                    'current') + " Amp,"
+                                                                                                                 " I<sub>ph</sub> = " + Read(
+            'Iph', 'current') + " Amp,"
+                                " I<sub>TEY</sub> = " + Read('Itey', 'current') + " Amp <br> <br>"
+                                                                                  " RIXS imager:  <br>"
+                                                                                  " temperature = " + Read('Tccd',
+                                                                                                           '.1f') + " \u2103" + ",   gain = " + Read(
+            'gain', 'int') + " <br> <br>")
         status_text = "%s <font color =red> %s %s </font>" % (parameter_text, WorkingSTATUS, time_text)
         self.status_box.setText(status_text)
 
     def getName(self, username):
         self._username = username
 
-    def heater(self):       # heater display 
-        v = pvl.getVal('heater') if Device['heater']==1 and Device['test']==0 else 0
+    def heater(self):  # heater display
+        v = pvl.getVal('heater') if Device['heater'] == 1 and Device['test'] == 0 else 0
         if v == 0:
             return "off"
-        elif v==1:
+        elif v == 1:
             return "low"
-        elif v==2:
+        elif v == 2:
             return "medium"
-        elif v==3:
+        elif v == 3:
             return "high"
 
-    def agsMotion(self):     # display decoration for ags flag
+    def agsMotion(self):  # display decoration for ags flag
         if self.ags_flag:
             return ("<font color = green>enabled</font>")
         else:
             return ("<font color = red>disabled</font>")
-        
-    def agsFlag(self, flag): # for command widget control display flag
+
+    def agsFlag(self, flag):  # for command widget control display flag
         global Device
         self.ags_flag = flag
         if flag:
@@ -382,7 +399,6 @@ class StatusWidget(QWidget):
             pvl.caget('tth')
         else:
             Device['tth'] = 0
-
 
     # TODO: deglobalize
     # def setString(self, string=None): #destroy global parameters
@@ -393,6 +409,7 @@ class StatusWidget(QWidget):
     #     return t
 
     # Terminal
+
 
 class Command(QWidget):
     popup = pyqtSignal()
@@ -436,11 +453,11 @@ class Command(QWidget):
         self.popup.connect(self.popupMacro)
         self.macrostat[str].connect(self.command_input.setText)
 
-        #login related
-        self.userpower = 0 # logout:0, normal:1, super:2
+        # login related
+        self.userpower = 0  # logout:0, normal:1, super:2
         self.login = login.Login()
 
-        #tth control
+        # tth control
         self.chamberFlag = True
         self.airFlag = False
 
@@ -464,17 +481,16 @@ class Command(QWidget):
         global file_no
         if os.path.exists(self.fullog_name):
             data = pd.read_csv(self.fullog_name, header=0, delimiter="|")
-            if len(data) > 0 :
-                file_no = int(data['f'][len(data)-1]) # refresh file_no from the final APP_CLOSED information
+            if len(data) > 0:
+                file_no = int(data['f'][len(data) - 1])  # refresh file_no from the final APP_CLOSED information
             self.fullog = data[data['Text'] != "APP_CLOSED"].reset_index(drop=True)
-            self.fullog_i = len(self.fullog) # removed APP_CLOSED for keyboard calling
+            self.fullog_i = len(self.fullog)  # removed APP_CLOSED for keyboard calling
         else:
             self.fullog_i = 0
-            self.fullog = pd.DataFrame(columns = self.fullog_col)
+            self.fullog = pd.DataFrame(columns=self.fullog_col)
             file = open(self.fullog_name, "a")
             file.write("|".join(self.fullog_col) + "\n")
             file.close()
-
 
         '''
         Abort Button
@@ -501,7 +517,7 @@ class Command(QWidget):
         txt = self.command_input.text()
         self.command_input.setText("")
         self.command_message.moveCursor(QTextCursor.End)
-        if self.userpower==0: #require login
+        if self.userpower == 0:  # require login
             self.checkLogin(txt)
         else:
             self.send(txt)
@@ -517,11 +533,11 @@ class Command(QWidget):
                 else:
                     self.sysReturn('Invalid username, please try again.', 'err')
             else:
-                self.userpower = self.login.handleLogin(txt) #check password
+                self.userpower = self.login.handleLogin(txt)  # check password
                 if self.userpower != 0:
                     self.pwd = False
                     self.sysReturn('Welcome {} !'.format(self.login.username), 'v')
-                    self.username.emit(self.login.username) #to status widget
+                    self.username.emit(self.login.username)  # to status widget
                     self.command_input.setEchoMode(0)
                     self.command_input.setPlaceholderText("Type help to list commands ...")
                 else:
@@ -533,6 +549,7 @@ class Command(QWidget):
         Set global abort flag when button clicked
         (because scan loop is not in this class...)
         '''
+
     def abortCommand(self):
         global ABORT
         ABORT = True
@@ -543,6 +560,7 @@ class Command(QWidget):
          - under construction
          - pop up TextEdit
         '''
+
     def popupMacro(self):
         self.macro = macro.MacroWindow(macro_dir)
         self.macro.macroMsg.connect(self.sysReturn)
@@ -559,20 +577,19 @@ class Command(QWidget):
 
         '''
 
-    def keyPressEvent(command_input, event): #detect keypress event in command_input area
+    def keyPressEvent(command_input, event):  # detect keypress event in command_input area
         global cmd_global
         size = len(cmd_global.fullog)
         if event.key() == Qt.Key_Up and 0 < cmd_global.fullog_i <= size:
             cmd_global.fullog_i -= 1
             text = cmd_global.fullog['Text'][cmd_global.fullog_i]
             cmd_global.command_input.setText(text)
-        elif event.key() == Qt.Key_Down and 0 <= cmd_global.fullog_i <= size-1:
+        elif event.key() == Qt.Key_Down and 0 <= cmd_global.fullog_i <= size - 1:
             cmd_global.fullog_i += 1
             text = cmd_global.fullog['Text'][cmd_global.fullog_i] if cmd_global.fullog_i < size - 1 else ""
             cmd_global.command_input.setText(text)
         else:
             super(Command, command_input).keyPressEvent(event)
-
 
         '''
         Log and show
@@ -597,9 +614,10 @@ class Command(QWidget):
         elif v == "v":
             if log == True:
                 self.abort_button.setEnabled(True)
-                i = (self.history_log.size) / 2 # current_size
+                i = (self.history_log.size) / 2  # current_size
                 self.history_loc = int(i + 1)
-                row = pd.Series([t, x], index=self.history_index, name=self.history_loc) # append valid command to history
+                row = pd.Series([t, x], index=self.history_index,
+                                name=self.history_loc)  # append valid command to history
                 self.history_log = self.history_log.append(row)
             self.command_message.append(' ')
             self.command_message.append('<font color=blue>{0} >> {1}</font><font color=black> </font>'.format(t, x))
@@ -624,7 +642,7 @@ class Command(QWidget):
                 text = text[:c - 1] + text[c:]
         return text
 
-    def fullLog(self,text): # used in self.send and closing App
+    def fullLog(self, text):  # used in self.send and closing App
         row = [datetime.datetime.now().isoformat(sep="_", timespec='seconds'), text] + param.astype(str).values.tolist()
         file = open(self.fullog_name, "a")
         file.write("|".join(row) + "\n")
@@ -652,7 +670,7 @@ class Command(QWidget):
                    "<b>h</b>: recall previous commands executed successfully.<br>\n"
                    "<br>\n"
                    "<b>mv</b>: set a parameter to a target value.<br>\n"
-                   #"<b>mvr</b>: set a parameter to a value relative a current position.<br>\n"
+                   # "<b>mvr</b>: set a parameter to a value relative a current position.<br>\n"
                    "<b>scan</b>: scan a parameter and plot selected parameters with some dwell time.<br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> "
                    "<font color=blue>scan <b>det,</b> (optional) param x1 x2 dx dt n </font> <br>\n"
@@ -672,6 +690,8 @@ class Command(QWidget):
                    "<b>fft</b>: turn on/off fast fourier transform for data processing. <font color=blue>e.g. fft on </font> <br>\n"
                    "<b>d</b>: turn on/off discrimination after background substraction. <font color=blue>e.g. d on </font> <br>\n"
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
+                   "<b>gain</b>: turn on/off EMCCD. <font color=blue>e.g. gain on </font> <br>\n"
+                   "<b>air</b>: turn on/off air pressure of tth control. <font color=blue>e.g. air on </font> <br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>"
                    "<b>save</b>: save 1D data in txt from shown spectrum.<br>")
             self.sysReturn(msg)
@@ -699,7 +719,7 @@ class Command(QWidget):
 
             if space == 1:  # e.g. deluser username
                 u = sptext[1]
-                if(self.login.deluser(u)):
+                if (self.login.deluser(u)):
                     # TODO: delete the user working folder
                     self.sysReturn("delete user successfully")
                 else:
@@ -750,13 +770,13 @@ class Command(QWidget):
         #         self.sysReturn(text,"iv")
         #         self.sysReturn('input error. use:   shut  0 or 1', 'err')
 
-        elif text[:3] =='img':
+        elif text[:3] == 'img':
             [format, t] = self.checkImgformat(text)
             if format:  # format: img (+t)
                 BUSY = True
                 self.sysReturn(text, "v", True)
                 WorkingSTATUS = "Taking image... "
-                CountDOWN = float(t)+3.5
+                CountDOWN = float(t) + 3.5
                 pvl.ccd("exposure", t)
                 self.exposethread = Expose(float(t), 0)
                 self.exposethread.cmd_msg.connect(self.sysReturn)
@@ -780,13 +800,13 @@ class Command(QWidget):
                     n = int(sptext[2])
                     self.sysReturn(text, "v", True)
                     tt = datetime.datetime.now()
-                    self.sysReturn('RIXS %s begins at %s'%(file_no, tt.strftime("%c")))
+                    self.sysReturn('RIXS %s begins at %s' % (file_no, tt.strftime("%c")))
                     self.rixsthread = Rixs(t, n)
                     self.rixsthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.rixsthread.finished.connect(self.threadFinish)
                     self.rixsthread.setplot.connect(spectrum_global.setRIXSplot)
                     self.rixsthread.savespec.connect(spectrum_global.saveSpec)
-                    #self.rixsthread.no_analyze.connect(spectrum_global.noAnalyze)
+                    # self.rixsthread.no_analyze.connect(spectrum_global.noAnalyze)
                     self.rixsthread.start()
                 else:
                     self.sysReturn(text, "iv")
@@ -803,9 +823,9 @@ class Command(QWidget):
             self.sysReturn(text, "v", True)
             name = QFileDialog.getSaveFileName(self, 'Save File')
             print('name : {}.'.format(name[0]))
-            if type(name[0]) == str and name[0]!= " ":
+            if type(name[0]) == str and name[0] != " ":
                 print(name[0])
-                #self.saveName.emit(name[0])
+                # self.saveName.emit(name[0])
 
         elif text == 'setref':
             self.sysReturn(text, "v", True)
@@ -846,11 +866,11 @@ class Command(QWidget):
                         v = eval(v)
                         if self.checkFloat(v):
                             if self.check_param_range(p, v) != 'OK':
-                                self.sysReturn(text,'iv')
+                                self.sysReturn(text, 'iv')
                                 self.sysReturn(self.check_param_range(p, v), 'err')
                             else:
                                 self.sysReturn('mv {0} {1}'.format(p, v), "v", True)
-                                self.movethread = Move(p, float(v),  self.chamberFlag)  # check if finished or not
+                                self.movethread = Move(p, float(v), self.chamberFlag)  # check if finished or not
                                 self.movethread.msg.connect(self.sysReturn)
                                 self.movethread.errmsg.connect(self.sysReturn)
                                 self.movethread.finished.connect(self.threadFinish)
@@ -876,7 +896,7 @@ class Command(QWidget):
                 v = sptext[1]
                 try:
                     v = eval(v)
-                    if self.checkInt(v) and 0<= v <=3:
+                    if self.checkInt(v) and 0 <= v <= 3:
                         self.sysReturn('heater {0}'.format(v), "v", True)
                         self.movethread = Move('heater', int(v))  # check if finished or not
                         self.movethread.msg.connect(self.sysReturn)
@@ -892,7 +912,7 @@ class Command(QWidget):
                 self.sysReturn(text, "iv")
                 self.sysReturn("input error. use:   heater mode", "err")
 
-        #elif text[:4] == 'mvr ':
+        # elif text[:4] == 'mvr ':
         #    space = text.count(' ')
         #    sptext = text.split(' ')
         #    if space == 2:  # e.g. mvr x 1234
@@ -929,9 +949,9 @@ class Command(QWidget):
                 p, v = sptext[1], sptext[2]
                 if p in ['x1', 'x2']:
                     if self.checkInt(v) and 1023 >= int(v) >= 0:
-                            self.setfactor.emit(str(p), int(v))
-                            self.sysReturn(text, "v", True)
-                            self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
+                        self.setfactor.emit(str(p), int(v))
+                        self.sysReturn(text, "v", True)
+                        self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
                     else:
                         self.sysReturn(text, "iv")
                         self.sysReturn("{} should be integer or in range(0, 1023)".format(v), "err")
@@ -1033,7 +1053,7 @@ class Command(QWidget):
                     file_no += 1
                     param['f'] = file_no
                     start_time = datetime.datetime.now()
-                    self.sysReturn('Scan %s begins at %s'%(file_no, start_time.strftime("%c")))
+                    self.sysReturn('Scan %s begins at %s' % (file_no, start_time.strftime("%c")))
                     self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False, self.chamberFlag)
                     self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
                     self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
@@ -1051,7 +1071,7 @@ class Command(QWidget):
 
         elif text[:5] == "tscan":
             if self.checkTscanformat(text):
-                [p, dt, n]=text.split(" ")[1:]
+                [p, dt, n] = text.split(" ")[1:]
                 self.sysReturn(text, 'v', True)
                 timestamp = QTime.currentTime()
                 t0 = timestamp.toString()
@@ -1065,11 +1085,11 @@ class Command(QWidget):
 
         elif text[:3] == "xas":
             if self.checkXasformat(text):
-                [e1, e2, dE, dwell] = text.split(" ")[1:5] # N times of scan
-                N = 1 if text.count(' ') ==4 else text.split(" ")[-1]
+                [e1, e2, dE, dwell] = text.split(" ")[1:5]  # N times of scan
+                N = 1 if text.count(' ') == 4 else text.split(" ")[-1]
                 dE = abs(float(dE)) * np.sign(float(e2) - float(e1))  # step is negative if x1 > x2
                 dwell = float(dwell)
-                n = int(abs((float(e2) - float(e1)) / dE)) # n steps
+                n = int(abs((float(e2) - float(e1)) / dE))  # n steps
                 file_no += 1
                 param['f'] = file_no
                 start_time = datetime.datetime.now()
@@ -1091,24 +1111,39 @@ class Command(QWidget):
             if self.checkAGS(text):
                 self.sysReturn(text, 'v', True)
                 if text.split(' ')[1] == "on":
-                   self.enableags.emit(True) 
-                   self.sysReturn('AGS rotation enabled.')
-                   pvl.putVal('air', 1)
-                   pvl.caget('tth')
+                    self.enableags.emit(True)
+                    self.sysReturn('AGS rotation enabled.')
+                    pvl.putVal('air', 1)
+                    pvl.caget('tth')
                 else:
-                   self.enableags.emit(False)
-                   self.sysReturn('AGS rotation disabled.')
-                   pvl.putVal('air', 0)
+                    self.enableags.emit(False)
+                    self.sysReturn('AGS rotation disabled.')
+                    pvl.putVal('air', 0)
 
         elif text[:4] == 'cham':
             if self.checkCham(text):
                 self.sysReturn(text, 'v', True)
                 if text.split(' ')[1] == "on":
-                   self.chamberFlag = True
-                   self.sysReturn('chamber motor enabled.')
+                    self.chamberFlag = True
+                    self.sysReturn('chamber motor enabled.')
                 else:
-                   self.chamberFlag = False
-                   self.sysReturn('chamber motor disabled.')
+                    self.chamberFlag = False
+                    self.sysReturn('chamber motor disabled.')
+
+        elif text[:4] == 'gain':
+            space, sptext = text.count(' '), text.split(' ')
+            if space == 1 and sptext[1] in ['on', 'off']:
+                self.sysReturn(text, "v", True)
+                if checkSafe('ccd'):
+                    if sptext[1] == 'on':
+                        pvl.ccd('gain', 100)
+                    elif sptext[1] == 'off':
+                        pvl.ccd('gain', 0)
+                else:
+                    self.sysReturn('ccd device not connected', 'err')
+            else:
+                self.sysReturn(text, "iv")
+                self.sysReturn("input error. use:   d on/off", "err")
 
         elif text[:3] == "do ":
             space = text.count(' ')
@@ -1119,7 +1154,7 @@ class Command(QWidget):
                 self.doMacro(name)
             else:
                 self.sysReturn(text, 'iv')
-                self.sysReturn("input error. use:   do macroname","err")
+                self.sysReturn("input error. use:   do macroname", "err")
 
         elif text[:5] == "wait ":
             BUSY = True
@@ -1130,7 +1165,7 @@ class Command(QWidget):
                 t = sptext[1]
                 if self.checkFloat(t):
                     self.sysReturn(text, "v", True)
-                    self.sysReturn("wait for %s seconds..." %t)
+                    self.sysReturn("wait for %s seconds..." % t)
                     self.pause[float].emit(float(t))
                 else:
                     self.sysReturn(text, 'iv')
@@ -1210,7 +1245,7 @@ class Command(QWidget):
             if (sptext[0] != '') and (len(sptext) == 5):
                 j = 0  # check index
                 for i in range(4):  # i from 0 to 3
-                    if self.checkFloat(sptext[i + 1]):j += 1.0
+                    if self.checkFloat(sptext[i + 1]): j += 1.0
                 if j == 4:
                     if sptext[0] in param_index0:
                         if float(sptext[4]) > 0:  # float(sptext[4]) assigns dwell time
@@ -1244,7 +1279,7 @@ class Command(QWidget):
         print('scan paramter check:', check_msg)
         return check_msg
 
-    def checkTscanformat(self, text): #timescan, p, dt, n
+    def checkTscanformat(self, text):  # timescan, p, dt, n
         sptext = text.split(' ')
         if sptext[0] != 'tscan' or text.count(' ') != 3:
             self.sysReturn(text, 'iv')
@@ -1271,10 +1306,10 @@ class Command(QWidget):
             if text.count(' ') == 4:
                 [e1, e2, de, dt] = sptext[1:]
                 n = 1
-            elif text.count(' ') == 5: # check format = xas Ei Ef dE dt n
+            elif text.count(' ') == 5:  # check format = xas Ei Ef dE dt n
                 [e1, e2, de, dt, n] = sptext[1:]
 
-                for x in [e1, e2, de, dt]: #check float: e1, e2, de, dt
+                for x in [e1, e2, de, dt]:  # check float: e1, e2, de, dt
                     if self.checkFloat(x) == False:
                         self.sysReturn(text, 'iv')
                         self.sysReturn('{} is not float.'.format(x), 'err')
@@ -1284,24 +1319,26 @@ class Command(QWidget):
                         return True
                     else:
                         self.sysReturn(text, 'iv')
-                        if self.check_param_range('agm', e1) != 'OK': self.sysReturn(self.check_param_range('agm', e1),'err')
-                        else: self.sysReturn(self.check_param_range('agm', e2),'err')
+                        if self.check_param_range('agm', e1) != 'OK':
+                            self.sysReturn(self.check_param_range('agm', e1), 'err')
+                        else:
+                            self.sysReturn(self.check_param_range('agm', e2), 'err')
                         return False
                 else:
                     self.sysReturn(text, 'iv')
-                    self.sysReturn('n: {} should be integer'.format(n),'err')
+                    self.sysReturn('n: {} should be integer'.format(n), 'err')
                     return False
             else:
                 self.sysReturn(text, 'iv')
                 self.sysReturn('input error. Format: xas Ei Ef dE dt n', 'err')
                 return False
         else:
-            self.sysReturn(text,'iv')
-            self.sysReturn('input error. Format: xas Ei Ef dE dt n','err')
+            self.sysReturn(text, 'iv')
+            self.sysReturn('input error. Format: xas Ei Ef dE dt n', 'err')
             return False
 
     def checkAGS(self, text):
-        sptext = text.split(' ')    
+        sptext = text.split(' ')
         if len(sptext) != 2:
             self.sysReturn('input error. Format: AGS on/off', 'err')
             return False
@@ -1319,20 +1356,19 @@ class Command(QWidget):
             self.sysReturn('input error. Format: cham on/off', 'err')
             return False
         return True
-    
+
     def checkImgformat(self, text):
         space = text.count(' ')
         sptext = text.split(' ')
-        if space != 1:  
+        if space != 1:
             if text == 'img':
-                return [True, 2] # format: img, default t = 2.
+                return [True, 2]  # format: img, default t = 2.
             self.sysReturn(text, 'iv')
             self.sysReturn('input error. usage: img (+ exposure_time)', 'err')
             return [False]
-        t= sptext[1]    
-        if self.checkFloat(t): 
-            return [True, t]     # format: img t
-        
+        t = sptext[1]
+        if self.checkFloat(t):
+            return [True, t]  # format: img t
 
         '''
         check function for Wait command
@@ -1359,14 +1395,15 @@ class Command(QWidget):
             self.command_input.setDisabled(BUSY)
             if BUSY == False:
                 self.command_input.setFocus()
+
     # not necessary
     def doMacro(self, name):
-        macro_name = "%s%s.txt"%(macro_dir, name) # directory
-        if os.path.exists(macro_name): # check file exist
-            self.sysReturn('do %s'%name, "v", True)
-            self.sysReturn("macro begins: %s.txt"%name)
+        macro_name = "%s%s.txt" % (macro_dir, name)  # directory
+        if os.path.exists(macro_name):  # check file exist
+            self.sysReturn('do %s' % name, "v", True)
+            self.sysReturn("macro begins: %s.txt" % name)
             if self.macro == None: self.popup.emit()
-            self.macrostarted.emit(macro_name) # to inform macro window which file is running and activate edit button
+            self.macrostarted.emit(macro_name)  # to inform macro window which file is running and activate edit button
             self.macrothread = Macroloop(macro_name)
             self.macrothread.finished.connect(self.macroFinish)
             self.macrothread.finished.connect(self.macro.macroFinished)
@@ -1381,19 +1418,20 @@ class Command(QWidget):
 
     def fileOpen(self):
         filename = QFileDialog.getOpenFileName(self, 'Open image file',
-                                            directory=img_dir
-                                            , options=QFileDialog.ReadOnly)
+                                               directory=img_dir
+                                               , options=QFileDialog.ReadOnly)
         l = int(len(filename[0]))
-        print(filename[0][l-5:l-1])
+        print(filename[0][l - 5:l - 1])
         if filename != ('', ''):
             file = filename[0]
-        try:#send directory
+        try:  # send directory
             self.loadimage.emit(file)
             self.setrixsplot.emit(os.path.basename(file))
             self.setrixsdata.emit()
             self.sysReturn("file opened: {0}".format(os.path.basename(file)))
         except:
             print('no file opened')
+
 
 class ImageWidget(QWidget):
     setrixsdata = pyqtSignal(np.ndarray, bool, bool)
@@ -1469,7 +1507,7 @@ class ImageWidget(QWidget):
 
         self.imv.scene.sigMouseMoved.connect(mouseMoved)
 
-    def getData(self, rixs =False, num=0):
+    def getData(self, rixs=False, num=0):
         if checkSafe('ccd'):
             raw_img = pvl.ccd("image")
             print(raw_img)
@@ -1481,7 +1519,7 @@ class ImageWidget(QWidget):
             raw_img = np.random.uniform(0, 500 + 1, 1024 * 2048)
             img_list = np.asarray(raw_img)
             img_np = np.reshape(img_list, (1024, 2048), order='F')
-            img_np[450:650,1400:1405] += 2000
+            img_np[450:650, 1400:1405] += 2000
 
         self.imgdata = img_np
         if rixs:
@@ -1494,15 +1532,15 @@ class ImageWidget(QWidget):
         save file as txt with header of parameters
         name format example: rixs_20190508_img001.img
         '''
-        header = self.getHeader()        # string of current parameter series
-        data = self.imgdata              # 2d image
+        header = self.getHeader()  # string of current parameter series
+        data = self.imgdata  # 2d image
         # fill img_number string with 3 digits in normal(not ref) case
         tail = 'img{}'.format(str(img_number).zfill(3))
 
         file_name0 = "rixs_{}_{}_{}.img".format(dir_date, file_no, tail)
-        file_name = img_dir + file_name0                    # for saving in correct dir
+        file_name = img_dir + file_name0  # for saving in correct dir
         # append parameters as header
-        np.savetxt(file_name, data, fmt='%9d', delimiter=',', header=header) # image data format
+        np.savetxt(file_name, data, fmt='%9d', delimiter=',', header=header)  # image data format
         cmd_global.sysReturn('image data saved: {}'.format(file_name0))
 
     def saveRef(self):
@@ -1511,14 +1549,14 @@ class ImageWidget(QWidget):
         save file as txt with header of parameters
         name format example: rixs_20190508_img001.img
         '''
-        header = self.getHeader()                           # string of current parameter series
-        data = self.refimage   # 2d image
+        header = self.getHeader()  # string of current parameter series
+        data = self.refimage  # 2d image
         # fill img_number string with 3 digits in normal(not ref) case
         tail = 'ref'
         file_name0 = "rixs_{}_{}_{}.img".format(dir_date, file_no, tail)
-        file_name = img_dir + file_name0                    # for saving in correct dir
+        file_name = img_dir + file_name0  # for saving in correct dir
         # append parameters as header
-        np.savetxt(file_name, data, fmt='%9d', delimiter=',', header=header) # image data format
+        np.savetxt(file_name, data, fmt='%9d', delimiter=',', header=header)  # image data format
         cmd_global.sysReturn('image data saved: {}'.format(file_name0))
 
     def getHeader(self):
@@ -1526,14 +1564,14 @@ class ImageWidget(QWidget):
         index = param.index.tolist()
         value = ['{:.2f}'.format(x) for x in param.tolist()]
         for i in range(0, len(index)):
-            str1= str(index[i])
-            str2= str(value[i])
-            dlen= len(str2)-len(str1)
+            str1 = str(index[i])
+            str2 = str(value[i])
+            dlen = len(str2) - len(str1)
             if dlen != 0:
-                if dlen>0: #str2 longer than str1
-                    index[i] = " "*dlen + str1
-                else: #str1 longer than str2
-                    value[i] = " "*abs(dlen) + str2
+                if dlen > 0:  # str2 longer than str1
+                    index[i] = " " * dlen + str1
+                else:  # str1 longer than str2
+                    value[i] = " " * abs(dlen) + str2
         index = ','.join(index)
         value = ','.join(value)
         header_text = '{}\n{}'.format(index, value)
@@ -1546,11 +1584,11 @@ class ImageWidget(QWidget):
         first_update = False
         if self.histogram_level == []:
             first_update = True
-        #_histo_widget = self.imv.getHistogramWidget()
-        #self.histogram_level = _histo_widget.getLevels()
+        # _histo_widget = self.imv.getHistogramWidget()
+        # self.histogram_level = _histo_widget.getLevels()
         self.imv.setImage(self.imgdata)
         _view_box.setState(_state)
-        #if not first_update:
+        # if not first_update:
         #    _histo_widget.setLevels(self.histogram_level[0], self.histogram_level[1])
 
     def setBkgd(self, data, bkgd=True):
@@ -1569,13 +1607,13 @@ class ImageWidget(QWidget):
             if data.size > 2097152:
                 data = data[np.logical_not(np.isnan(data))]
                 print(data, data.size)
-                data = np.take(data, list(range(0, 2097152))) #take 1024*2048 only
+                data = np.take(data, list(range(0, 2097152)))  # take 1024*2048 only
                 print(data, data.size)
             self.imgdata = np.reshape(data, (1024, 2048), order='F')
             self.showImg()
         except:
             print('failed')
-            self.errmsg.emit('failed to load data, might be a datashape problem.','err')
+            self.errmsg.emit('failed to load data, might be a datashape problem.', 'err')
 
     def rixs_sum(self, image_data):
         rixs_tmp = np.zeros((1, 2048), float)
@@ -1596,17 +1634,17 @@ class ImageWidget(QWidget):
         self.hLine.show()
 
     def leaveEvent(self, event):
-        self.status_bar.setText("") # using clear will resize window
+        self.status_bar.setText("")  # using clear will resize window
         self.vLine.hide()
         self.hLine.hide()
 
     def setXRangeVLines(self, x1, x2):
         self.x1Line.setPos(x1)
-        self.x2Line.setPos(x2+1) # right boundary
+        self.x2Line.setPos(x2 + 1)  # right boundary
 
 
 class SpectrumWidget(QWidget):
-    errmsg = pyqtSignal(str,str)
+    errmsg = pyqtSignal(str, str)
     msg = pyqtSignal(str)
     setbkgd = pyqtSignal(np.ndarray)
     showimg = pyqtSignal(np.ndarray, bool)
@@ -1631,26 +1669,25 @@ class SpectrumWidget(QWidget):
         self.curve = [None, None, None, None, None]
         self.rixs_x = list(range(0, 2048))
         self.rixs_y = np.empty(2048)
-        self.ref_2d = np.zeros([1024,2048])
+        self.ref_2d = np.zeros([1024, 2048])
         self.rixs_n = 0
         self.rixs_name = None
         self.ref_x = list(range(0, 2048))
         self.ref_y = np.empty(2048)
         self.ref_name = None
-        self.spikefactor= 3 #spike removal function discrimination factor
-        self.d1 = 20 # discrimination factor for setref
+        self.spikefactor = 3  # spike removal function discrimination factor
+        self.d1 = 20  # discrimination factor for setref
         self.d2 = 200
-        self.gfactor = 40 # gaussian factor
+        self.gfactor = 40  # gaussian factor
         self.x1, self.x2 = 0, 1023
         self.fmax, self.step = 0.15, 1.0
         self.fft = False
-        self.analyze = False #flag: False = scan/tscan/xas, True = rixs/load
-        self.spikeremove = True #flag to apply spike removal while data processing 
-        self.bkgdsubstract = False #flag to apply background substraction while data processing
+        self.analyze = False  # flag: False = scan/tscan/xas, True = rixs/load
+        self.spikeremove = True  # flag to apply spike removal while data processing
+        self.bkgdsubstract = False  # flag to apply background substraction while data processing
         self.discriminate = False
-        self.specsaveformat= '.txt'
+        self.specsaveformat = '.txt'
 
-        
         def mouseMoved(pos):
             mousePoint = self.plotWidget.getViewBox().mapSceneToView(pos)
             self.vLine.setPos(mousePoint.x())
@@ -1666,7 +1703,7 @@ class SpectrumWidget(QWidget):
         self.refinfo = QLabel(self)
         self.fftinfo = QLabel(self)
         self.xval = QLabel(self)
-        self.spikeinfo = QLabel(self) 
+        self.spikeinfo = QLabel(self)
         self.dinfo = QLabel(self)
 
     def __layout__(self):
@@ -1699,14 +1736,14 @@ class SpectrumWidget(QWidget):
         if self.legenditems != []:
             for x in self.legenditems:
                 self.legend.removeItem(x)
-        self.plotWidget.plotItem.clear() # legends not in viewbox
+        self.plotWidget.plotItem.clear()  # legends not in viewbox
         self.legenditems = []
 
-    #=================================================
+    # =================================================
     #
     # SCAN - related functions
     #
-    #=================================================
+    # =================================================
     def scanPlot(self, plot, scan_param, x1, x2, xas):
         self.analyze = False
         self.factorsinfo(False)
@@ -1748,7 +1785,6 @@ class SpectrumWidget(QWidget):
         color = ['g', 'b', 'w', 'r', 'y']  # extendable
         self.curve[0] = self.plotWidget.plot([], [], pen=pg.mkPen(color=color[0], style=1, width=1), name=p)
 
-
     def liveplot(self, i, list_x, series_y):
         self.curve[i].setData(list_x, series_y)
 
@@ -1761,6 +1797,7 @@ class SpectrumWidget(QWidget):
         self.legend.removeItem('Iph')
         self.legenditems = ["mean I<sub>ph</sub>"]
         self.xas_curve = self.plotWidget.plot(self.xas_x, self.xas_y, pen=pg.mkPen(width=1))  # default pen = grey.
+
     # =================================================
     #
     # RIXS - related functions
@@ -1783,42 +1820,43 @@ class SpectrumWidget(QWidget):
         self.plotWidget.plotItem.setLabel('left', text='Intensity (arb. units)')
         self.plotWidget.addItem(self.vLine, ignoreBounds=True)
         self.plotWidget.addItem(self.hLine, ignoreBounds=True)
-        self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g',style=1,width=1),name='rixs')
+        self.rixs = self.plotWidget.plot([], [], pen=pg.mkPen(color='g', style=1, width=1), name='rixs')
 
     def setRIXSdata(self, array, accum=False, save=False):
         self.data = np.copy(array)
         self.plotRIXS(accum, save)
 
-    def plotRIXS(self, accum=False, save=False):  #processing
-        data = np.copy(self.data) # avoid removing raw data in ImageWidget
+    def plotRIXS(self, accum=False, save=False):  # processing
+        data = np.copy(self.data)  # avoid removing raw data in ImageWidget
         # ===== remove spike ======
-        if self.spikeremove:      
+        if self.spikeremove:
             if self.spikefactor >= 1.05:
-                data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor) # save setref 2d image file
-                #data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
+                data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor)  # save setref 2d image file
+                # data = spikeRemoval(data, self.spikefactor) # save setref 2d image file
             else:
-                self.errmsg.emit('spike factor should be bigger than 1.1','err')
-         # ===== remove background ======
+                self.errmsg.emit('spike factor should be bigger than 1.1', 'err')
+        # ===== remove background ======
         if self.bkgdsubstract:
-            data = np.subtract(data, self.ref_2d) # default ref_2d = array of 0
-         # ===== discrimination ======
+            data = np.subtract(data, self.ref_2d)  # default ref_2d = array of 0
+        # ===== discrimination ======
         if self.discriminate:
             data[data < self.d1] = 0  # discrimination in Spectrum Widget
             data[data > self.d2] = 0
-        senddata = np.copy(data)      # avoid inconsistency between data and 2D-image
-        self.showimg.emit(senddata, False)              # show 2D in ImageWidget
-        data = np.sum(data[self.x1:self.x2,:], axis=0)  # sum along x-axis, x1 to x2
-         # ===== remove joint (y= 1030~1040) ======
+        senddata = np.copy(data)  # avoid inconsistency between data and 2D-image
+        self.showimg.emit(senddata, False)  # show 2D in ImageWidget
+        data = np.sum(data[self.x1:self.x2, :], axis=0)  # sum along x-axis, x1 to x2
+        # ===== remove joint (y= 1030~1040) ======
         data = self.jointRemoval(data.flatten())
-         # ===== fast fourier transform ======
+        # ===== fast fourier transform ======
         if self.fft:
-            data= low_pass_fft(data, self.fmax, self.step) #low-pass using fft. step= sample spacing (inverse of the sampling rate)
-         # ===== Averaging and plot ======
+            data = low_pass_fft(data, self.fmax,
+                                self.step)  # low-pass using fft. step= sample spacing (inverse of the sampling rate)
+        # ===== Averaging and plot ======
         previous_data = np.copy(self.rixs_y)
-        self.rixs_y = np.copy(data) # for saving 1-D spectrum
-        if save: self.saveSpec()    # save = True only in Rixs(QThread), could be extended in another command
-        if accum: # accum = True only in Rixs(QThread)
-            #self.rixs_y = np.average([previous_data, data], axis = 0, weights=[self.rixs_n, 1])
+        self.rixs_y = np.copy(data)  # for saving 1-D spectrum
+        if save: self.saveSpec()  # save = True only in Rixs(QThread), could be extended in another command
+        if accum:  # accum = True only in Rixs(QThread)
+            # self.rixs_y = np.average([previous_data, data], axis = 0, weights=[self.rixs_n, 1])
             if self.rixs_n == 0:
                 previous_data = np.zeros(2048)
             else:
@@ -1829,25 +1867,25 @@ class SpectrumWidget(QWidget):
         else:
             self.rixs_y = data
 
-        self.rixs.setData(x=self.rixs_x[100:], y=self.rixs_y[100:]) # cut 0-99
+        self.rixs.setData(x=self.rixs_x[100:], y=self.rixs_y[100:])  # cut 0-99
 
     def jointRemoval(self, data):
-        avg = np.mean(data) #data  = 1d array
-        h = (data[1035] - avg)*0.80
+        avg = np.mean(data)  # data  = 1d array
+        h = (data[1035] - avg) * 0.80
         for i in range(1030, 1040):
             data[i] = data[i] - (h * np.exp(-((i - 1035) ** 2) / 2))
         return data
 
     def saveFormat(self, txt=True):
-        if txt==True:
+        if txt == True:
             self.specsaveformat = '.txt'
         else:
             self.specsaveformat = '.itx'
 
     def saveSpec(self, final=False):
         print(self.rixs_y)
-        spec_number = "_{}".format(str(1+self.rixs_n).zfill(3)) if not final else ""
-        filename="rixs_{0}_{1}{2}".format(dir_date, file_no, spec_number)
+        spec_number = "_{}".format(str(1 + self.rixs_n).zfill(3)) if not final else ""
+        filename = "rixs_{0}_{1}{2}".format(dir_date, file_no, spec_number)
         header = self.getHeader()
         np.savetxt(data_dir + filename, self.rixs_y,
                    fmt='%.2f', delimiter=' ', header=header)
@@ -1859,7 +1897,7 @@ class SpectrumWidget(QWidget):
         if name == None:
             name = data_dir + dir_date + 'test'
         if not self.analyze:
-            print ('currently save spectrum only, not including scan data.')
+            print('currently save spectrum only, not including scan data.')
         else:
             header = self.getHeader()
             np.savetxt(name, self.rixs_y, fmt='%.2f', delimiter=' ', header=header)
@@ -1873,14 +1911,14 @@ class SpectrumWidget(QWidget):
         if self.spikeremove: header_text += '\nspike factor = {}'.format(self.spikefactor)
         return header_text
 
-    def setRef(self, bool= True):
+    def setRef(self, bool=True):
         if bool:
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
                 data = spikeRemoval_1(self.data, 0, 1023, 3)
-                #data = spikeRemoval(self.data, 3)
-                self.ref_2d = gaussian_filter(data, sigma = self.gfactor)
+                # data = spikeRemoval(self.data, 3)
+                self.ref_2d = gaussian_filter(data, sigma=self.gfactor)
                 print('bkgd')
                 print(self.ref_2d)
                 self.setbkgd.emit(self.ref_2d)
@@ -1889,28 +1927,39 @@ class SpectrumWidget(QWidget):
                 self.rixs.setData(x=self.rixs_x[100:], y=self.ref_y[100:])
                 self.bkgdsubstract = False
             else:
-                self.errmsg.emit('no valid spectrum to set reference.','err')
+                self.errmsg.emit('no valid spectrum to set reference.', 'err')
         self.factorsinfo()
 
     def setFactor(self, p, v):
-        if p == 'x1': self.x1 = v
-        elif p == 'x2': self.x2 = v
-        elif p == 'sp': self.spikefactor = v
-        elif p == 'spike': self.spikeremove = v
+        if p == 'x1':
+            self.x1 = v
+        elif p == 'x2':
+            self.x2 = v
+        elif p == 'sp':
+            self.spikefactor = v
+        elif p == 'spike':
+            self.spikeremove = v
         elif p == 'bkrm':
             self.bkgdsubstract = v
             if self.bkgdsubstract == False and self.discriminate == True:
-                self.discriminate = False # close d when turn off bkgd
-        elif p == 'd': self.discriminate = v
-        elif p == 'd1': self.d1 = v
-        elif p == 'd2': self.d2 = v
-        elif p == 'fft': self.fft = v
-        elif p == 'fmax': self.fmax = v
-        elif p == 'step': self.step = v
-        else: print('invalid factor for setFactor function.')
-        self.factorsinfo() # refresh parameter display
+                self.discriminate = False  # close d when turn off bkgd
+        elif p == 'd':
+            self.discriminate = v
+        elif p == 'd1':
+            self.d1 = v
+        elif p == 'd2':
+            self.d2 = v
+        elif p == 'fft':
+            self.fft = v
+        elif p == 'fmax':
+            self.fmax = v
+        elif p == 'step':
+            self.step = v
+        else:
+            print('invalid factor for setFactor function.')
+        self.factorsinfo()  # refresh parameter display
         self.setx1x2.emit(self.x1, self.x2)
-        if self.analyze : self.plotRIXS()
+        if self.analyze: self.plotRIXS()
         # trigger processing if last plot is not scan/tscan/xas
 
     def factorsinfo(self, set=True):
@@ -1922,7 +1971,8 @@ class SpectrumWidget(QWidget):
             self.xval.setText('<p align=\"right\">x1 = {0}, x2 = {1}</p>'.format(self.x1, self.x2))
             self.spikeinfo.setText('spike factor [{}] = {} '.format(spikeflag, self.spikefactor))
             self.refinfo.setText('background [{}] = {}'.format(bkgdflag, self.ref_name))
-            self.fftinfo.setText('<p align=\"right\">f<sub>max</sub> = {}, step = {} [{}]</p>'.format(self.fmax, self.step, fftflag))
+            self.fftinfo.setText(
+                '<p align=\"right\">f<sub>max</sub> = {}, step = {} [{}]</p>'.format(self.fmax, self.step, fftflag))
             self.dinfo.setText('<p align=\"right\">d1 = {}, d2 = {} [{}]</p>'.format(self.d1, self.d2, dflag))
         else:
             self.xval.setText('')
@@ -1936,6 +1986,7 @@ class SpectrumWidget(QWidget):
         self.setFactor('bkrm', False)
         self.setFactor('d', False)
 
+
 class Barupdate(QThread):
     refresh = pyqtSignal()
 
@@ -1946,6 +1997,7 @@ class Barupdate(QThread):
         while True:
             self.refresh.emit()
             time.sleep(0.5)
+
 
 class Statupdate(QThread):
     refresh = pyqtSignal()
@@ -1958,33 +2010,34 @@ class Statupdate(QThread):
             self.refresh.emit()
             time.sleep(1)
 
+
 class Move(QThread):
     msg = pyqtSignal(str)
-    errmsg = pyqtSignal(str,str)
+    errmsg = pyqtSignal(str, str)
     refresh = pyqtSignal()
 
     def __init__(self, p, v, chamber=True):
         super(Move, self).__init__()
         self.p = p
         self.v = v
-        self.chamber = chamber # for tth enable/disable chamber cooperation
+        self.chamber = chamber  # for tth enable/disable chamber cooperation
         # list all write PVs and call later
 
     def run(self):
         global cmd_global, WorkingSTATUS, BUSY
         # p : index(name) of parameter, should be a string; v : range-checked value
-        p, v, BUSY= self.p, self.v, True
+        p, v, BUSY = self.p, self.v, True
         if checkSafe(p):  # check device safety
-            if (p in param_index0) and (p not in ['x','y','z','Tccd', 'gain','ta','thoffset', 'tth']):
+            if (p in param_index0) and (p not in ['x', 'y', 'z', 'Tccd', 'gain', 'ta', 'thoffset', 'tth']):
                 pvl.putVal(p, v)
                 self.moveCheck(p, v)
             elif p in ['x', 'y']:
                 # calculate new x, y
                 if p == 'x':
-                    y0= get_param('y')
+                    y0 = get_param('y')
                     xval, yval = self.rotation(x=v, y=y0)
                 else:
-                    x0= get_param('x')
+                    x0 = get_param('x')
                     xval, yval = self.rotation(x=x0, y=v)
                 print('Calculated x, y = {0}, {1}'.format(xval, yval))
                 if not ABORT:
@@ -1998,8 +2051,8 @@ class Move(QThread):
                 self.xyzMotor('z', v)
             elif p == 'ta':
                 pvl.putVal(p, v)
-            elif p =='heater':
-                pvl.putVal('heater',v)
+            elif p == 'heater':
+                pvl.putVal('heater', v)
             elif p in ['Tccd', 'gain']:
                 pvl.ccd(p, v)
             elif p == 'thoffset':
@@ -2013,16 +2066,16 @@ class Move(QThread):
             if p != 'heater':
                 param[p] = v
             if p == 'tth':
-                self.errmsg.emit('air pressure is not on.','err')
+                self.errmsg.emit('air pressure is not on.', 'err')
 
         self.quit()
 
-    def xyzMotor(self, p, v): # move with x, y, z with backlash
-        v = self.transVal(p, v) # target pulse
+    def xyzMotor(self, p, v):  # move with x, y, z with backlash
+        v = self.transVal(p, v)  # target pulse
         print('target pulse = ', v)
         current_pulse = self.transVal(p, pvl.getVal(p))
         print('current pulse = ', current_pulse)
-        if abs(v - current_pulse) > 16: # delta pulse > 16
+        if abs(v - current_pulse) > 16:  # delta pulse > 16
             if pvl.getVal(p) > v:
                 print('target position {0} smaller than current position {1}, considering backlash'
                       .format(pvl.getVal(p), v))
@@ -2035,18 +2088,18 @@ class Move(QThread):
         else:
             print('{0} is close to target :{1},  move aborted.'.format(p, v))
 
-    def transVal(self, p, v): #get correct target value
-        if p=="z":
-            return int(v*32000)
+    def transVal(self, p, v):  # get correct target value
+        if p == "z":
+            return int(v * 32000)
         else:
-            return int(v*8000)
+            return int(v * 8000)
 
     def rotation(self, x, y):
-        print('sample :({0}, {1})'.format(x,y))
-        th = pvl.thOffset()*math.pi/180 # rad
-        x_new = x*math.cos(th) - y*math.sin(th)
-        y_new = x*math.sin(th) + y*math.cos(th)
-        print('motor : ({0}, {1})'.format(x_new,y_new))
+        print('sample :({0}, {1})'.format(x, y))
+        th = pvl.thOffset() * math.pi / 180  # rad
+        x_new = x * math.cos(th) - y * math.sin(th)
+        y_new = x * math.sin(th) + y * math.cos(th)
+        print('motor : ({0}, {1})'.format(x_new, y_new))
         return (x_new, y_new)
 
     def tthRotation(self, tth, chamber):
@@ -2056,7 +2109,7 @@ class Move(QThread):
         #       delta chmbr = 7.5 mm,  chmbr0(tth0) = 0
         # if > 3 mm (4 degree tth), run for loop for finite steps, else move tth only.
 
-        chmbr_target = round((tth - 90) * 0.75,2)  # in units of mm
+        chmbr_target = round((tth - 90) * 0.75, 2)  # in units of mm
         chmbr_position = pvl.caget('chmbr')
         tth_position = pvl.caget('tth')
         if self.chmbrSafe(chmbr_target - chmbr_position):
@@ -2078,7 +2131,7 @@ class Move(QThread):
                                 self.msg.emit("{} moved to {}".format('chmbr', chmbr_next))
             if not ABORT:
                 chmbr_position = pvl.caget('chmbr')
-                if abs(chmbr_target- chmbr_position) > 2 and chamber:
+                if abs(chmbr_target - chmbr_position) > 2 and chamber:
                     pvl.putVal('chmbr', chmbr_target)  # then move chmbr
                     self.moveCheck('chmbr', chmbr_target)
                 pvl.putVal('tth', tth)  # target tth position
@@ -2106,14 +2159,14 @@ class Move(QThread):
         time.sleep(0.1)
         while pvl.moving(p) and not ABORT:
             if ABORT:
-                if p in ['x','y','z','th','det','tth','chmbr','agm','ags']:
+                if p in ['x', 'y', 'z', 'th', 'det', 'tth', 'chmbr', 'agm', 'ags']:
                     pvl.stopMove(p)
                 break
             if not pvl.moving(p):
                 time.sleep(0.2)
-                if p in ['th', 'det', 'tth']: # for th, det PV.get() will not get correct number, need this to refresh
-                   pvl.caget(p)
-                if (abs(pvl.getVal(p) - v) >= 0.02) and (p not in ['x','y','z']):
+                if p in ['th', 'det', 'tth']:  # for th, det PV.get() will not get correct number, need this to refresh
+                    pvl.caget(p)
+                if (abs(pvl.getVal(p) - v) >= 0.02) and (p not in ['x', 'y', 'z']):
                     error_message = ("<font color=red>" + p + " not moving correctly, value: "
                                      + str(pvl.getVal(p)) + "</font>")
                     self.msg.emit(error_message)
@@ -2121,10 +2174,11 @@ class Move(QThread):
             time.sleep(0.2)  # hold here for BUSY flag
         print('{0} finished moving'.format(p))
 
+
 class Scan(QThread):
     scan_plot = pyqtSignal(list, str, float, float, bool)
     set_data = pyqtSignal(int, list, pd.Series)
-    data_set = pyqtSignal(list, list) #for xas plot collection
+    data_set = pyqtSignal(list, list)  # for xas plot collection
     cmd_msg = pyqtSignal(str)
 
     def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas, chamberFlag=True):
@@ -2134,7 +2188,7 @@ class Scan(QThread):
         self.start_point = Move(scan_param, x1, chamberFlag)
         self.data_matrix = pd.DataFrame(columns=param_index)
         self.spec_number = N
-        self.xas = xas # flag for file saving and other messages
+        self.xas = xas  # flag for file saving and other messages
         self.chamberFlag = chamberFlag
 
     def run(self):
@@ -2193,18 +2247,18 @@ class Scan(QThread):
             raw_array = np.array([])
             while (time.time() - t0) <= dwell:  # while loop to get the data within dwell time
                 if (time.time() - t0) % 0.1 <= 0.0001:
-                    #raw_array = np.append(raw_array, pvl.getVal('Iph'))   # Read Iph data through epics
+                    # raw_array = np.append(raw_array, pvl.getVal('Iph'))   # Read Iph data through epics
 
                     for i in range(len(plot)):
                         value = get_param(plot[i])
                         raw_array = np.append(raw_array, value)
-            #get CCD data if 'ccd' in plot
+            # get CCD data if 'ccd' in plot
 
             current_param = pd.Series(param)  # generate series
 
-            plot_list = [[], [], [], [], []] # prepare five empty list
+            plot_list = [[], [], [], [], []]  # prepare five empty list
             for i in range(raw_array.size):
-                plot_list[int(i%len(plot))].append(raw_array[i])
+                plot_list[int(i % len(plot))].append(raw_array[i])
 
             # average
             for i in range(len(plot)):
@@ -2213,7 +2267,7 @@ class Scan(QThread):
                 data_ave = np.mean(data_array)
                 current_param[plot[i]] = float(data_ave)  # replace param['Iph'] by averaged data
 
-            current_param[scan_param] = get_param(scan_param) # for datasaving
+            current_param[scan_param] = get_param(scan_param)  # for datasaving
             current_param['t'] = round(loop_time, 2)
 
             self.data_matrix.loc[len(self.data_matrix), :] = current_param.tolist()  # appending param to data_matrix
@@ -2235,10 +2289,10 @@ class Scan(QThread):
         if self.xas: self.data_set.emit(scan_x, self.data_matrix.loc[:, 'Iph'].tolist())  # for accumulation in XAS
 
         if ABORT:
-            self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
+            self.cmd_msg.emit('Scaning loop has been terminated; time span  = %s' % convertSeconds(dt))
         else:
             if self.xas != True:
-                self.cmd_msg.emit('scan %s completed; time span  = %s'%(scan_param ,convertSeconds(dt)))
+                self.cmd_msg.emit('scan %s completed; time span  = %s' % (scan_param, convertSeconds(dt)))
 
         '''
         Data saving
@@ -2253,9 +2307,9 @@ class Scan(QThread):
 
     def saveSpec(self, spec_number, xas):
         if xas == False:
-            filename0="scan_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
+            filename0 = "scan_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
         else:
-            filename0="xas_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
+            filename0 = "xas_%s_%s_%s" % (dir_date, str(file_no), str(spec_number).zfill(3))
         filename = data_dir + filename0 + ".itx"
         text = self.getHeader(filename0)
         with open(filename, "w") as file:
@@ -2263,14 +2317,15 @@ class Scan(QThread):
         self.data_matrix.to_csv(filename, mode='a', index=False, sep=' ')
         with open(filename, "a+") as file:
             file.write('END')
-        self.cmd_msg.emit('{0} data saved in {1}.itx'.format("XAS" if self.xas else "scan" ,filename0))
-    
+        self.cmd_msg.emit('{0} data saved in {1}.itx'.format("XAS" if self.xas else "scan", filename0))
+
     def getHeader(self, name):
         header = "IGOR\r\nWAVES/D {}\r\nBEGIN\r\n".format(name)
         return header
 
     def ccdSum(self):
         pass
+
 
 class Tscan(QThread):
     setplot = pyqtSignal(str, float, int)
@@ -2284,8 +2339,8 @@ class Tscan(QThread):
         self.n = n
         self.t0 = t0
         self.start_point = get_param(p)
-        self.timelist = []                                      #as axis x
-        self.data_matrix = pd.DataFrame(columns=param_index)    #as axis y
+        self.timelist = []  # as axis x
+        self.data_matrix = pd.DataFrame(columns=param_index)  # as axis y
 
     def run(self):
         global param, WorkingSTATUS, BUSY, CountDOWN, file_no
@@ -2297,14 +2352,14 @@ class Tscan(QThread):
         '''
         t1 = time.time()
         self.setplot.emit(self.p, self.dt, self.n)
-        for i in range(self.n+1):
+        for i in range(self.n + 1):
             if ABORT:
                 break
             t01 = time.time()
             # timestamp = QTime.currentTime()
             # t = timestamp.toString()
             if i != 0:
-                t = t01-t1
+                t = t01 - t1
                 v = get_param(self.p)
             else:
                 t = 0
@@ -2318,10 +2373,10 @@ class Tscan(QThread):
             '''
             plot from data_matrix
             '''
-            #for i in range(0, len(plot)):
+            # for i in range(0, len(plot)):
             self.plot.emit(0, self.timelist, self.data_matrix.loc[:, self.p])
-            dt = time.time()-t01
-            time.sleep(self.dt-dt)
+            dt = time.time() - t01
+            time.sleep(self.dt - dt)
         '''
         Loop finished
         '''
@@ -2333,14 +2388,14 @@ class Tscan(QThread):
         dt = round(time.time() - t1, 3)
         print('time span in senconds=', dt)
         if ABORT:
-            self.cmd_msg.emit('scaning loop has been terminated; time span  = %s'%convertSeconds(dt))
+            self.cmd_msg.emit('scaning loop has been terminated; time span  = %s' % convertSeconds(dt))
         else:
-            self.cmd_msg.emit('scan %s completed; time span  = %s'%(self.p, convertSeconds(dt)))
+            self.cmd_msg.emit('scan %s completed; time span  = %s' % (self.p, convertSeconds(dt)))
         self.saveSpec()
         self.quit()
 
     def saveSpec(self):
-        filename0="tscan_{0}_{1}".format(dir_date, file_no)
+        filename0 = "tscan_{0}_{1}".format(dir_date, file_no)
         filename = data_dir + filename0 + ".itx"
         text = self.getHeader(filename0)
         with open(filename, "w") as file:
@@ -2348,18 +2403,18 @@ class Tscan(QThread):
         self.data_matrix.to_csv(filename, mode='a', index=False)
         with open(filename, "a+") as file:
             file.write('END')
-        self.cmd_msg.emit('{0} data saved in {1}.txt'.format("tscan" , filename0))
+        self.cmd_msg.emit('{0} data saved in {1}.txt'.format("tscan", filename0))
 
     def getHeader(self, name):
         header = "IGOR\nWAVES/D {}\nBEGIN\n".format(name)
         return header
 
 
-
 class Xas(QThread):  # no dummy now
     cmd_msg = pyqtSignal(str)
     xas_plot = pyqtSignal(list, list)
-    final_plot =pyqtSignal()
+    final_plot = pyqtSignal()
+
     def __init__(self, e1, e2, de, dwell, n, N):
         super(Xas, self).__init__()
         self.e1, self.e2, self.de, self.dwell, self.n, self.N = e1, e2, de, dwell, n, N
@@ -2372,9 +2427,9 @@ class Xas(QThread):  # no dummy now
         self.t0 = time.time()
         for i in range(self.N):
             if ABORT: break
-            if i == 0: self.xas_plot.emit(self.sum_x, self.sum_y) #refresh accum
-            cmd_global.command_input.setText("XAS [{0:d} / {1:d}] : scanning...".format(i+1, self.N))
-            self.scanthread = Scan(['Iph'], 'agm', self.e1, self.e2, self.de, self.dwell, self.n, i+1, True)
+            if i == 0: self.xas_plot.emit(self.sum_x, self.sum_y)  # refresh accum
+            cmd_global.command_input.setText("XAS [{0:d} / {1:d}] : scanning...".format(i + 1, self.N))
+            self.scanthread = Scan(['Iph'], 'agm', self.e1, self.e2, self.de, self.dwell, self.n, i + 1, True)
             self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
             self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
             self.scanthread.set_data.connect(spectrum_global.liveplot)
@@ -2389,7 +2444,9 @@ class Xas(QThread):  # no dummy now
         self.final_plot.emit()
         self.sum_x, self.sum_y = [], []
         spantime = time.time() - self.t0
-        self.cmd_msg.emit('{0:d} xas scan{1} completed, time span= {2:.2f} sec'.format(self.done_i , "" if self.done_i ==1 else "s",spantime))
+        self.cmd_msg.emit(
+            '{0:d} xas scan{1} completed, time span= {2:.2f} sec'.format(self.done_i, "" if self.done_i == 1 else "s",
+                                                                         spantime))
         cmd_global.command_input.setText("")
         self.quit()
 
@@ -2399,17 +2456,17 @@ class Xas(QThread):  # no dummy now
         if (self.sum_y == []):
             self.sum_y = y
         else:
-            self.sum_y = [(a + b*self.done_i)/(self.done_i+1) for a, b in zip(y, self.sum_y)]#initialize
-        print('i = {0}, sum_x = {1}, sum_y = {2}'.format(self.done_i,self.sum_x,self.sum_y))
+            self.sum_y = [(a + b * self.done_i) / (self.done_i + 1) for a, b in zip(y, self.sum_y)]  # initialize
+        print('i = {0}, sum_x = {1}, sum_y = {2}'.format(self.done_i, self.sum_x, self.sum_y))
         self.xas_plot.emit(self.sum_x, self.sum_y)
 
 
-
-class Rixs(QThread):  
+class Rixs(QThread):
     cmd_msg = pyqtSignal(str)
     setplot = pyqtSignal()
     savespec = pyqtSignal(bool)
-    #no_analyze = pyqtSignal()
+
+    # no_analyze = pyqtSignal()
 
     def __init__(self, t, n):
         super().__init__()
@@ -2424,9 +2481,9 @@ class Rixs(QThread):
         self.setplot.emit()
         if checkSafe('ccd'):
             pvl.ccd('exposure', self.t)
-        #else:
-            #self.cmd_msg.emit('ccd off, generating random data.')
-            #self.no_analyze.emit()
+        # else:
+        # self.cmd_msg.emit('ccd off, generating random data.')
+        # self.no_analyze.emit()
         self.t0 = time.time()
         for i in range(self.n):
             if ABORT: break
@@ -2461,6 +2518,7 @@ class Rixs(QThread):
         string = str(self.taken_i) + " images" if self.taken_i != 1 else str(self.taken_i) + " image"
         self.cmd_msg.emit(string + ' taken, time span= ' + str(round(time.time() - self.t0, 2)) + ' sec')
 
+
 class Expose(QThread):
     get = pyqtSignal()
     rixs = pyqtSignal(bool, int)
@@ -2483,11 +2541,11 @@ class Expose(QThread):
             dt = round(time.time() - self.t1, 3)
             print('image taken, time span in seconds= %s' % dt)
             if self.plot:
-                self.rixs.emit(self.plot, self.n) # get data, if self.plot = True, also plot in Spectrum Widget.
-                #self.save[int].emit(self.n)
+                self.rixs.emit(self.plot, self.n)  # get data, if self.plot = True, also plot in Spectrum Widget.
+                # self.save[int].emit(self.n)
             else:
                 self.get.emit()
-                self.show.emit()         # show image
+                self.show.emit()  # show image
 
     def startExposure(self):
         if checkSafe('ccd'):
@@ -2504,7 +2562,7 @@ class Expose(QThread):
                     self.cmd_msg.emit('RIXS aborted, CCD exposure stopped.')
                     break
         else:
-            while (time.time() - self.t1) < (self.t): # fake wait
+            while (time.time() - self.t1) < (self.t):  # fake wait
                 time.sleep(0.5)
                 if ABORT:
                     break
@@ -2519,8 +2577,6 @@ class Expose(QThread):
             time.sleep(0.5)
 
 
-
-
 class Macroloop(QThread):
     msg = pyqtSignal(str)
     send = pyqtSignal(str)
@@ -2530,54 +2586,53 @@ class Macroloop(QThread):
     def __init__(self, name):
         super(Macroloop, self).__init__()
         self.name = name
-        self.macro_n = 0 # start from zero
+        self.macro_n = 0  # start from zero
         self.macro_index = 0
         self.abort = False
 
-    #TODO: 1. ABORT 2. changing macro
+    # TODO: 1. ABORT 2. changing macro
     def run(self):
-        self.readFile()   #get self.macro_n
+        self.readFile()  # get self.macro_n
         while self.macro_index < self.macro_n:
             file = self.readFile()
             if file[-1] == "###MacroPause###":
                 self.setText.emit("Macro paused: waiting for macro file edition")
                 while True:
                     time.sleep(1)
-                    read = self.readFile()[-1] #check every second during macro pause
+                    read = self.readFile()[-1]  # check every second during macro pause
                     if read != "###MacroPause###":
                         break
             line = file[self.macro_index]
-            self.number.emit(self.macro_index) # to macrowindow
+            self.number.emit(self.macro_index)  # to macrowindow
             self.send.emit(line)
-            self.setText.emit("macro line [{0}] : {1}".format(str(self.macro_index+1), line))
+            self.setText.emit("macro line [{0}] : {1}".format(str(self.macro_index + 1), line))
             self.macro_index += 1
             time.sleep(0.5)
             while BUSY:
-                time.sleep(1) # hold here to wait command finish
+                time.sleep(1)  # hold here to wait command finish
             if ABORT:
                 break
 
         if ABORT == False:
             end_msg = "macro finished."
         else:
-            end_msg = "macro has been terminated, executed macro line: %s."%self.macro_index
+            end_msg = "macro has been terminated, executed macro line: %s." % self.macro_index
         self.setText.emit("")
         self.msg.emit(end_msg)
         self.quit()
 
-    def readFile(self): # refresh macro number (length of file)
-        #==============Macro start===============
-        readfile=[]
-        f = open(self.name,"r")
+    def readFile(self):  # refresh macro number (length of file)
+        # ==============Macro start===============
+        readfile = []
+        f = open(self.name, "r")
         for x in f:
-            x = x.replace("\n","")
+            x = x.replace("\n", "")
             readfile.append(x)
-        self.macro_n = len(readfile) # refresh macro_n
+        self.macro_n = len(readfile)  # refresh macro_n
         return readfile
 
     def abort(self):
         self.abort = True
-
 
 
 if __name__ == '__main__':
