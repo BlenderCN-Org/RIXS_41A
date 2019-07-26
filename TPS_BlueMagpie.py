@@ -1,4 +1,4 @@
-# Last edited:20190725 4pm
+# Last edited:20190726 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -98,14 +98,14 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'det', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [440, 1200],'ags': [480, 1200], 'x': [-15, 5], 'y': [-5, 5], 'z': [-12, 7],
-                         'th': [-10, 215], 'det': [-35, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
+param_range = pd.Series({'agm': [400, 1700],'ags': [400, 1200], 'x': [-7, 7], 'y': [-5, 5], 'z': [-12, 5],
+                         'th': [-5, 218], 'det': [-37, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
                          'gain': [0, 100], 'thoffset':[-70, 70], 'chmbr':[-37.5, 45], 'tth':[40, 150]})
 
 # Individual device safety control
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage":1,
-    "chmbr":1, "th": 1, "det": 1, 
+    "chmbr":1, "th": 1, "det": 1,
     "agm": 1, "ags": 1, "tth":0, "tthr":1,
     "ta": 1, "tb": 1, "heater":1, 
     "I0": 1, "Iph": 1, "Itey": 1,
@@ -130,8 +130,6 @@ def checkSafe(p):  # Individual device safe check
         return False
 
 if Device['ccd']==1 and Device['test'] ==0:
-    pvl.ccd("exposure", 2)
-    pvl.ccd("gain", 10)
     pvl.ccd("acqmode", 2)   # 0: video; 1: single (obsolete); 2: accumulation
     pvl.ccd("accunum", 1)   # accunum to 1 
     pvl.ccd("accutype", 0)  # 0: raw image; 2: differnece image
@@ -1102,6 +1100,16 @@ class Command(QWidget):
                    self.sysReturn('AGS rotation disabled.')
                    pvl.putVal('air', 0)
 
+        elif text[:4] == 'cham':
+            if self.checkCham(text):
+                self.sysReturn(text, 'v', True)
+                if text.split(' ')[1] == "on":
+                   self.chamberFlag = True
+                   self.sysReturn('chamber motor enabled.')
+                else:
+                   self.chamberFlag = False
+                   self.sysReturn('chamber motor disabled.')
+
         elif text[:3] == "do ":
             space = text.count(' ')
             sptext = text.split(' ')
@@ -1299,6 +1307,16 @@ class Command(QWidget):
             return False
         if sptext[1] not in ['on', 'off']:
             self.sysReturn('input error. Format: AGS on/off', 'err')
+            return False
+        return True
+
+    def checkCham(self, text):
+        sptext = text.split(' ')
+        if len(sptext) != 2:
+            self.sysReturn('input error. Format: cham on/off', 'err')
+            return False
+        if sptext[1] not in ['on', 'off']:
+            self.sysReturn('input error. Format: cham on/off', 'err')
             return False
         return True
     
@@ -1996,6 +2014,7 @@ class Move(QThread):
                 param[p] = v
             if p == 'tth':
                 self.errmsg.emit('air pressure is not on.','err')
+
         self.quit()
 
     def xyzMotor(self, p, v): # move with x, y, z with backlash
@@ -2032,33 +2051,47 @@ class Move(QThread):
 
     def tthRotation(self, tth, chamber):
         # first check target chmbr position => calculate chmbr(tth)
-        # definition: 
+        # definition:
         #       delta tth = 10 degree, tth0 = 90
-        #       delta chmbr = 7.5 mm,  chmbr0(tth0) = 0 
+        #       delta chmbr = 7.5 mm,  chmbr0(tth0) = 0
         # if > 3 mm (4 degree tth), run for loop for finite steps, else move tth only.
-        chmbr_target = (tth-90)*0.75 # in units of mm
+
+        chmbr_target = round((tth - 90) * 0.75,2)  # in units of mm
         chmbr_position = pvl.caget('chmbr')
         tth_position = pvl.caget('tth')
-        self.msg.emit("target chamber position:{}".format(chmbr_target))
-        distance = chmbr_target - chmbr_position
-        step = distance//1 if abs(distance) >= 1 else 0 # step > 0, moving positive; step <0, opposite direction.
-        self.msg.emit("steps to take:{}".format(abs(step)))
-        if step != 0:
-            for i in range(1, int(abs(step)+1)): # both moving in small steps before target
-                if not ABORT:
-                    tth_step = tth_position + i if (step > 0) else (tth_position - i*1)
-                    chmbr_step = chmbr_position + i*0.75 if (step > 0) else (chmbr_position - i*0.75)
-                    pvl.putVal('tth', tth_step)         # move tth first
-                    self.moveCheck('tth', tth_step)
-                    self.msg.emit("{} moved to {}".format('tth', tth_step))
+        if self.chmbrSafe(chmbr_target - chmbr_position):
+            distance = tth - tth_position
+            step = int(distance / 10)
+            self.msg.emit('steps = {}'.format(abs(step)))
+            if step != 0:
+                for i in range(1, int(abs(step) + 1)):  # both moving in small steps before target
                     if not ABORT:
-                        if chamber:
-                            pvl.putVal('chmbr', chmbr_step)     # then move chmbr
-                            self.moveCheck('chmbr', chmbr_step)
-                            self.msg.emit("{} moved to {}".format('chmbr', chmbr_step))
-        pvl.putVal('tth', tth)         # target tth position
-        self.moveCheck('tth', tth)
-        pvl.caget('tth')
+                        tth_next = round(tth_position + i, 2) if (step > 0) else (round(tth_position - i, 2))
+                        pvl.putVal('tth', tth_next)  # move tth first
+                        self.moveCheck('tth', tth_next)
+                        self.msg.emit("i= {}, {} moved to {}".format(i, 'tth', tth_next))
+                        if not ABORT:
+                            if chamber:
+                                chmbr_next = round((tth_next - 90) * 0.75, 2)
+                                pvl.putVal('chmbr', chmbr_next)  # then move chmbr
+                                self.moveCheck('chmbr', chmbr_next)
+                                self.msg.emit("{} moved to {}".format('chmbr', chmbr_next))
+            if not ABORT:
+                chmbr_position = pvl.caget('chmbr')
+                if abs(chmbr_target- chmbr_position) > 2 and chamber:
+                    pvl.putVal('chmbr', chmbr_target)  # then move chmbr
+                    self.moveCheck('chmbr', chmbr_target)
+                pvl.putVal('tth', tth)  # target tth position
+                self.moveCheck('tth', tth)
+                pvl.caget('tth')
+        else:
+            self.errmsg.emit('Large chamber position offset; chamber motor is required to be enabled.', 'err')
+
+    def chmbrSafe(self, chmbr_safety):
+        if abs(chmbr_safety) > 10 and self.chamber == False:
+            return False
+        else:
+            return True
 
     def moveCheck(self, p, v):
         t1 = time.time()
