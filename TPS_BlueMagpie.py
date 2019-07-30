@@ -1,4 +1,4 @@
-# Last edited:20190726 6pm
+# Last edited:20190730 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -10,7 +10,7 @@ import pandas as pd
 import datetime, re
 import pvlist
 import math
-from spike_ver02 import spikeRemoval_1, low_pass_fft
+from spike import spikeRemoval, low_pass_fft
 from scipy.ndimage import gaussian_filter
 import macro
 import login
@@ -97,7 +97,7 @@ for elements in non_movables:
 # movables: ['agm', 'ags', 'x', 'y', 'z','th', 'det', 'ta','Tccd', 'gain']
 
 # golable series for the parameter ranges set to protect instruments.
-param_range = pd.Series({'agm': [400, 1700], 'ags': [400, 1200], 'x': [-7, 7], 'y': [-5, 5], 'z': [-12, 5],
+param_range = pd.Series({'agm': [400, 1700], 'ags': [400, 1200], 'x': [-7, 7], 'y': [-5, 5], 'z': [-12, 3],
                          'th': [-5, 218], 'det': [-37, 0], 'ta': [5, 350], 'tb': [5, 350], 'Tccd': [-100, 30],
                          'gain': [0, 100], 'thoffset': [-70, 70], 'chmbr': [-37.5, 45], 'tth': [40, 150]})
 
@@ -105,7 +105,7 @@ param_range = pd.Series({'agm': [400, 1700], 'ags': [400, 1200], 'x': [-7, 7], '
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage": 1,
     "chmbr": 1, "th": 1, "det": 1,
-    "agm": 1, "ags": 1, "tth": 0, "tthr": 1,
+    "agm": 1, "ags": 1, "tth": 1, "tthr": 1,
     "ta": 1, "tb": 1, "heater": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
@@ -393,13 +393,7 @@ class StatusWidget(QWidget):
             return ("<font color = red>disabled</font>")
 
     def agsFlag(self, flag):  # for command widget control display flag
-        global Device
         self.ags_flag = flag
-        if flag:
-            Device['tth'] = 1
-            pvl.caget('tth')
-        else:
-            Device['tth'] = 0
 
     # TODO: deglobalize
     # def setString(self, string=None): #destroy global parameters
@@ -693,6 +687,7 @@ class Command(QWidget):
                    # "<b>shut</b>: open or close the BL shutter.<br>\n"
                    "<b>gain</b>: turn on/off EMCCD. <font color=blue>e.g. gain on </font> <br>\n"
                    "<b>air</b>: turn on/off air pressure of tth control. <font color=blue>e.g. air on </font> <br>\n"
+                   "<b>cham</b>: turn on/off chamber control. <font color=blue>e.g. cham on </font> <br>\n"
                    "<b>load</b>: load an image file from project#0/data/img folder.<br>"
                    "<b>save</b>: save 1D data in txt from shown spectrum.<br>")
             self.sysReturn(msg)
@@ -794,6 +789,7 @@ class Command(QWidget):
             # check format
             if space == 2:  # e.g. rixs t n
                 if self.checkFloat(sptext[1]) and self.checkInt(sptext[2]):
+                    BUSY = True #2019,0730,14:53 added for macro safety
                     file_no += 1
                     param['f'] = file_no
                     # t as exposure time ; n as number of images.
@@ -871,7 +867,7 @@ class Command(QWidget):
                                 self.sysReturn(self.check_param_range(p, v), 'err')
                             else:
                                 self.sysReturn('mv {0} {1}'.format(p, v), "v", True)
-                                self.movethread = Move(p, float(v), self.chamberFlag)  # check if finished or not
+                                self.movethread = Move(p, float(v), self.chamberFlag, self.airFlag)  # check if finished or not
                                 self.movethread.msg.connect(self.sysReturn)
                                 self.movethread.errmsg.connect(self.sysReturn)
                                 self.movethread.finished.connect(self.threadFinish)
@@ -1055,7 +1051,7 @@ class Command(QWidget):
                     param['f'] = file_no
                     start_time = datetime.datetime.now()
                     self.sysReturn('Scan %s begins at %s' % (file_no, start_time.strftime("%c")))
-                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False, self.chamberFlag)
+                    self.scanthread = Scan(plot, scan_param, x1, x2, step, dwell, n, 1, False, self.chamberFlag, self.airFlag)
                     self.scanthread.scan_plot.connect(spectrum_global.scanPlot)
                     self.scanthread.cmd_msg.connect(cmd_global.sysReturn)
                     self.scanthread.set_data.connect(spectrum_global.liveplot)
@@ -1113,11 +1109,13 @@ class Command(QWidget):
                 self.sysReturn(text, 'v', True)
                 if text.split(' ')[1] == "on":
                     self.enableags.emit(True)
+                    self.airFlag = True
                     self.sysReturn('AGS rotation enabled.')
                     pvl.putVal('air', 1)
                     pvl.caget('tth')
                 else:
                     self.enableags.emit(False)
+                    self.airFlag = False
                     self.sysReturn('AGS rotation disabled.')
                     pvl.putVal('air', 0)
 
@@ -1843,8 +1841,7 @@ class SpectrumWidget(QWidget):
         # ===== remove spike ======
         if self.spikeremove:
             if self.spikefactor >= 1.05:
-                data = spikeRemoval_1(data, self.x1, self.x2, self.spikefactor)  # save setref 2d image file
-                #data = spikeRemoval(data, self.spikefactor)  # save setref 2d image file
+                data = spikeRemoval(data, self.x1, self.x2, self.spikefactor)  # save setref 2d image file
             else:
                 self.errmsg.emit('spike factor should be bigger than 1.1', 'err')
         # ===== remove background ======
@@ -1928,8 +1925,7 @@ class SpectrumWidget(QWidget):
             if self.rixs_name != None:
                 self.ref_name = self.rixs_name
                 self.msg.emit('reference data set: {0}'.format(self.ref_name))
-                data = spikeRemoval_1(self.data, 0, 1023, 3)
-                #data = spikeRemoval(self.data, 3)
+                data = spikeRemoval(self.data, 0, 1023, 3)
                 self.ref_2d = gaussian_filter(data, sigma=self.gfactor)
                 print('bkgd')
                 print(self.ref_2d)
@@ -2037,12 +2033,12 @@ class Move(QThread):
     errmsg = pyqtSignal(str, str)
     refresh = pyqtSignal()
 
-    def __init__(self, p, v, chamber=True):
+    def __init__(self, p, v, chamber=True, air=False):
         super(Move, self).__init__()
         self.p = p
         self.v = v
         self.chamber = chamber  # for tth enable/disable chamber cooperation
-        # list all write PVs and call later
+        self.air = air
 
     def run(self):
         global cmd_global, WorkingSTATUS, BUSY
@@ -2052,6 +2048,8 @@ class Move(QThread):
             if (p in param_index0) and (p not in ['x', 'y', 'z', 'Tccd', 'gain', 'ta', 'thoffset', 'tth']):
                 pvl.putVal(p, v)
                 self.moveCheck(p, v)
+                if p == 'det':
+                    pvl.caget('det')
             elif p in ['x', 'y']:
                 # calculate new x, y
                 if p == 'x':
@@ -2079,7 +2077,7 @@ class Move(QThread):
             elif p == 'thoffset':
                 pvl.thOffset(True, v)
             elif p == 'tth':
-                if pvl.caget('air') == 1:
+                if pvl.caget('air') == 1 and self.air == True:
                     self.tthRotation(v, self.chamber)
                 else:
                     self.errmsg.emit('air not ready, failed to move tth', 'err')
@@ -2642,11 +2640,24 @@ class Macroloop(QThread):
             line = file[self.macro_index]
             self.number.emit(self.macro_index)  # to macrowindow
             self.send.emit(line)
+            if self.checkMacroCommand(line) == True:
+                global BUSY
+                BUSY = True # force BUSY flag
             self.setText.emit("macro line [{0}] : {1}".format(str(self.macro_index + 1), line))
             self.macro_index += 1
-            time.sleep(0.5)
+            # print('index = ',self.macro_index ,'BUSY before 3 secs= ', BUSY)
+            # time.sleep(3)
+            if BUSY:
+                print("macro line [{0}] : {1}".format(str(self.macro_index), line))
+                print('index = ',self.macro_index ,'BUSY= ', BUSY)
+            self.t0 = time.time()
             while BUSY:
-                time.sleep(1)  # hold here to wait command finish
+                time.sleep(0.01)
+                if (time.time() - self.t0) % 10 < 0.001:
+                    print('dt = ', time.time()-self.t0, 'BUSY= ', BUSY)
+                if BUSY == False:
+                    print('BUSY loop finished')
+
             if ABORT:
                 break
 
@@ -2670,6 +2681,15 @@ class Macroloop(QThread):
 
     def abort(self):
         self.abort = True
+
+    def checkMacroCommand(self, line):
+        global BUSY
+        keyword = line.split(' ')[0]
+        busylist = ['mv', 'rixs', 'img', 'scan', 'xas', 'tscan', 'heater', 'wait']
+        if keyword in busylist:
+            return True
+
+
 
 
 if __name__ == '__main__':

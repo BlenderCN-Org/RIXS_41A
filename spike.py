@@ -23,7 +23,7 @@ def low_pass_fft(spectrum, max_freq=0.15, step=1):
     spectrum_filtered = fftpack.ifft(low_freq_fft).real # remove imaginary part
     return spectrum_filtered
 
-def spikeRemoval_1(data, x1=400, x2=600, d=3):
+def spikeRemoval(data, x1=400, x2=600, d=3):
     # --- data is a 2D np.array
     # --- x1 and x2 set the region of interest of x pixels between x1 and x2
     # --- d is a discrimination factor which sets a discriminator level H (the spike removal level)
