@@ -1111,13 +1111,15 @@ class Command(QWidget):
                     self.enableags.emit(True)
                     self.airFlag = True
                     self.sysReturn('AGS rotation enabled.')
-                    pvl.putVal('air', 1)
-                    pvl.caget('tth')
+                    if checkSafe('test'):
+                        pvl.putVal('air', 1)
+                        pvl.caget('tth')
                 else:
                     self.enableags.emit(False)
                     self.airFlag = False
                     self.sysReturn('AGS rotation disabled.')
-                    pvl.putVal('air', 0)
+                    if checkSafe('test'):
+                        pvl.putVal('air', 0)
 
         elif text[:4] == 'cham':
             if self.checkCham(text):
