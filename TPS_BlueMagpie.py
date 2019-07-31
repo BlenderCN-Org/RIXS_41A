@@ -1,4 +1,4 @@
-# Last edited:20190731 10am
+# Last edited:20190731 2pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -109,7 +109,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset": 1, "Iring": 1, "test": 1
+    "thoffset": 1, "Iring": 1, "test": 0
 })
 
 
@@ -2123,23 +2123,36 @@ class Move(QThread):
 
     def tthRotation(self, tth, chamber):
         # first check target chmbr position => calculate chmbr(tth)
-        # definition:
-        #       delta tth = 10 degree, tth0 = 90
-        #       delta chmbr = 7.5 mm,  chmbr0(tth0) = 0
-        # if > 3 mm (4 degree tth), run for loop for finite steps, else move tth only.
+        # chamber: safety flag
+        # chamber position =(tth - 90) * 0.75
 
         chmbr_target = round((tth - 90) * 0.75, 2)  # in units of mm
-        chmbr_position = pvl.caget('chmbr')
-        tth_position = pvl.caget('tth')
+        self.msg.emit('chamber target position = {}'.format(chmbr_target)) # print target position
+        chmbr_position = pvl.caget('chmbr') #current chamber position
+        tth_position = pvl.caget('tth') ##current tth position
+        chmbr_position_1 = (tth_position - 90) * 0.75 ## initial chamber position
+
         if self.chmbrSafe(chmbr_target - chmbr_position):
             distance = tth - tth_position
-            step = int(distance / 10)
+            size = 5
+            step = int(distance / size) #ex: distance = 20
             self.msg.emit('steps = {}'.format(abs(step)))
+
+            if not ABORT:
+                if chamber: # move to initial chamber position
+                    if (chmbr_position - chmbr_position_1) * (chmbr_target - chmbr_position_1) < 0:
+                        pvl.putVal('chmbr', chmbr_position_1)  # then move chmbr
+                        self.moveCheck('chmbr', chmbr_position_1)
+                        self.msg.emit("{} moved to {}".format('chamber', chmbr_position_1))
+
             if step != 0:
-                for i in range(1, int(abs(step) + 1)):  # both moving in small steps before target
+                for i in range(1, int(abs(step) + 1)):
                     if not ABORT:
-                        tth_next = round(tth_position + i, 2) if (step > 0) else (round(tth_position - i, 2))
-                        pvl.putVal('tth', tth_next)  # move tth first
+                        if (step > 0):
+                            tth_next = round(tth_position + i*size, 2)
+                        else:
+                            tth_next = round(tth_position - i*size, 2)
+                        pvl.putVal('tth', tth_next)
                         self.moveCheck('tth', tth_next)
                         self.msg.emit("i= {}, {} moved to {}".format(i, 'tth', tth_next))
                         if not ABORT:
@@ -2148,6 +2161,7 @@ class Move(QThread):
                                 pvl.putVal('chmbr', chmbr_next)  # then move chmbr
                                 self.moveCheck('chmbr', chmbr_next)
                                 self.msg.emit("{} moved to {}".format('chmbr', chmbr_next))
+
             if not ABORT:
                 chmbr_position = pvl.caget('chmbr')
                 if abs(chmbr_target - chmbr_position) > 2 and chamber:
