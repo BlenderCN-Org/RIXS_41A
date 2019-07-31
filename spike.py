@@ -85,7 +85,7 @@ def spikeRemoval(data, x1=400, x2=600, d=3):
 
 
 
-def spikeRemoval(data, d=3): # the 3rd version
+def spikeRemoval_1(data, d=3): # the 3rd version
     # --- data is a 2D np.array
     # return list: [data_sp]
     # --- data_sp is a np.array for 2D data after spike removal
