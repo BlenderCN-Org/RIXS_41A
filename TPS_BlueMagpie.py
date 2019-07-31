@@ -1,4 +1,4 @@
-# Last edited:20190730 5pm
+# Last edited:20190731 10am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -109,7 +109,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset": 1, "Iring": 1, "test": 0
+    "thoffset": 1, "Iring": 1, "test": 1
 })
 
 
@@ -2200,15 +2200,15 @@ class Scan(QThread):
     data_set = pyqtSignal(list, list)  # for xas plot collection
     cmd_msg = pyqtSignal(str)
 
-    def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas, chamberFlag=True):
+    def __init__(self, plot, scan_param, x1, x2, step, dwell, n, N, xas, chamberFlag=True, airFlag=False):
         super(Scan, self).__init__()
         self.plot, self.scan_param, self.step = plot, scan_param, step
         self.x1, self.x2, self.dwell, self.n = x1, x2, dwell, n
-        self.start_point = Move(scan_param, x1, chamberFlag)
+        self.start_point = Move(scan_param, x1, chamberFlag, airFlag)
         self.data_matrix = pd.DataFrame(columns=param_index)
         self.spec_number = N
         self.xas = xas  # flag for file saving and other messages
-        self.chamberFlag = chamberFlag
+        self.chamberFlag, self.airFlag= chamberFlag, airFlag
         self.ccd = True if ('ccd' in plot) else False
 
     def run(self):
@@ -2257,7 +2257,7 @@ class Scan(QThread):
             Set scanning parameters
             '''
             scan_x.append(x1 + i * step)
-            self.WorkerThread = Move(scan_param, scan_x[i], self.chamberFlag)
+            self.WorkerThread = Move(scan_param, scan_x[i], self.chamberFlag, self.airFlag)
             self.WorkerThread.start()
             self.WorkerThread.wait()  # wait move finish
             '''
