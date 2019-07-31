@@ -1,4 +1,4 @@
-# Last edited:20190731 2pm
+# Last edited:20190731 6pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -1715,6 +1715,7 @@ class SpectrumWidget(QWidget):
         self.refinfo = QLabel(self)
         self.fftinfo = QLabel(self)
         self.xval = QLabel(self)
+        self.yval = QLabel(self)
         self.spikeinfo = QLabel(self)
         self.dinfo = QLabel(self)
 
@@ -1729,6 +1730,7 @@ class SpectrumWidget(QWidget):
         self.topHorizontal.addWidget(self.pos_bar)
         self.topHorizontal.addWidget(self.xval)
         self.layoutVertical = QVBoxLayout(self)
+        self.layoutVertical.addWidget(self.yval)
         self.layoutVertical.addLayout(self.topHorizontal)
         self.layoutVertical.addWidget(self.plotWidget)
         self.layoutVertical.addLayout(self.layoutHorizontal)
@@ -1740,7 +1742,7 @@ class SpectrumWidget(QWidget):
         self.hLine.show()
 
     def leaveEvent(self, event):
-        self.pos_bar.clear()
+        self.pos_bar.setText('')
         self.vLine.hide()
         self.hLine.hide()
 
@@ -1983,6 +1985,7 @@ class SpectrumWidget(QWidget):
         fftflag = "<font color=green>ON</font>" if self.fft else "<font color=red>OFF</font>"
         if set:
             self.xval.setText('<p align=\"right\">x1 = {0}, x2 = {1}</p>'.format(self.x1, self.x2))
+            self.yval.setText('<p align=\"right\">y1 = {0}, y2 = {1}</p>'.format(self.y1, self.y2))
             self.spikeinfo.setText('spike factor [{}] = {} '.format(spikeflag, self.spikefactor))
             self.refinfo.setText('background [{}] = {}'.format(bkgdflag, self.ref_name))
             self.fftinfo.setText(
@@ -1990,6 +1993,7 @@ class SpectrumWidget(QWidget):
             self.dinfo.setText('<p align=\"right\">d1 = {}, d2 = {} [{}]</p>'.format(self.d1, self.d2, dflag))
         else:
             self.xval.setText('')
+            self.yval.setText('')
             self.spikeinfo.setText('')
             self.refinfo.setText('')
             self.fftinfo.setText('')
