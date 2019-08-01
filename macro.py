@@ -185,7 +185,7 @@ class MacroWindow(QWidget):
     
     def enableEditor(self, bool):
         self.open_button.setEnabled(bool)
-        self.edit_button.setDisabled(bool)
+        self.edit_button.setDisabled(True)
         self.editor.setReadOnly(not bool)
         self.editor.setStyleSheet("color: black; background-color: {}".format("white" if bool else "Floralwhite"))
 

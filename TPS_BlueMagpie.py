@@ -189,10 +189,10 @@ def Read(p, form='.3f'):
         if real == 0: string = '<font color=gray>' + string + '</font>'
         if real == 1 and p not in ['Tccd', 'I0', 'gain', 'Iph']:
             if pvl.moving(p):
-                string = '<font color=blue>' + string + '</font>'
+                string = '<font color=green><b>{}</b></font>'.format(string)
                 if p in ['th', 'tth']:
                     value = pvl.caget(p)
-                    string = '<font color=blue>{}</font>'.format(format(value, '.1f') if value != None else 'error')
+                    string = '<font color=green><b>{}</b></font>'.format(format(value, '.1f') if value != None else 'error')
 
     return string
 
@@ -1111,14 +1111,14 @@ class Command(QWidget):
                     self.enableags.emit(True)
                     self.airFlag = True
                     self.sysReturn('AGS rotation enabled.')
-                    if checkSafe('test'):
+                    if Device['test'] == 0:
                         pvl.putVal('air', 1)
                         pvl.caget('tth')
                 else:
                     self.enableags.emit(False)
                     self.airFlag = False
                     self.sysReturn('AGS rotation disabled.')
-                    if checkSafe('test'):
+                    if Device['test'] == 0:
                         pvl.putVal('air', 0)
 
         elif text[:4] == 'cham':
@@ -2170,7 +2170,7 @@ class Move(QThread):
 
             if not ABORT:
                 chmbr_position = pvl.caget('chmbr')
-                if abs(chmbr_target - chmbr_position) > 2 and chamber:
+                if chamber:
                     pvl.putVal('chmbr', chmbr_target)  # then move chmbr
                     self.moveCheck('chmbr', chmbr_target)
                 pvl.putVal('tth', tth)  # target tth position
