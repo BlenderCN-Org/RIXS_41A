@@ -1,4 +1,4 @@
-# Last edited:20190801 2pm
+# Last edited:20190801 5pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -140,7 +140,10 @@ if Device['ccd'] == 1 and Device['test'] == 0:
 def get_param(p):
     global param, Device
     if checkSafe(p):
-        v = pvl.getVal(p)
+        if p != 'ccd':
+            v = pvl.getVal(p)
+        else:
+            v = param[p]
         if v == None:  # turn off safe if get None by related PV
             if p in ['x', 'y', 'z']:
                 Device["xyzstage"] = 0
@@ -676,8 +679,8 @@ class Command(QWidget):
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>rixs t n </font> <br>\n"
                    "<br>\n"
                    "<b>setref</b>: set the current spectrum as a reference spectrum.<br>\n"
-                   "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), g(gaussian factor), fmax, step. <br>\n"
-                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/sp/g/fmax/step value </font> <br>\n"
+                   "<b>spec</b>: set processing parameters including x1, x2, d1, d2, f(spike factor), fmax, step. <br>\n"
+                   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>spec x1/x2/d1/d2/sp/fmax/step value </font> <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>x1, x2= x-pixel range; &nbsp; d1, d2= discriminator levels</font> <br>\n"
                    "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</b> <font color=blue>fmax= max frequency of FFT; &nbsp; step= inverse of FFT sampling rate </font> <br>\n"
                    "<b>spike</b>: turn on/off spike removal for data processing.  <font color=blue>e.g. spike on </font> <br>\n"
@@ -944,7 +947,7 @@ class Command(QWidget):
             space, sptext = text.count(' '), text.split(' ')
             if space == 2:
                 p, v = sptext[1], sptext[2]
-                if p in ['x1', 'x2', 'y1', 'y2']:
+                if p in ['x1', 'x2']:
                     if self.checkInt(v) and 1023 >= int(v) >= 0:
                         self.setfactor.emit(str(p), int(v))
                         self.sysReturn(text, "v", True)
@@ -952,6 +955,14 @@ class Command(QWidget):
                     else:
                         self.sysReturn(text, "iv")
                         self.sysReturn("{} should be integer or in range(0, 1023)".format(v), "err")
+                elif p in ['y1', 'y2']:
+                    if self.checkInt(v) and 2047 >= int(v) >= 0:
+                        self.setfactor.emit(str(p), int(v))
+                        self.sysReturn(text, "v", True)
+                        self.sysReturn('spec {0} set to {1}'.format(p, eval(v)))
+                    else:
+                        self.sysReturn(text, "iv")
+                        self.sysReturn("{} should be integer or in range(0, 2047)".format(v), "err")
                 elif p in ['sp', 'd1', 'd2', 'fmax', 'step']:
                     if self.checkFloat(v):
                         self.setfactor.emit(str(p), float(v))
@@ -1144,7 +1155,7 @@ class Command(QWidget):
                     self.sysReturn('ccd device not connected', 'err')
             else:
                 self.sysReturn(text, "iv")
-                self.sysReturn("input error. use:   d on/off", "err")
+                self.sysReturn("input error. use:   gain on/off", "err")
 
         elif text[:3] == "do ":
             space = text.count(' ')
@@ -2006,6 +2017,8 @@ class SpectrumWidget(QWidget):
 
     def ccdSum(self, data):
         sum_data = np.sum(data[self.x1:self.x2, self.y1:self.y2])
+        pixel_area = abs(self.y2-self.y1)*abs(self.x2-self.x1)
+        sum_data = np.divide(sum_data, pixel_area)
         param['ccd'] = sum_data
         print('sum data = ', sum_data)
 
@@ -2247,6 +2260,10 @@ class Scan(QThread):
         self.start_point.wait()
 
         self.scan_plot.emit(plot, scan_param, x1, x2_new, self.xas)
+
+        # set exposure time if ccd is one of the detectors
+        if self.ccd:
+            pvl.ccd('exposure', dwell)
         '''
         Scanning loop
         set scanning parameters = > Data collection (averaging)  => plot data
@@ -2290,6 +2307,7 @@ class Scan(QThread):
                 self.expose.get.connect(img_global.getData)
                 self.expose.sum.connect(img_global.ccdSum)
                 self.expose.start()
+                print('expose thread started')
 
             t0 = time.time()
             raw_array = np.array([])
@@ -2299,11 +2317,13 @@ class Scan(QThread):
                     for i in range(len(plot)):
                         value = get_param(plot[i])
                         raw_array = np.append(raw_array, value)
+            print('while loop finished')
 
             # Ensure dwell time ccd finished exposure
             if self.ccd:
                 self.expose.wait()
 
+            print('expose thread finished')
             current_param = pd.Series(param)  # generate series
 
             plot_list = [[], [], [], [], []]  # prepare five empty list
@@ -2593,13 +2613,13 @@ class Expose(QThread):
             print('image taken, time span in seconds= %s' % dt)
             if self.plot:  # for rixs command
                 self.rixs.emit(self.plot, self.n)
-            if self.show:
+            if self.show:  # for img command
                 self.get.emit()
-                self.showimg.emit()  # for img command
-            if not self.plot and not self.show:
+                self.showimg.emit()
+            if not self.plot and not self.show: # for ccd sum (scan)
                 self.get.emit()
                 print('get')
-                self.sum.emit()  # for ccd sum (scan)
+                self.sum.emit()
                 print('sum')
 
     def startExposure(self):
