@@ -1,4 +1,4 @@
-# Last edited:20190731 6pm
+# Last edited:20190801 2pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -449,7 +449,7 @@ class Command(QWidget):
         self.macrostat[str].connect(self.command_input.setText)
 
         # login related
-        self.userpower = 0  # logout:0, normal:1, super:2
+        self.userpower = 1  # logout:0, normal:1, super:2
         self.login = login.Login()
 
         # tth control
@@ -2657,7 +2657,7 @@ class Macroloop(QThread):
                     read = self.readFile()[-1]  # check every second during macro pause
                     if read != "###MacroPause###":
                         break
-            line = file[self.macro_index]
+            line = self.readFile()[self.macro_index]
             self.number.emit(self.macro_index)  # to macrowindow
             self.send.emit(line)
             if self.checkMacroCommand(line) == True:
@@ -2708,6 +2708,8 @@ class Macroloop(QThread):
         busylist = ['mv', 'rixs', 'img', 'scan', 'xas', 'tscan', 'heater', 'wait']
         if keyword in busylist:
             return True
+        else:
+            return False
 
 
 

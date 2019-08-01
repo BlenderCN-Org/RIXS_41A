@@ -33,12 +33,11 @@ class MacroWindow(QWidget):
         self.status_bar.setReadOnly(True)
         self.status_bar.setDisabled(True)
         self.showBar('New File',False)
-    #color setting: warm color for reading
+
     def __jobdone__(self):
         self.jobdonela = QLabel('Job done')
         self.jobdone = QTextEdit(self)
         self.jobdone.setFixedHeight(100)
-        #self.jobdone.setTextBackgroundColor(QColor(246,105,239))
         self.jobdone.setReadOnly(True)
         self.donetext = []
 
@@ -89,7 +88,9 @@ class MacroWindow(QWidget):
             txt_file = "{0}{1}".format(self.directory, file_name)
             with open(txt_file, "w") as file:
                 file.write(text)
-            self.editor.setDisabled(True)
+            self.enableEditor(False)
+            if self.macro_running == True: 
+                self.edit_button.setEnabled(True)
 
     def getName(self, msg="", file_name = False):
         text, ok = QInputDialog.getText(self, 'Save Macro', 'New macro name:\n'
@@ -97,9 +98,9 @@ class MacroWindow(QWidget):
         if ok:
             if text != "":
                 if not os.path.exists('{0}{1}.txt'.format(self.directory,text)):
-                    file_name = str(text) + '.txt'
                     self.showBar(str(text))
-                    self.macroMsg.emit("macro file saved: {0}.txt".format(file_name))
+                    file_name = str(text) + '.txt'
+                    self.macroMsg.emit("macro file saved: {0}".format(file_name))
                 else:
                     error_msg = "File name already exist: {0}.".format(text)
             else:
@@ -119,53 +120,47 @@ class MacroWindow(QWidget):
                                             , options=QFileDialog.ReadOnly)
         if fname != ('', ''):
             file = fname[0]
-        self.load(file)
+            self.load(file)
 
     def load(self, file = None, i = None):
         if file != None:
             with open(file, 'r') as f:
                 if i == None:
                     data = f.read()
-                # else:
-                #     for i in range(i, len(f)):
-                #         data.append = f.readline()
                 self.editor.setText(data)
                 self.showBar(f.name)
-                title = "Macro Editor - {0}".format(f.name)
+                title = "Macro Editor - {0}".format(os.path.basename(f.name))
                 self.current_file = file
         else:
             title = "Macro Editor"
         self.setWindowTitle(title)
 
-
     def edit(self):
-        with open(self.current_file, 'r') as f: #load text to editor
+        with open(self.current_file, 'r') as f: # load text to editor
             data = f.read()
             self.editor.setText(data)
             self.showBar(os.path.basename(self.current_file))
 
         with open(self.current_file, "a") as f:
-            f.write("\n###MacroPause###")
-        self.editor.setEnabled(True)
+            f.write("\n###MacroPause###")       # for MainWindow to check pause, will be overwrited when new file is saved
+        self.enableEditor(True)
+        self.open_button.setDisabled(True)
 
     def marcoStart(self, name):
         self.macro_running = True
-        self.open_button.setDisabled(True)
-        self.edit_button.setEnabled(True)
-        self.editor.setDisabled(True)
+        self.enableEditor(False)
         self.load(name)
 
     def macroFinished(self):
         self.macro_running = False
-        self.open_button.setEnabled(True)
-        self.edit_button.setDisabled(True)
-        self.editor.setEnabled(True)
+        self.load(self.current_file)
+        self.enableEditor(True)
         self.donetext = []
         self.jobdone.clear()
 
     def showBar(self, name, flag=True):
         if flag:
-            string = "File Name: {0}".format(name)
+            string = "File path: {0}".format(name)
         else:
             string = name
         self.status_bar.setText(string)
@@ -174,20 +169,33 @@ class MacroWindow(QWidget):
         filelist=[]
         with open(self.current_file,"r") as f:
             for x in f:
+                x = x.replace("\n", "")
                 filelist.append(x)
         return filelist
 
     def macroNum(self, macro_index):
         filelist = self.readFile()
-        if macro_index < len(filelist):
+        if macro_index < len(filelist): # macro_index = running line
+            self.jobdone.setText('\n'.join(self.donetext) if macro_index != 0 else '')
             self.donetext.append(filelist[macro_index])
-            self.jobdone.setText(''.join(self.donetext))
+            if self.macro_running: # mark running macro
+                line = filelist[macro_index]
+                filelist[macro_index] = '<font color = blue> {} </font>'.format(line)
+                self.editor.setText('<br>'.join(filelist))
     
+    def enableEditor(self, bool):
+        self.open_button.setEnabled(bool)
+        self.edit_button.setDisabled(bool)
+        self.editor.setReadOnly(not bool)
+        self.editor.setStyleSheet("color: black; background-color: {}".format("white" if bool else "Floralwhite"))
+
     def closeEvent(self, event):
-        self.windowclosed.emit()
-        event.accept()
-
-
+        if self.macro_running == False:
+            self.windowclosed.emit()
+            event.accept()
+        else:
+            self.errorMsg.emit('Can\'t close macro window while macro is running.', 'err')
+            event.ignore()
 
 # test running independently
 # app = QApplication(sys.argv)
