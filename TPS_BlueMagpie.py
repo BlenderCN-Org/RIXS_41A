@@ -1,10 +1,10 @@
-# Last edited:20190801 5pm
+# Last edited:20190806 10am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 import pyqtgraph as pg
-from pyqtgraph import PlotWidget, GraphicsLayoutWidget
+from pyqtgraph import PlotWidget
 import numpy as np
 import pandas as pd
 import datetime, re
@@ -105,13 +105,12 @@ param_range = pd.Series({'agm': [400, 1700], 'ags': [400, 1200], 'x': [-7, 7], '
 Device = pd.Series({
     "hexapod": 0, "ccd": 1, "xyzstage": 1,
     "chmbr": 1, "th": 1, "det": 1,
-    "agm": 1, "ags": 1, "tth": 1, "tthr": 1,
+    "agm": 1, "ags": 1, "tth": 1,
     "ta": 1, "tb": 1, "heater": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset": 1, "Iring": 1, "test": 0
+    "thoffset": 1, "Iring": 1, "test": 1
 })
-
 
 def checkSafe(p):  # Individual device safe check
     if Device["test"] == 0:
@@ -145,6 +144,7 @@ def get_param(p):
         else:
             v = param[p]
         if v == None:  # turn off safe if get None by related PV
+            cmd_global.sysReturn('{}'.format(p),'err')
             if p in ['x', 'y', 'z']:
                 Device["xyzstage"] = 0
             elif p in ["ccd", "gain", "Tccd"]:
