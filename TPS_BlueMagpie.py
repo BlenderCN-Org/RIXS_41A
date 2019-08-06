@@ -144,7 +144,7 @@ def get_param(p):
         else:
             v = param[p]
         if v == None:  # turn off safe if get None by related PV
-            cmd_global.sysReturn('{}'.format(p),'err')
+            cmd_global.sysReturn('parameter: {}, connection error.'.format(p),'err')
             if p in ['x', 'y', 'z']:
                 Device["xyzstage"] = 0
             elif p in ["ccd", "gain", "Tccd"]:
