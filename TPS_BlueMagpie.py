@@ -1,4 +1,4 @@
-# Last edited:20190801 5pm
+# Last edited:20190806 12pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -109,7 +109,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset": 1, "Iring": 1, "test": 0
+    "thoffset": 1, "Iring": 1, "test": 1
 })
 
 
@@ -315,7 +315,7 @@ class StatusWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.barhorizontal = QHBoxLayout()
         self.barhorizontal.addWidget(self.status_bar)
-        self.barhorizontal.addWidget(self.ring_current)
+        self.barhorizontal.addWidget(self.bl_info)
         self.layoutVertical.addLayout(self.barhorizontal)
         self.layoutVertical.addWidget(self.status_box)
         self.t0 = 0  # for remaining time references
@@ -328,8 +328,16 @@ class StatusWidget(QWidget):
         param['f'] = file_no
         self.status_bar.setText("{}  Project #0;   User: {};   file number: {};"
                                 .format(time_str, self._username, int(file_no)))
-        self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format
-                                  (pvl.getVal('ring') if Device['Iring'] == 1 and Device['test'] == 0 else 0))
+        if pvl.getVal('fe_pab')==True or pvl.getVal('fe_hms')==True:
+            front_end = "<font color = green>FrontEnd</font>"  
+        else:
+            front_end = "<font color = red>FrontEnd</font>" 
+        if Device['Iring'] == 1 and Device['test'] == 0:
+            ring_current = pvl.getVal('ring') 
+        else: 
+            ring_current = 0
+        self.bl_info.setText("<p align=\"right\">{0} I<sub>ring</sub>: {1:.3f} mA</p>".format
+                                  (front_end, ring_current))
 
     def show_text(self):  # called every 1 sec
         if CountDOWN > 1:
