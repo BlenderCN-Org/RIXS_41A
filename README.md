@@ -10,9 +10,11 @@ GUI for 41A beamline user including Image, Command, Status, Spectrum of RIXS exp
 • In addition to the CLI, the software has a macro window which allows users to run an experiment in a friendly manner.
 
 
-Command — to specify the values of parameters or to perform an action of controlling the beam line, spectrometer, sample environment or detector
+## Command 
+to specify the values of parameters or to perform an action of controlling the beam line, spectrometer, sample environment or detector
 
-Parameter — a quantity whose value specifies a device/instrument or gives a reading of a device 
+## Parameter 
+a quantity whose value specifies a device/instrument or gives a reading of a device 
     usage: command parameter1 value1, parameter2 value2….
     examples: mv x 2.1 (set the x coordination of the sample to 2.1)
               mvr y 0.2 (move the x coordination of the sample by 0.2)
