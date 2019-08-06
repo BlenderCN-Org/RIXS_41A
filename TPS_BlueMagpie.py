@@ -1,4 +1,4 @@
-# Last edited:20190806 10am
+# Last edited:20190806 1pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -304,8 +304,8 @@ class StatusWidget(QWidget):
         super(StatusWidget, self).__init__(parent=parent)
         self.today = datetime.date.today()  # for date change detection
         self.status_bar = QLabel(self)
-        self.ring_current = QLabel(self)
-        self.ring_current.setFont(QFont("UbuntuMono", 10))
+        self.bl_info = QLabel(self)
+        self.bl_info.setFont(QFont("UbuntuMono", 10))
         self.status_box = QTextEdit(self)
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
         self.status_box.setFont(QFont("UbuntuMono", 10.5))
@@ -315,7 +315,7 @@ class StatusWidget(QWidget):
         self.layoutVertical = QVBoxLayout(self)
         self.barhorizontal = QHBoxLayout()
         self.barhorizontal.addWidget(self.status_bar)
-        self.barhorizontal.addWidget(self.ring_current)
+        self.barhorizontal.addWidget(self.bl_info)
         self.layoutVertical.addLayout(self.barhorizontal)
         self.layoutVertical.addWidget(self.status_box)
         self.t0 = 0  # for remaining time references
@@ -328,8 +328,17 @@ class StatusWidget(QWidget):
         param['f'] = file_no
         self.status_bar.setText("{}  Project #0;   User: {};   file number: {};"
                                 .format(time_str, self._username, int(file_no)))
-        self.ring_current.setText("<p align=\"right\">I<sub>ring</sub>: {0:.3f} mA</p>".format
-                                  (pvl.getVal('ring') if Device['Iring'] == 1 and Device['test'] == 0 else 0))
+        if Device['Iring'] == 1 and Device['test'] == 0:
+            ring_current = pvl.getVal('ring') 
+            if pvl.getVal('fe_pab')==True or pvl.getVal('fe_hms')==True:
+                front_end = "<font color = green>FrontEnd</font>"  
+            else:
+                front_end = "<font color = red>FrontEnd</font>" 
+        else: 
+            ring_current = 0
+            front_end = "<font color = red>FrontEnd</font>" 
+        self.bl_info.setText("<p align=\"right\">{0} I<sub>ring</sub>: {1:.3f} mA</p>".format
+                                  (front_end, ring_current))
 
     def show_text(self):  # called every 1 sec
         if CountDOWN > 1:
