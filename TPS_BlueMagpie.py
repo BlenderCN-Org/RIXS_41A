@@ -1589,12 +1589,13 @@ class ImageWidget(QWidget):
     def getHeader(self):
         # record param from global pd.Series
         index = param.index.tolist()
-        value = [] 
-        for x in param.tolist():
-            if x not in ["I0", "Itey", "Iph"]:
-                value.append('{:.2f}'.format(x))
+        value = []
+        currentindexes = [param_index.index(x) for x in ['Iph', 'I0', 'Itey']]
+        for idx, val in enumerate(param.tolist()):  # 20190807:header format: 1581-1587
+            if idx not in currentindexes:
+                value.append('{:.2f}'.format(val))
             else:
-                value.append('{:.2E}'.format(x))
+                value.append('{:.2e}'.format(val))
         #value = ['{:.2f}'.format(x) for x in param.tolist()]
         for i in range(0, len(index)):
             str1 = str(index[i])
