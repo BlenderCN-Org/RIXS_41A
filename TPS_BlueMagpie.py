@@ -1,4 +1,4 @@
-# Last edited:20190807 10am
+# Last edited:20190807 4pm
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -82,15 +82,15 @@ CountDOWN = 0
 
 # SETUP_parameters
 # TODO: img?
-param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'det', 'ta', 'tb', 'I0', 'Iph', 'Itey',
+param_index = ['f', 't', 's1', 's2', 'agm', 'ags', 'x', 'y', 'z', 'th', 'det', 'ta', 'tb', 'I0', 'Iph', 'Itey', 'Iring',
                'imager', 'Tccd', 'shutter', 'ccd', 'gain', 'thoffset', 'chmbr', 'tth']
-param_value = [file_no, 0., 2.0, 50., 710., 720., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0,
+param_value = [file_no, 0., 2.0, 50., 710., 720., 0., 0., 0., 0, 90, 20., 30., 0., 0., 0., 0.,
                0, 25, 0, 0, 10, 0, 0, 90]
 param = pd.Series(param_value, index=param_index)
 
 # make a param_index for command input which excludes 'f', 'imager' and 'shutter'....
 # note: we can't use param_index0 = param_index
-non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', 'Itey', 'tb', 'chmbr']
+non_movables = ['t', 'f', 's1', 's2', 'imager', 'shutter', 'ccd', 'I0', 'Iph', 'Itey', 'Iring', 'tb', 'chmbr']
 param_index0 = list(param_index)
 for elements in non_movables:
     param_index0.remove(elements)
@@ -109,7 +109,7 @@ Device = pd.Series({
     "ta": 1, "tb": 1, "heater": 1,
     "I0": 1, "Iph": 1, "Itey": 1,
     "s1": 0, "s2": 0, "shutter": 0,
-    "thoffset": 1, "Iring": 1, "test": 1
+    "thoffset": 1, "Iring": 1, "test": 0
 })
 
 
@@ -129,7 +129,7 @@ def checkSafe(p):  # Individual device safe check
         return False
 
 
-if Device['ccd'] == 1 and Device['test'] == 0:
+if checkSafe('ccd'):
     pvl.ccd("acqmode", 2)  # 0: video; 1: single (obsolete); 2: accumulation
     pvl.ccd("accunum", 1)  # accunum to 1
     pvl.ccd("accutype", 0)  # 0: raw image; 2: differnece image
@@ -140,25 +140,31 @@ if Device['ccd'] == 1 and Device['test'] == 0:
 def get_param(p):
     global param, Device
     if checkSafe(p):
-        if p != 'ccd':
-            v = pvl.getVal(p)
-        else:
+        # pvl.getVal('ccd' or 'thoffset') not defined
+        if p == 'ccd':
             v = param[p]
-        if v == None:  # turn off safe if get None by related PV
+        elif p == 'thoffset':
+            v = pvl.thOffset()
+        else:
+            v = pvl.getVal(p)
+        # turn off safe if get None by related PV
+        if v == None:  
             if p in ['x', 'y', 'z']:
                 Device["xyzstage"] = 0
             elif p in ["ccd", "gain", "Tccd"]:
                 Device['ccd'] = 0
             else:
                 Device[p] = 0
-            v = param[p]
-        else:
-            if p in ['x', 'y']:  # for x, y, z display
-                th = -(pvl.thOffset() * math.pi / 180)  # rad
-                if p == 'x':
-                    v = v * math.cos(th) - pvl.getVal('y') * math.sin(th)
-                if p == 'y':
-                    v = pvl.getVal('x') * math.sin(th) + v * math.cos(th)
+            # avoid return None
+            v = param[p] 
+        # for x, y, z display
+        if p in ['x', 'y']:  
+            th = -(pvl.thOffset() * math.pi / 180)  # rad
+            if p == 'x':
+                v = v * math.cos(th) - pvl.getVal('y') * math.sin(th)
+            if p == 'y':
+                v = pvl.getVal('x') * math.sin(th) + v * math.cos(th)
+        # refresh series
         param[p] = v
     else:
         v = param[p]
@@ -172,7 +178,7 @@ def convertSeconds(seconds):
     time_stg = m + s
     return time_stg
 
-
+# decorating string with color and format
 def Read(p, form='.3f'):
     # get value by param_list index
     value = get_param(p)
@@ -306,6 +312,7 @@ class StatusWidget(QWidget):
         self.status_bar = QLabel(self)
         self.bl_info = QLabel(self)
         self.bl_info.setFont(QFont("UbuntuMono", 10))
+        self.iconpath = 'yellow_light.ico'
         self.status_box = QTextEdit(self)
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
         self.status_box.setFont(QFont("UbuntuMono", 10.5))
@@ -328,18 +335,14 @@ class StatusWidget(QWidget):
         param['f'] = file_no
         self.status_bar.setText("{}  Project #0;   User: {};   file number: {};"
                                 .format(time_str, self._username, int(file_no)))
-        if Device['Iring'] == 1 and Device['test'] == 0:
-            ring_current = pvl.getVal('ring') 
-            if pvl.getVal('fe_pab')==True or pvl.getVal('fe_hms')==True:
-                front_end = "<font color = green>FrontEnd</font>"  
+        ring_current = get_param('Iring') 
+        if checkSafe('test'):
+            if pvl.getVal('fe_pab')==False or pvl.getVal('fe_hms')==False:
+                self.iconpath ='red_light.ico'                    # front end connection problem
             else:
-                front_end = "<font color = red>FrontEnd</font>" 
-        else: 
-            ring_current = 0
-            front_end = "<font color = red>FrontEnd</font>" 
-        self.bl_info.setText("<p align=\"right\">{0} I<sub>ring</sub>: {1:.3f} mA</p>".format
-                                  (front_end, ring_current))
-        print(self.bl_info.height())
+                self.iconpath ='green_light.ico'                  # front end connection ok
+        self.bl_info.setText("<p align=\"right\">Front end: <img src= '{0}' width='16' height='16'>; "
+                             "I<sub>ring</sub>: {1:.3f} mA</p>".format(self.iconpath, ring_current))
 
     def show_text(self):  # called every 1 sec
         if CountDOWN > 1:
@@ -367,8 +370,7 @@ class StatusWidget(QWidget):
                                                                                                                 " sample: (chamber position = " + Read(
             'chmbr') + " mm) <br>"
                        " x = " + Read('x') + " mm, y = " + Read('y') + " mm, z = " + Read('z') + " mm,  "
-                                                                                                 " thoffset = " + str(
-            pvl.thOffset()) + "&#176; <br>"
+                                                                                                 " thoffset = " + Read('thoffset', '.1f') + "&#176; <br>"
                               " th = " + Read('th', '.2f') + "&#176;,  T<sub>a</sub> = " + Read('ta', '.2f') + " K,"
                                                                                                                " T<sub>b</sub> = " + Read(
             'tb', '.2f') + " K<br> <br>"
@@ -484,19 +486,21 @@ class Command(QWidget):
         Full log (for KeyPressEvent function and file number)
          - inherit all log from the same day.
         '''
-        self.fullog_name = log_dir + str(dir_date) + "_fullog.txt"  # Example: 20190509_fullog.txt
+        self.fullog_name = log_dir + str(dir_date) + "_fullog1.txt"  # Example: 20190509_fullog.txt
         self.fullog_col = ['Time', 'Text'] + param_index
         global file_no
         if os.path.exists(self.fullog_name):
             data = pd.read_csv(self.fullog_name, header=0, delimiter="|")
             if len(data) > 0:
-                file_no = int(data['f'][len(data) - 1])  # refresh file_no from the final APP_CLOSED information
+                file_no = int(data['f'][len(data)-1])  # refresh file_no from the final APP_CLOSED information
             self.fullog = data[data['Text'] != "APP_CLOSED"].reset_index(drop=True)
             self.fullog_i = len(self.fullog)  # removed APP_CLOSED for keyboard calling
+            print('[old_frame]')
+            print(self.fullog)
         else:
             self.fullog_i = 0
             self.fullog = pd.DataFrame(columns=self.fullog_col)
-            file = open(self.fullog_name, "a")
+            file = open(self.fullog_name, "w")
             file.write("|".join(self.fullog_col) + "\n")
             file.close()
 
@@ -553,23 +557,21 @@ class Command(QWidget):
         except:
             self.sysReturn('Please enter username to login ...')
 
+    def abortCommand(self):
         '''
         Set global abort flag when button clicked
         (because scan loop is not in this class...)
         '''
-
-    def abortCommand(self):
         global ABORT
         ABORT = True
         self.abort_button.setDisabled(True)
 
+    def popupMacro(self):
         '''
         Macro Window
          - under construction
          - pop up TextEdit
         '''
-
-    def popupMacro(self):
         self.macro = macro.MacroWindow(macro_dir)
         self.macro.macroMsg.connect(self.sysReturn)
         self.macro.errorMsg.connect(self.sysReturn)
@@ -577,15 +579,14 @@ class Command(QWidget):
         self.macrostarted.connect(self.macro.marcoStart)
         self.macro.show()
 
+    def keyPressEvent(command_input, event):
         '''
         Up and Down
-         - redefine function of QLineEdit(originally support return only)
+         - redefine keyPressEvent function of QLineEdit(originally support return only)
          - read fullog_i and fullog["Text"] for command convenience.
          - TODO: solve global problem
 
         '''
-
-    def keyPressEvent(command_input, event):  # detect keypress event in command_input area
         global cmd_global
         size = len(cmd_global.fullog)
         if event.key() == Qt.Key_Up and 0 < cmd_global.fullog_i <= size:
@@ -655,6 +656,7 @@ class Command(QWidget):
         file = open(self.fullog_name, "a")
         file.write("|".join(row) + "\n")
         file.close()
+        # if 
         self.fullog.loc[len(self.fullog), :] = row  # append new_row to dataframe of logging
         self.fullog_i = len(self.fullog)
 

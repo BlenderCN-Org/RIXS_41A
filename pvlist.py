@@ -15,7 +15,7 @@ class pvlist():
                        u="41a:hexapod:u", v="41a:hexapod:v", w="41a:hexapod:w", th="41a:sample:thr",
                        det="41a:sample:tthr", heater="41a:sample:heater", ta="41a:sample:tmp1", tb="41a:sample:tmp2",
                        I0="41a:sample:i0", Iph="41a:sample:phdi", Itey="41a:sample:TEY", Tccd="41a:ccd1:tmpr", gain="41a:ccd1:gain",
-                       ring="SR-DI-DCCT:BeamCurrent", chmbr="41a:sample:transr", tth="41a:agsm:tthr", 
+                       Iring="SR-DI-DCCT:BeamCurrent", chmbr="41a:sample:transr", tth="41a:agsm:tthr", 
                        air="41a:agsm:airready", blink="41a:agsm:linkerready", fe_pab = "FE-41-PAB:Close", fe_hms = "FE-41-HMS:Close1")
 
         #Get Value
