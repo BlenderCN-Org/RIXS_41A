@@ -1,4 +1,4 @@
-# Last edited:20190806 12pm
+# Last edited:20190807 10am
 import os, sys, time, random
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -304,8 +304,8 @@ class StatusWidget(QWidget):
         super(StatusWidget, self).__init__(parent=parent)
         self.today = datetime.date.today()  # for date change detection
         self.status_bar = QLabel(self)
-        self.ring_current = QLabel(self)
-        self.ring_current.setFont(QFont("UbuntuMono", 10))
+        self.bl_info = QLabel(self)
+        self.bl_info.setFont(QFont("UbuntuMono", 10))
         self.status_box = QTextEdit(self)
         self.status_box.setStyleSheet("color: black; background-color: Floralwhite")
         self.status_box.setFont(QFont("UbuntuMono", 10.5))
@@ -328,16 +328,18 @@ class StatusWidget(QWidget):
         param['f'] = file_no
         self.status_bar.setText("{}  Project #0;   User: {};   file number: {};"
                                 .format(time_str, self._username, int(file_no)))
-        if pvl.getVal('fe_pab')==True or pvl.getVal('fe_hms')==True:
-            front_end = "<font color = green>FrontEnd</font>"  
-        else:
-            front_end = "<font color = red>FrontEnd</font>" 
         if Device['Iring'] == 1 and Device['test'] == 0:
             ring_current = pvl.getVal('ring') 
+            if pvl.getVal('fe_pab')==True or pvl.getVal('fe_hms')==True:
+                front_end = "<font color = green>FrontEnd</font>"  
+            else:
+                front_end = "<font color = red>FrontEnd</font>" 
         else: 
             ring_current = 0
+            front_end = "<font color = red>FrontEnd</font>" 
         self.bl_info.setText("<p align=\"right\">{0} I<sub>ring</sub>: {1:.3f} mA</p>".format
                                   (front_end, ring_current))
+        print(self.bl_info.height())
 
     def show_text(self):  # called every 1 sec
         if CountDOWN > 1:
@@ -1585,7 +1587,13 @@ class ImageWidget(QWidget):
     def getHeader(self):
         # record param from global pd.Series
         index = param.index.tolist()
-        value = ['{:.2f}'.format(x) for x in param.tolist()]
+        value = [] 
+        for x in param.tolist():
+            if x not in ["I0", "Itey", "Iph"]:
+                value.append('{:.2f}'.format(x))
+            else:
+                value.append('{:.2E}'.format(x))
+        #value = ['{:.2f}'.format(x) for x in param.tolist()]
         for i in range(0, len(index)):
             str1 = str(index[i])
             str2 = str(value[i])
@@ -2559,15 +2567,10 @@ class Rixs(QThread):
         self.setplot.emit()
         if checkSafe('ccd'):
             pvl.ccd('exposure', self.t)
-        # else:
-        # self.cmd_msg.emit('ccd off, generating random data.')
-        # self.no_analyze.emit()
         self.t0 = time.time()
         for i in range(self.n):
             if ABORT: break
-            '''
-            Estimate remaining time
-            '''
+            #Estimate remaining time
             if i == 0:
                 dt = self.n * (self.t + 3)
             else:
@@ -2586,9 +2589,7 @@ class Rixs(QThread):
             self.exposethread.wait()
             if ABORT == False: self.taken_i += 1
 
-        '''
-        Loop finished
-        '''
+        #Loop finished
         if self.n != 1: self.savespec.emit(True)
         WorkingSTATUS = " "
         CountDOWN = 0
@@ -2744,6 +2745,6 @@ class Macroloop(QThread):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("flying_bird_128px_1087127_easyicon.net.ico"))
+    app.setWindowIcon(QIcon("BlueBird.ico"))
     BlueMagpie = MainWindow()
     sys.exit(app.exec_())
