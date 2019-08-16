@@ -130,6 +130,7 @@ class MacroEditor(QWidget):
 
     def modify(self, current_index):
         self.editing = True
+        self.editing_index = current_index
         filelist = self.__readFile()
         self.editor.setText('<br>'.join(filelist[current_index+1:-1]))
         self.__buttonmode()
@@ -138,8 +139,15 @@ class MacroEditor(QWidget):
     def resume(self):
         self.editing = False
         filelist = self.__readFile()[:-1]
+        print('old_text:')
+        print('\n'.join(filelist))
+        text = self.editor.toPlainText()
+        print('appending_text:')
+        print(text)
+        print('new_text')
+        print('\n'.join(filelist)+text)
         with open(self.current_file, "w") as f:
-            f.write('\n'.join(filelist))
+            f.write('\n'.join(filelist)+text)
         self.__buttonmode()
         self.__editMode()
 
@@ -162,7 +170,7 @@ class MacroEditor(QWidget):
             event.ignore()
 
 # test running independently
-app = QApplication(sys.argv)
-macro = MacroEditor("a")
-macro.show()
-sys.exit(app.exec_())
+#app = QApplication(sys.argv)
+#macro = MacroEditor("a")
+#macro.show()
+#sys.exit(app.exec_())

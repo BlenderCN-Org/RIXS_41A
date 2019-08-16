@@ -13,7 +13,6 @@ class MacroMonitor(QWidget):
     errorMsg = pyqtSignal(str,str)
     macroMsg = pyqtSignal(str)
     openEditor = pyqtSignal(int)
-    currentline = pyqtSignal(int)
     windowclosed = pyqtSignal()
 
     def __init__(self, filepath):
@@ -23,10 +22,11 @@ class MacroMonitor(QWidget):
         self.__layout()
         self.__load()
         self.running = True
+        self.current_index = 0
         
     def __mainwindow(self):
         self.setWindowTitle("Macro Monitor - {}".format(path.basename(self.filepath)))
-        self.resize(400, 600)
+        self.resize(50, 80)
         self.setWindowFlags(self.windowFlags() & Qt.CustomizeWindowHint)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowMinMaxButtonsHint)
 
@@ -66,7 +66,7 @@ class MacroMonitor(QWidget):
         '''
         popup editor window for user modification, running macro will be paused
         '''
-        if self.current_index != len(self.__readFile()):
+        if self.current_index < len(self.__readFile()):
             with open(self.filepath, "a") as f:
                 f.write("\n###MacroPause###")       # for MainWindow to check pause, will be overwrited when new file is saved
             self.openEditor.emit(self.current_index)
@@ -78,10 +78,10 @@ class MacroMonitor(QWidget):
         '''
         self.currnet_index = macro_index
         filelist = self.__readFile()
-        if macro_index < len(filelist):         # macro_index = running line
-            line = filelist[macro_index]
-            for line in filelist[:macro_index]:
-                filelist[line] = '<font color = gray> {} </font>'.format(line)
+        if macro_index <= len(filelist):         # macro_index = running line
+            for i in range(0, macro_index+1):
+                line = filelist[i]
+                filelist[i] = '<font color = gray> {} </font>'.format(line)
             self.monitor.setText('<br>'.join(filelist))
 
     def closeEvent(self, event):
@@ -109,7 +109,7 @@ class MacroMonitor(QWidget):
         self.modify_button.setDisabled(True)
      
 # test running independently
-app = QApplication(sys.argv)
-macro = MacroMonitor("a")
-macro.show()
-sys.exit(app.exec_())
+#app = QApplication(sys.argv)
+#macro = MacroMonitor("a")
+#macro.show()
+#sys.exit(app.exec_())

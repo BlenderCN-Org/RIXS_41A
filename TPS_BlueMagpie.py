@@ -12,6 +12,8 @@ import pvlist
 import math
 from spike import spikeRemoval, low_pass_fft
 from scipy.ndimage import gaussian_filter
+from macro_editor import MacroEditor
+from macro_monitor import MacroMonitor
 import macro
 import login
 
@@ -422,7 +424,8 @@ class StatusWidget(QWidget):
 
 
 class Command(QWidget):
-    popup = pyqtSignal()
+    popupeditor = pyqtSignal()
+    popupmonitor = pyqtSignal(str)
     macrostat = pyqtSignal(str)
     pause = pyqtSignal(float)
     loadimage = pyqtSignal(str)
@@ -459,8 +462,10 @@ class Command(QWidget):
         self.pause.connect(self.inputPause)
 
         # macro related
-        self.macro = None
-        self.popup.connect(self.popupMacro)
+        self.macroeditor = None
+        self.macromonitor = None
+        self.popupeditor.connect(self.popupEditor)
+        self.popupmonitor.connect(self.popupMonitor)
         self.macrostat[str].connect(self.command_input.setText)
 
         # login related
@@ -566,19 +571,43 @@ class Command(QWidget):
         ABORT = True
         self.abort_button.setDisabled(True)
 
-    def popupMacro(self):
+    def popupEditor(self, filepath=None):
         '''
-        Macro Window
-         - under construction
-         - pop up TextEdit
+        Macro Editor (2019/08/16)
+         - testing
+         - pop up TextEdit to edit macro text file
         '''
-        self.macro = macro.MacroWindow(macro_dir)
-        self.macro.macroMsg.connect(self.sysReturn)
-        self.macro.errorMsg.connect(self.sysReturn)
-        self.macro.windowclosed.connect(self.macroClosed)
-        self.macrostarted.connect(self.macro.marcoStart)
-        self.macro.show()
+        self.macroeditor = MacroEditor(macro_dir, filepath)
+        self.macroeditor.macroMsg.connect(self.sysReturn)
+        self.macroeditor.errorMsg.connect(self.sysReturn)
+        self.macroeditor.windowclosed.connect(self.editorClosed)
+        self.macroeditor.show()
+        
+    def popupMonitor(self, filepath):
+        '''
+        Macro Monitor (2019/08/16)
+        ## Called by doMacro
+         - testing
+         - pop up TextEdit to show macro status
+        '''
+        self.macromonitor = MacroMonitor(filepath)
+        self.macromonitor.macroMsg.connect(self.sysReturn)
+        self.macromonitor.errorMsg.connect(self.sysReturn)
+        self.macromonitor.openEditor.connect(self.checkEditor)
+        self.macromonitor.windowclosed.connect(self.monitorClosed)
+        self.macrostarted.connect(self.macromonitor.marcoStart)
+        self.macromonitor.show()
 
+    def checkEditor(self, number):
+        '''
+        ## Called by MacroMonitor modify_button 
+        Receive current macro command index when modify_button is pressed.
+        If editor isn't active, popup new one.
+        '''
+        if self.macroeditor == None:
+            self.popupEditor(self.marcofilepath)
+        self.macroeditor.modify(number)
+        
     def keyPressEvent(command_input, event):
         '''
         Up and Down
@@ -600,6 +629,7 @@ class Command(QWidget):
         else:
             super(Command, command_input).keyPressEvent(event)
 
+    def sysReturn(self, x, v="", log=False):
         '''
         Log and show
          - Decorate msg in command; assume normal message.
@@ -610,9 +640,6 @@ class Command(QWidget):
                    "iv":  invalid => mark gray
                   "err":    error => mark msg red
         '''
-
-    def sysReturn(self, x, v="", log=False):
-        # time stamp
         timestamp = QTime.currentTime()
         t = timestamp.toString()
         if v == "iv":
@@ -1125,7 +1152,7 @@ class Command(QWidget):
         elif text == "macro":
             # popup window
             self.sysReturn(text, "v")
-            self.popup.emit()
+            self.popupeditor.emit()
 
         elif text[:3] in ["air", "AIR"]:
             if self.checkAGS(text):
@@ -1216,8 +1243,11 @@ class Command(QWidget):
         WorkingSTATUS = ""
         CountDOWN = 0
 
-    def macroClosed(self):
-        self.macro = None
+    def editorClosed(self):
+        self.macroeditor = None
+
+    def monitorClosed(self):
+        self.macromonitor = None
 
     def imgFinish(self):
         self.sysReturn("img taken (data not saved).")
@@ -1424,14 +1454,15 @@ class Command(QWidget):
     def doMacro(self, name):
         macro_name = "%s%s.txt" % (macro_dir, name)  # directory
         if os.path.exists(macro_name):  # check file exist
+            self.marcofilepath = macro_name
             self.sysReturn('do %s' % name, "v", True)
             self.sysReturn("macro begins: %s.txt" % name)
-            if self.macro == None: self.popup.emit()
-            self.macrostarted.emit(macro_name)  # to inform macro window which file is running and activate edit button
+            if self.macromonitor == None: self.popupmonitor.emit(macro_name)
+            self.macrostarted.emit(macro_name)  # to inform monitor window which file is running
             self.macrothread = Macroloop(macro_name)
             self.macrothread.finished.connect(self.macroFinish)
-            self.macrothread.finished.connect(self.macro.macroFinished)
-            self.macrothread.number.connect(self.macro.macroNum)
+            self.macrothread.finished.connect(self.macromonitor.macroFinished)
+            self.macrothread.number.connect(self.macromonitor.update)
             self.macrothread.started.connect(self.macroStart)
             self.macrothread.msg.connect(self.sysReturn)
             self.macrothread.send.connect(self.send)
