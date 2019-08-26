@@ -565,7 +565,6 @@ class Command(QWidget):
     def abortCommand(self):
         '''
         Set global abort flag when button clicked
-        (because scan loop is not in this class...)
         '''
         global ABORT
         ABORT = True
@@ -1208,19 +1207,19 @@ class Command(QWidget):
                 self.sysReturn("input error. use:   do macroname", "err")
 
         elif text[:5] == "wait ":
-            BUSY = True
             space = text.count(' ')
             sptext = text.split(' ')
             # set delay time
-            if space == 1:
+            if space != 1 or self.checkFloat(sptext[1]) == False:
+                BUSY = False
+                self.sysReturn(text, 'iv')
+                self.sysReturn("input error. Format: wait time", "err")
+            else:
+                BUSY = True
                 t = sptext[1]
-                if self.checkFloat(t):
-                    self.sysReturn(text, "v", True)
-                    self.sysReturn("wait for %s seconds..." % t)
-                    self.pause[float].emit(float(t))
-                else:
-                    self.sysReturn(text, 'iv')
-                    self.sysReturn("input error. Format: wait time", "err")
+                self.sysReturn(text, "v", True)
+                self.sysReturn("wait for %s seconds..." % t)
+                self.pause[float].emit(float(t))    
 
         elif text != "":
             self.sysReturn(text, "iv")
@@ -2722,10 +2721,10 @@ class Macroloop(QThread):
                         break
             line = self.readFile()[self.macro_index]
             self.number.emit(self.macro_index)  # to macrowindow
-            self.send.emit(line)
             if self.checkMacroCommand(line) == True:
                 global BUSY
                 BUSY = True # force BUSY flag
+            self.send.emit(line)
             self.setText.emit("macro line [{0}] : {1}".format(str(self.macro_index + 1), line))
             self.macro_index += 1
             # print('index = ',self.macro_index ,'BUSY before 3 secs= ', BUSY)
@@ -2766,7 +2765,6 @@ class Macroloop(QThread):
         self.abort = True
 
     def checkMacroCommand(self, line):
-        global BUSY
         keyword = line.split(' ')[0]
         busylist = ['mv', 'rixs', 'img', 'scan', 'xas', 'tscan', 'heater', 'wait']
         if keyword in busylist:

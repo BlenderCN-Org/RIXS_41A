@@ -50,6 +50,7 @@ class MacroMonitor(QWidget):
         except:
             self.errorMsg.emit('failed to load file {}'.format(self.filepath),'err')
             print('failed to load file{}'.format(self.filepath))
+        
 
     def __readFile(self):
         '''
@@ -83,7 +84,13 @@ class MacroMonitor(QWidget):
                 line = filelist[i]
                 filelist[i] = '<font color = gray> {} </font>'.format(line)
             self.monitor.setText('<br>'.join(filelist))
+        if macro_index%5 == 0 and macro_index != 0:
+            self.cursorAdjust()
 
+    def cursorAdjust(self):
+        for i in range(0, self.current_index-5):
+            self.monitor.moveCursor(QTextCursor.Down)
+   
     def closeEvent(self, event):
         '''
         Ignore close event while macro is running.

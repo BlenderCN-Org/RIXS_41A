@@ -52,7 +52,7 @@ class MacroEditor(QWidget):
 
     def __buttonmode(self):
         self.open_button.setDisabled(self.running)
-        self.save_button.setDisabled(False if self.editing else self.running)
+        self.save_button.setDisabled(self.running)
         self.resume_button.setEnabled(True if self.editing else False)
     
     def __readFile(self):
@@ -130,24 +130,18 @@ class MacroEditor(QWidget):
 
     def modify(self, current_index):
         self.editing = True
-        self.editing_index = current_index
+        self.editing_index = current_index+1
         filelist = self.__readFile()
-        self.editor.setText('<br>'.join(filelist[current_index+1:-1]))
+        self.editor.setText('<br>'.join(filelist[self.editing_index:-1]))
         self.__buttonmode()
         self.__editMode()
 
     def resume(self):
         self.editing = False
-        filelist = self.__readFile()[:-1]
-        print('old_text:')
-        print('\n'.join(filelist))
+        filelist = self.__readFile()[:self.editing_index+1]
         text = self.editor.toPlainText()
-        print('appending_text:')
-        print(text)
-        print('new_text')
-        print('\n'.join(filelist)+text)
         with open(self.current_file, "w") as f:
-            f.write('\n'.join(filelist)+text)
+            f.write('\n'.join(filelist)+'\n'+text)
         self.__buttonmode()
         self.__editMode()
 
