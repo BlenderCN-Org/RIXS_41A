@@ -1241,6 +1241,8 @@ class Command(QWidget):
         BUSY = False
         WorkingSTATUS = ""
         CountDOWN = 0
+        if self.macroeditor != None:
+            self.macroeditor.macroFinished()
 
     def editorClosed(self):
         self.macroeditor = None
@@ -2719,26 +2721,29 @@ class Macroloop(QThread):
                     read = self.readFile()[-1]  # check every second during macro pause
                     if read != "###MacroPause###":
                         break
-            line = self.readFile()[self.macro_index]
-            self.number.emit(self.macro_index)  # to macrowindow
-            if self.checkMacroCommand(line) == True:
-                global BUSY
-                BUSY = True # force BUSY flag
-            self.send.emit(line)
-            self.setText.emit("macro line [{0}] : {1}".format(str(self.macro_index + 1), line))
-            self.macro_index += 1
-            # print('index = ',self.macro_index ,'BUSY before 3 secs= ', BUSY)
-            # time.sleep(3)
-            if BUSY:
-                print("macro line [{0}] : {1}".format(str(self.macro_index), line))
-                print('index = ',self.macro_index ,'BUSY= ', BUSY)
-            self.t0 = time.time()
-            while BUSY:
-                time.sleep(0.01)
-                if (time.time() - self.t0) % 10 < 0.001:
-                    print('dt = ', time.time()-self.t0, 'BUSY= ', BUSY)
-                if BUSY == False:
-                    print('BUSY loop finished')
+                    if ABORT:
+                        break
+            if not ABORT:
+                line = self.readFile()[self.macro_index]
+                self.number.emit(self.macro_index)  # to macrowindow
+                if self.checkMacroCommand(line) == True:
+                    global BUSY
+                    BUSY = True # force BUSY flag
+                self.send.emit(line)
+                self.setText.emit("macro line [{0}] : {1}".format(str(self.macro_index + 1), line))
+                self.macro_index += 1
+                # print('index = ',self.macro_index ,'BUSY before 3 secs= ', BUSY)
+                # time.sleep(3)
+                if BUSY:
+                    print("macro line [{0}] : {1}".format(str(self.macro_index), line))
+                    print('index = ',self.macro_index ,'BUSY= ', BUSY)
+                self.t0 = time.time()
+                while BUSY:
+                    time.sleep(0.01)
+                    if (time.time() - self.t0) % 10 < 0.001:
+                        print('dt = ', time.time()-self.t0, 'BUSY= ', BUSY)
+                    if BUSY == False:
+                        print('BUSY loop finished')
 
             if ABORT:
                 break

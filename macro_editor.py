@@ -19,7 +19,7 @@ class MacroEditor(QWidget):
         self.__buttons()
         self.__editor()
         self.__layout()
-        self.__buttonmode()
+        self.__checkMode()
 
     def __mainwindow(self):
         self.setWindowTitle("Macro Editor")
@@ -39,7 +39,6 @@ class MacroEditor(QWidget):
         self.save_button.clicked.connect(self.overWrite)    # check overwrite problem first, then decide new file name
         self.open_button.clicked.connect(self.open)         # request user to choose a file
         self.resume_button.clicked.connect(self.resume)     # activated while macro started
-        self.__buttonmode()
         self.buttons_layout = QHBoxLayout()
         self.buttons_layout.addWidget(self.save_button)
         self.buttons_layout.addWidget(self.open_button)
@@ -50,10 +49,12 @@ class MacroEditor(QWidget):
         self.window_layout.addWidget(self.editor)
         self.window_layout.addLayout(self.buttons_layout)
 
-    def __buttonmode(self):
+    def __checkMode(self):
         self.open_button.setDisabled(self.running)
         self.save_button.setDisabled(self.running)
-        self.resume_button.setEnabled(True if self.editing else False)
+        self.resume_button.setEnabled(True if (self.editing and self.running) else False)
+        self.editor.setReadOnly(not self.editing)
+        self.editor.setStyleSheet("color: black; background-color: {}".format("white" if self.editing else "Floralwhite"))
     
     def __readFile(self):
         filelist=[]
@@ -62,11 +63,6 @@ class MacroEditor(QWidget):
                 x = x.replace("\n", "")
                 filelist.append(x)
         return filelist
-
-    def __editMode(self):
-        option = True if self.editing else False
-        self.editor.setReadOnly(not option)
-        self.editor.setStyleSheet("color: black; background-color: {}".format("white" if option else "Floralwhite"))
 
     def overWrite(self):
         if self.current_file != None: #if there's a name already, check overwrite
@@ -82,12 +78,14 @@ class MacroEditor(QWidget):
             self.save(file_name)
 
     def save(self, file_name):
+        self.editing = False
         if file_name != False:
             text = self.editor.toPlainText()  # transform user_text to plaintext
             txt_file = "{0}{1}".format(self.directory, file_name)
             with open(txt_file, "w") as file:
                 file.write(text)
             self.setWindowTitle("Macro Editor - {0}".format(file_name))
+        self.__checkMode()
 
     def getName(self, msg="", file_name = False):
         text, ok = QInputDialog.getText(self, 'Save Macro', 'New macro name:\n'
@@ -109,6 +107,7 @@ class MacroEditor(QWidget):
         return (file_name)
 
     def open(self):
+        self.editing = True
         fname = QFileDialog.getOpenFileName(self, 'Open macro file',
                                             directory=self.directory
                                             , filter='Text files (*.txt)'
@@ -123,7 +122,8 @@ class MacroEditor(QWidget):
                 data = f.read()
                 self.editor.setText(data)
                 title = "Macro Editor - {0}".format(os.path.basename(f.name))
-                self.current_file = filepath
+                self.current_file = filepath 
+            self.__checkMode()
         else:
             title = "Macro Editor"
         self.setWindowTitle(title)
@@ -133,30 +133,27 @@ class MacroEditor(QWidget):
         self.editing_index = current_index+1
         filelist = self.__readFile()
         self.editor.setText('<br>'.join(filelist[self.editing_index:-1]))
-        self.__buttonmode()
-        self.__editMode()
+        self.__checkMode()
 
     def resume(self):
         self.editing = False
-        filelist = self.__readFile()[:self.editing_index+1]
+        filelist = self.__readFile()[:self.editing_index]
         text = self.editor.toPlainText()
         with open(self.current_file, "w") as f:
             f.write('\n'.join(filelist)+'\n'+text)
-        self.__buttonmode()
-        self.__editMode()
+        self.__checkMode()
 
     def marcoStart(self, name):
         self.running = True
-        self.__buttonmode()
         self.load(name)
 
     def macroFinished(self):
         self.running = False
-        self.__buttonmode()
+        self.editing = False
         self.load(self.current_file)
 
     def closeEvent(self, event):
-        if self.editing == False:
+        if self.running == False:
             self.windowclosed.emit()
             event.accept()
         else:

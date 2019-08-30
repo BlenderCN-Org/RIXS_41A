@@ -90,7 +90,7 @@ class MacroMonitor(QWidget):
     def cursorAdjust(self):
         for i in range(0, self.current_index-5):
             self.monitor.moveCursor(QTextCursor.Down)
-   
+     
     def closeEvent(self, event):
         '''
         Ignore close event while macro is running.
